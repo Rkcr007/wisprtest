@@ -103,7 +103,7 @@ wisprtest/
 | Indexer | Node + Playwright | Shares `packages/fingerprint` with the extension. One implementation. |
 | Gateway | Fastify + TypeScript | Type sharing with protocol package; low overhead. |
 | Composer | FastAPI + Python | Constraint solving and distribution sampling are cleaner in Python. |
-| Console | Next.js 15 App Router, Tailwind, shadcn/ui, Zustand, TanStack Query | Per house standard. |
+| Console | Next.js 16 App Router, Tailwind, shadcn/ui, Zustand, TanStack Query | Per house standard. |
 | Primary store | PostgreSQL 16 | Memory graph, schemas, ledger, sessions, audit. |
 | Vector | Qdrant | Tier-1 embedding search over scoped element candidates + alias corpus. |
 | Cache | Redis | Hot memory snapshots per `(tenant, app, version)`. |

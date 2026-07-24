@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "types": ["chrome"],
+    // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
+    // no rootDir. Emit is configured by tsconfig.build.json.
+    "noEmit": true
+  },
+  "include": ["src", "vitest.config.ts"]
+}

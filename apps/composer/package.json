@@ -1,0 +1,13 @@
+{
+  "name": "composer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Python service. This package.json exists only so the composer joins the pnpm workspace and is covered by the single `pnpm lint` / `pnpm typecheck` / `pnpm test` entrypoints. All real work is delegated to uv.",
+  "scripts": {
+    "dev": "uv run python -m composer",
+    "typecheck": "uv run mypy --strict src",
+    "test": "uv run pytest -q",
+    "lint": "uv run ruff check src tests && uv run ruff format --check src tests",
+    "lint:fix": "uv run ruff check --fix src tests && uv run ruff format src tests"
+  }
+}

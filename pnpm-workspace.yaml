@@ -1,0 +1,14 @@
+packages:
+  - packages/*
+  - apps/*
+
+# pnpm refuses to run dependency lifecycle scripts unless they are named here.
+# Keep this list minimal and justify every entry.
+allowBuilds:
+  esbuild: true # vite/vitest transform pipeline; ships a platform binary
+  sharp: true # next.js image optimisation; native binding
+
+# pnpm withholds releases younger than its minimum-release-age gate. eslint 10.8.0 is the
+# version this scaffold is pinned to and typescript-eslint 8.65 declares support for it.
+minimumReleaseAgeExclude:
+  - eslint@10.8.0

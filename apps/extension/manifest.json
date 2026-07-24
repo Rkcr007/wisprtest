@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "WisprTest",
+  "version": "0.0.0",
+  "description": "Voice-native execution layer for manual QA of enterprise web applications.",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  }
+}

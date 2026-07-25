@@ -1,9 +1,19 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // This package touches the DOM and nothing else. Node types are present only because the
+    // test for our SHA-256 checks it against `node:crypto`; an ESLint rule keeps `node:` imports
+    // out of everything but `*.test.ts`, because one in src would break the content script.
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": [],
-    // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
+    "types": ["node"],
+    // Resolve the contract from source rather than from `packages/protocol/dist`, so a clean
+    // checkout typechecks without a build step and an edit to a schema is visible here
+    // immediately. Only type resolution is affected — the emitted JS still imports `protocol`
+    // by name and Node resolves it to the built package at runtime.
+    "paths": {
+      "protocol": ["../protocol/src/index.ts"]
+    },
+    // Typecheck-only config: it covers tests and tooling configs as well as src, so it declares
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true
   },

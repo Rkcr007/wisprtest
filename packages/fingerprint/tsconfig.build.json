@@ -3,8 +3,13 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // Drop the source `paths` mapping the typecheck config uses. Emit has to resolve `protocol`
+    // to its built package, not pull its `.ts` files into this program — they sit outside
+    // `rootDir`, and the declarations we emit must reference the contract's published types.
+    // `pnpm -r build` orders protocol first, since it is a workspace dependency.
+    "paths": {}
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/testing.ts"]
 }

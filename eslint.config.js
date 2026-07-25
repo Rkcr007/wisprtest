@@ -33,6 +33,12 @@ export default tseslint.config(
     rules: {
       // `const { omitted: _omitted, ...rest }` is how these tests build an invalid environment
       // from a valid one. The underscore prefix marks the discard as deliberate.
+      // `non-nullable-type-assertion-style` (stylistic) tells you to replace `x as T` with `x!`,
+      // and `no-non-null-assertion` (strict) forbids `x!`. Left on together they are a loop with
+      // no exit. The safety rule wins: a `!` hides a real possibility of undefined at runtime,
+      // whereas a narrow, commented `as` on a provably in-bounds typed-array read does not.
+      '@typescript-eslint/non-nullable-type-assertion-style': 'off',
+
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -40,6 +46,29 @@ export default tseslint.config(
           varsIgnorePattern: '^_',
           caughtErrorsIgnorePattern: '^_',
           ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+
+  // `packages/fingerprint` is shared verbatim by the extension and the Playwright indexer
+  // (CLAUDE.md rule #4), so it may use standard DOM APIs and nothing else. Node types are on for
+  // the SHA-256 test, which checks our implementation against the platform's; this keeps that
+  // from leaking into code that has to run in a content script.
+  {
+    files: ['packages/fingerprint/src/**/*.ts'],
+    ignores: ['packages/fingerprint/src/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message:
+                'packages/fingerprint runs in a browser content script — Node built-ins are unavailable there.',
+            },
+          ],
         },
       ],
     },

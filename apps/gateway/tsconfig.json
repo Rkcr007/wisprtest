@@ -3,9 +3,15 @@
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": ["node"],
+    // Resolve the contract from source, so a clean checkout typechecks without building
+    // packages/protocol first. Emit is unaffected: tsconfig.build.json clears this, and the
+    // compiled output resolves `protocol` to its built package by name.
+    "paths": {
+      "protocol": ["../../packages/protocol/src/index.ts"]
+    },
     // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.db.config.ts"]
 }

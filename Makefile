@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test lint typecheck db-up db-down db-logs db-migrate
+.PHONY: help dev build test lint typecheck db-up db-down db-logs db-migrate db-reset db-seed require-atlas
 
 COMPOSE := docker compose
 
@@ -48,15 +48,44 @@ db-down:
 db-logs:
 	$(COMPOSE) logs -f
 
-## db-migrate: apply pending Atlas migrations to the local database
-db-migrate: .env
+# Fails loudly with install instructions rather than reporting a confusing connection error.
+require-atlas:
 	@command -v atlas >/dev/null 2>&1 || { \
 		echo "atlas is not installed."; \
 		echo "install it with: curl -sSf https://atlasgo.sh | sh   (or: brew install ariga/tap/atlas)"; \
 		exit 1; \
 	}
+
+## db-migrate: apply pending Atlas migrations to the local database
+db-migrate: .env require-atlas
 	@test -n "$$(ls -A db/migrations 2>/dev/null)" || { \
 		echo "db/migrations is empty — the schema is delivered by Phase 3 of docs/BUILD-PLAN.md."; \
 		exit 1; \
 	}
 	set -a; . ./.env; set +a; atlas migrate apply --dir "file://db/migrations" --url "$$DATABASE_URL"
+
+## db-reset: drop and recreate the local database, then migrate and seed it
+# Destructive, and only ever aimed at the Compose container — it runs psql through
+# `docker compose exec`, so there is no set of environment variables that can point it at a
+# database this repository does not own. `db-migrate` and `db-seed` follow, because a dropped
+# database with no schema is not a useful state to leave anyone in.
+db-reset: .env db-up
+	@set -a; . ./.env; set +a; \
+	echo "dropping and recreating database $$POSTGRES_DB in the wisprtest compose stack"; \
+	$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d postgres \
+		-c "DROP DATABASE IF EXISTS \"$$POSTGRES_DB\" WITH (FORCE)" \
+		-c "CREATE DATABASE \"$$POSTGRES_DB\" OWNER \"$$POSTGRES_USER\""
+	$(MAKE) db-migrate
+	$(MAKE) db-seed
+
+## db-seed: load the integration-test fixture into the local database
+# One transaction: either the whole fixture lands or none of it does. Every insert is
+# ON CONFLICT DO NOTHING, so re-running is a no-op rather than an error.
+db-seed: .env
+	@set -a; . ./.env; set +a; \
+	for file in db/seed/*.sql; do \
+		echo "seeding $$file"; \
+		$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 --single-transaction \
+			-U "$$POSTGRES_USER" -d "$$POSTGRES_DB" < "$$file" >/dev/null || exit 1; \
+	done
+	@echo "seed loaded"

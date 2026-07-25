@@ -1,10 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // The contract is consumed by the extension, the console, Node services and Playwright, so
+    // it declares no ambient environment at all: no DOM, no Node. If a schema file ever needs a
+    // global, that is a design error in the contract, not a missing type package.
     "lib": ["ES2023"],
     "types": [],
-    // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
-    // no rootDir. Emit is configured by tsconfig.build.json.
+    // Typecheck-only config: it covers tests as well as src, so it declares no rootDir.
+    // Emit is configured by tsconfig.build.json.
     "noEmit": true
   },
   "include": ["src", "vitest.config.ts"]

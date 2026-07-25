@@ -17,8 +17,11 @@ help:
 dev: db-up
 	set -a; . ./.env; set +a; pnpm dev
 
-## build: build every workspace package
+## build: regenerate the composer's protocol models, then build every workspace package
+# gen:python runs first so anything typechecked afterwards is checked against the current
+# contract rather than the last generated copy of it.
 build:
+	pnpm --filter protocol gen:python
 	pnpm build
 
 ## test: run every workspace test suite

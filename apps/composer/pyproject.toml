@@ -12,6 +12,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # Turns packages/protocol's JSON Schema bundle into src/composer/protocol/models.py.
+    # A dev dependency, not a runtime one: it runs at build time via
+    # `pnpm --filter protocol gen:python`, never inside the service.
+    "datamodel-code-generator>=0.71.0",
     "httpx2>=2.9.1",
     "mypy>=1.19.0",
     "pytest>=9.0.0",
@@ -24,6 +28,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/composer"]
+# PEP 561: the package ships type information, so importers (the test suite, and anything that
+# later depends on the composer) typecheck against it rather than treating it as untyped.
+artifacts = ["src/composer/py.typed"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -58,6 +65,10 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 # Assertions are the point of a test file.
 "tests/**" = ["S101"]
+# Generated from packages/protocol. The docstrings and field descriptions are the contract's
+# own prose, carried over verbatim from the Zod schemas; enforcing the line limit here would
+# mean truncating documentation in a file nobody edits by hand.
+"src/composer/protocol/models.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

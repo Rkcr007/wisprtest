@@ -1,0 +1,12 @@
+{
+  // The build scripts are Node programs, unlike src/, which must stay environment-agnostic.
+  // Keeping them in their own project is what stops a `node:` import from compiling inside the
+  // contract itself.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["."]
+}

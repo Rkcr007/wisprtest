@@ -1,0 +1,1839 @@
+{
+  "ActionClass": [
+    "R",
+    "C",
+    "A",
+    "S"
+  ],
+  "ActionOutcome": [
+    "executed",
+    "staged",
+    "rolled_back",
+    "rejected",
+    "failed"
+  ],
+  "ActionPayload": [
+    {
+      "verb": "navigate",
+      "route": "/orders"
+    },
+    {
+      "verb": "click"
+    },
+    {
+      "verb": "type",
+      "text": "Acme Industrial",
+      "clearFirst": true
+    },
+    {
+      "verb": "focus"
+    },
+    {
+      "verb": "scroll",
+      "direction": "down",
+      "amountPx": 400
+    },
+    {
+      "verb": "scroll",
+      "direction": "bottom",
+      "amountPx": null
+    },
+    {
+      "verb": "filter",
+      "text": "pending"
+    },
+    {
+      "verb": "check",
+      "assertion": "the status badge reads pending approval"
+    },
+    {
+      "verb": "select",
+      "option": "Net 30"
+    },
+    {
+      "verb": "back"
+    }
+  ],
+  "ActionRequest": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "elementKey": "orders.detail.approve",
+      "payload": {
+        "verb": "focus"
+      },
+      "actionClass": "R",
+      "tier": "T0",
+      "confidence": 0.98,
+      "speculative": true,
+      "confirmed": false,
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "issuedAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "elementKey": "orders.detail.approve",
+      "payload": {
+        "verb": "click"
+      },
+      "actionClass": "C",
+      "tier": "T0",
+      "confidence": 0.98,
+      "speculative": false,
+      "confirmed": true,
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "issuedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "ActionResult": [
+    {
+      "actionRequestId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "outcome": "executed",
+      "latencyMs": 18.4,
+      "reason": null,
+      "evidence": [],
+      "completedAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "actionRequestId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "outcome": "rejected",
+      "latencyMs": 2,
+      "reason": "the tester declined the confirmation",
+      "evidence": [
+        {
+          "kind": "screenshot",
+          "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+          "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "capturedAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "completedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "ActionVerb": [
+    "click",
+    "type",
+    "back"
+  ],
+  "Alias": [
+    {
+      "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "phrase": "the pending filter",
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "source": "t2_writeback",
+      "hits": 12,
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "phrase": "the pending filter",
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "stateFingerprint": null,
+      "source": "indexed",
+      "hits": 12,
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "AliasSource": [
+    "indexed",
+    "t2_writeback",
+    "manual"
+  ],
+  "CompositionEdge": [
+    {
+      "fromNodeId": "order-1",
+      "toNodeId": "account-1",
+      "viaField": "account"
+    }
+  ],
+  "CompositionNode": [
+    {
+      "nodeId": "order-1",
+      "entity": "Order",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "mode": "create",
+      "existingExternalRef": null,
+      "fields": {
+        "status": "Pending approval",
+        "amount": 46200,
+        "account": "ACC-118"
+      },
+      "provenance": [
+        {
+          "field": "status",
+          "value": "Pending approval",
+          "source": "requested",
+          "explanation": "matched the enum value spoken as \"pending\"",
+          "confidence": 0.96
+        },
+        {
+          "field": "amount",
+          "value": 46200,
+          "source": "derived",
+          "explanation": "sum of the three line item amounts",
+          "confidence": 1
+        }
+      ]
+    },
+    {
+      "nodeId": "account-1",
+      "entity": "Account",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "mode": "reuse_existing",
+      "existingExternalRef": "ACC-118",
+      "fields": {},
+      "provenance": []
+    }
+  ],
+  "CompositionPlan": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "rootNodeId": "order-1",
+      "nodes": [
+        {
+          "nodeId": "order-1",
+          "entity": "Order",
+          "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "mode": "create",
+          "existingExternalRef": null,
+          "fields": {
+            "status": "Pending approval",
+            "amount": 46200,
+            "account": "ACC-118"
+          },
+          "provenance": [
+            {
+              "field": "status",
+              "value": "Pending approval",
+              "source": "requested",
+              "explanation": "matched the enum value spoken as \"pending\"",
+              "confidence": 0.96
+            },
+            {
+              "field": "amount",
+              "value": 46200,
+              "source": "derived",
+              "explanation": "sum of the three line item amounts",
+              "confidence": 1
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "fromNodeId": "order-1",
+          "toNodeId": "account-1",
+          "viaField": "account"
+        }
+      ],
+      "materializationOrder": [
+        "account-1",
+        "order-1"
+      ],
+      "constraintSet": {
+        "entity": "Order",
+        "constraints": [
+          {
+            "kind": "equals",
+            "field": "status",
+            "value": "Pending approval"
+          },
+          {
+            "kind": "reference",
+            "field": "account",
+            "phrase": "Acme Industrial"
+          },
+          {
+            "kind": "cardinality",
+            "field": "line_items",
+            "count": 3
+          }
+        ],
+        "confidence": 0.96,
+        "unparsedFragments": []
+      },
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "Confidence": [
+    0,
+    0.5,
+    1
+  ],
+  "Constraint": [
+    {
+      "kind": "equals",
+      "field": "status",
+      "value": "Pending approval"
+    },
+    {
+      "kind": "reference",
+      "field": "account",
+      "phrase": "Acme Industrial"
+    },
+    {
+      "kind": "cardinality",
+      "field": "line_items",
+      "count": 3
+    },
+    {
+      "kind": "comparison",
+      "field": "amount",
+      "op": "gt",
+      "value": 50000
+    },
+    {
+      "kind": "predicate",
+      "name": "overdue"
+    }
+  ],
+  "ConstraintSet": [
+    {
+      "entity": "Order",
+      "constraints": [
+        {
+          "kind": "equals",
+          "field": "status",
+          "value": "Pending approval"
+        },
+        {
+          "kind": "reference",
+          "field": "account",
+          "phrase": "Acme Industrial"
+        },
+        {
+          "kind": "cardinality",
+          "field": "line_items",
+          "count": 3
+        }
+      ],
+      "confidence": 0.96,
+      "unparsedFragments": []
+    },
+    {
+      "entity": "Order",
+      "constraints": [],
+      "confidence": 0.96,
+      "unparsedFragments": [
+        "with the usual terms"
+      ]
+    }
+  ],
+  "DerivedRule": [
+    {
+      "rule": {
+        "kind": "count",
+        "overField": "line_items"
+      },
+      "confidence": 1,
+      "sampleSize": 128
+    }
+  ],
+  "DerivedRuleSpec": [
+    {
+      "kind": "sum",
+      "overField": "line_items",
+      "ofField": "amount"
+    },
+    {
+      "kind": "count",
+      "overField": "line_items"
+    },
+    {
+      "kind": "min",
+      "overField": "line_items",
+      "ofField": "ships_on"
+    },
+    {
+      "kind": "max",
+      "overField": "line_items",
+      "ofField": "ships_on"
+    },
+    {
+      "kind": "date_offset",
+      "fromField": "created_at",
+      "offsetDays": 30
+    },
+    {
+      "kind": "concat",
+      "fields": [
+        "prefix",
+        "sequence"
+      ],
+      "separator": "-"
+    }
+  ],
+  "DistributionShape": [
+    {
+      "kind": "numeric",
+      "min": 800,
+      "max": 240000,
+      "mean": 32000,
+      "stddev": 18400,
+      "fit": "lognormal"
+    },
+    {
+      "kind": "categorical",
+      "frequencies": {
+        "Draft": 0.12,
+        "Pending approval": 0.44,
+        "Approved": 0.44
+      }
+    },
+    {
+      "kind": "string_pattern",
+      "prefix": "ORD-",
+      "minLength": 8,
+      "maxLength": 8,
+      "charset": "alphanumeric"
+    },
+    {
+      "kind": "temporal",
+      "minOffsetDays": -365,
+      "maxOffsetDays": 90
+    }
+  ],
+  "DriftDetector": [
+    "extension",
+    "indexer"
+  ],
+  "DriftReport": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "diff": {
+        "added": [
+          {
+            "elementKey": "orders.filter.archived",
+            "role": "button",
+            "accessibleNameRedacted": "Archived",
+            "landmarkPath": [
+              "main",
+              "region:orders"
+            ]
+          }
+        ],
+        "removed": [
+          {
+            "elementKey": "orders.filter.draft",
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "role": "button"
+          }
+        ],
+        "moved": [
+          {
+            "elementKey": "orders.detail.approve",
+            "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+            "fromLandmarkPath": [
+              "main"
+            ],
+            "toLandmarkPath": [
+              "main",
+              "region:actions"
+            ],
+            "matchConfidence": 0.82
+          }
+        ],
+        "renamed": [
+          {
+            "elementKey": "orders.filter.pending",
+            "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+            "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "toNameRedacted": "Awaiting approval",
+            "matchConfidence": 0.79
+          }
+        ],
+        "schemaChanges": [
+          {
+            "entity": "Order",
+            "kind": "enum_values_changed",
+            "field": "status",
+            "detail": "status gained the value \"Archived\""
+          }
+        ]
+      },
+      "status": "diffed",
+      "detectedBy": "extension",
+      "aliasMigrationRate": 0.82,
+      "approvedBy": null,
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "resolvedAt": null
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "diff": null,
+      "status": "open",
+      "detectedBy": "extension",
+      "aliasMigrationRate": null,
+      "approvedBy": null,
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "resolvedAt": null
+    }
+  ],
+  "DriftStatus": [
+    "open",
+    "reconciling",
+    "diffed",
+    "approved",
+    "rejected"
+  ],
+  "ElementAddition": [
+    {
+      "elementKey": "orders.filter.archived",
+      "role": "button",
+      "accessibleNameRedacted": "Archived",
+      "landmarkPath": [
+        "main",
+        "region:orders"
+      ]
+    }
+  ],
+  "ElementFingerprint": [
+    {
+      "role": "button",
+      "tagName": "button",
+      "accessibleNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "accessibleNameRedacted": "Approve",
+      "landmarkPath": [
+        "main",
+        "region:orders"
+      ],
+      "stableAttributes": {
+        "data-testid": "order-approve"
+      },
+      "ordinal": 0,
+      "textShingleHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "bbox": {
+        "x": 0.12,
+        "y": 0.4,
+        "width": 0.18,
+        "height": 0.05
+      }
+    }
+  ],
+  "ElementKey": [
+    "orders.filter.pending",
+    "order-detail.line_items.add"
+  ],
+  "ElementMove": [
+    {
+      "elementKey": "orders.detail.approve",
+      "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "fromLandmarkPath": [
+        "main"
+      ],
+      "toLandmarkPath": [
+        "main",
+        "region:actions"
+      ],
+      "matchConfidence": 0.82
+    }
+  ],
+  "ElementRecord": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "screenId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "elementKey": "orders.detail.approve",
+      "fingerprint": {
+        "role": "button",
+        "tagName": "button",
+        "accessibleNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "accessibleNameRedacted": "Approve",
+        "landmarkPath": [
+          "main",
+          "region:orders"
+        ],
+        "stableAttributes": {
+          "data-testid": "order-approve"
+        },
+        "ordinal": 0,
+        "textShingleHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bbox": {
+          "x": 0.12,
+          "y": 0.4,
+          "width": 0.18,
+          "height": 0.05
+        }
+      },
+      "confidence": 0.94,
+      "stability": 0.88
+    }
+  ],
+  "ElementRemoval": [
+    {
+      "elementKey": "orders.filter.draft",
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "role": "button"
+    }
+  ],
+  "ElementRename": [
+    {
+      "elementKey": "orders.filter.pending",
+      "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "toNameRedacted": "Awaiting approval",
+      "matchConfidence": 0.79
+    }
+  ],
+  "EntitySchema": [
+    {
+      "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "entityName": "Order",
+      "fields": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "name": "amount",
+          "type": "currency",
+          "required": true,
+          "derivedRule": {
+            "rule": {
+              "kind": "sum",
+              "overField": "line_items",
+              "ofField": "amount"
+            },
+            "confidence": 1,
+            "sampleSize": 128
+          },
+          "enumValues": null,
+          "distribution": {
+            "shape": {
+              "kind": "numeric",
+              "min": 800,
+              "max": 240000,
+              "mean": 32000,
+              "stddev": 18400,
+              "fit": "lognormal"
+            },
+            "sampleSize": 128,
+            "distinctCount": 121
+          },
+          "referencesEntity": null,
+          "valueConstraints": {
+            "min": 0,
+            "max": null,
+            "minLength": null,
+            "maxLength": 16,
+            "pattern": null
+          },
+          "controlElementKey": "orders.create.amount",
+          "unique": false
+        }
+      ],
+      "materializers": [
+        {
+          "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "spec": {
+            "kind": "api",
+            "method": "POST",
+            "path": "/api/v2/orders",
+            "payloadTemplate": {
+              "accountId": null,
+              "lines": [],
+              "poNumber": null
+            },
+            "auth": "session",
+            "readBackPath": "/api/v2/orders/{id}"
+          },
+          "priority": 1,
+          "verifiedAt": "2026-07-25T09:30:00.000Z",
+          "verificationTtlHours": 168
+        }
+      ],
+      "predicates": [
+        {
+          "name": "overdue",
+          "entity": "Invoice",
+          "clauses": [
+            {
+              "field": "due_date",
+              "op": "lt",
+              "operand": {
+                "kind": "now",
+                "offsetDays": 0
+              }
+            },
+            {
+              "field": "status",
+              "op": "neq",
+              "operand": {
+                "kind": "literal",
+                "value": "Paid"
+              }
+            }
+          ],
+          "source": "inferred",
+          "confidence": 0.87,
+          "sampleSize": 128
+        }
+      ],
+      "observedCount": 128,
+      "confidence": 0.93,
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "entityName": "Order",
+      "fields": [],
+      "materializers": [],
+      "predicates": [],
+      "observedCount": 0,
+      "confidence": 0,
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "EvidenceRef": [
+    {
+      "kind": "screenshot",
+      "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "capturedAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "kind": "dom_snapshot",
+      "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "capturedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "FieldDistribution": [
+    {
+      "shape": {
+        "kind": "numeric",
+        "min": 800,
+        "max": 240000,
+        "mean": 32000,
+        "stddev": 18400,
+        "fit": "lognormal"
+      },
+      "sampleSize": 128,
+      "distinctCount": 121
+    }
+  ],
+  "FieldSpec": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "name": "amount",
+      "type": "currency",
+      "required": true,
+      "derivedRule": {
+        "rule": {
+          "kind": "sum",
+          "overField": "line_items",
+          "ofField": "amount"
+        },
+        "confidence": 1,
+        "sampleSize": 128
+      },
+      "enumValues": null,
+      "distribution": {
+        "shape": {
+          "kind": "numeric",
+          "min": 800,
+          "max": 240000,
+          "mean": 32000,
+          "stddev": 18400,
+          "fit": "lognormal"
+        },
+        "sampleSize": 128,
+        "distinctCount": 121
+      },
+      "referencesEntity": null,
+      "valueConstraints": {
+        "min": 0,
+        "max": null,
+        "minLength": null,
+        "maxLength": 16,
+        "pattern": null
+      },
+      "controlElementKey": "orders.create.amount",
+      "unique": false
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "name": "status",
+      "type": "enum",
+      "required": true,
+      "derivedRule": null,
+      "enumValues": [
+        "Draft",
+        "Pending approval",
+        "Approved",
+        "Rejected"
+      ],
+      "distribution": null,
+      "referencesEntity": null,
+      "valueConstraints": {
+        "min": 0,
+        "max": null,
+        "minLength": null,
+        "maxLength": 16,
+        "pattern": null
+      },
+      "controlElementKey": null,
+      "unique": false
+    }
+  ],
+  "FieldType": [
+    "currency",
+    "reference",
+    "group"
+  ],
+  "FieldValueConstraints": [
+    {
+      "min": 0,
+      "max": null,
+      "minLength": null,
+      "maxLength": 16,
+      "pattern": null
+    },
+    {
+      "min": null,
+      "max": null,
+      "minLength": null,
+      "maxLength": null,
+      "pattern": "^ORD-\\d+$"
+    }
+  ],
+  "InverseOperation": [
+    {
+      "kind": "api",
+      "method": "DELETE",
+      "path": "/api/v2/orders/4903"
+    },
+    {
+      "kind": "ui",
+      "flow": "orders.detail.delete"
+    },
+    {
+      "kind": "fixture",
+      "command": "rake wispr:destroy[ORD-4903]"
+    },
+    {
+      "kind": "none",
+      "reason": "this application exposes no delete flow for orders"
+    }
+  ],
+  "IsoDateTime": [
+    "2026-07-25T09:30:00.000Z",
+    "2026-07-24T17:05:12.000+02:00"
+  ],
+  "LatencyMs": [
+    0,
+    12.5
+  ],
+  "MaterializationAttempt": [
+    {
+      "adapter": "api",
+      "outcome": "failed",
+      "reason": "the create endpoint returned 422",
+      "durationMs": 180
+    },
+    {
+      "adapter": "ui",
+      "outcome": "succeeded",
+      "reason": null,
+      "durationMs": 4200
+    }
+  ],
+  "MaterializationResult": [
+    {
+      "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "outcome": "created",
+      "adapterUsed": "ui",
+      "attempts": [
+        {
+          "adapter": "api",
+          "outcome": "failed",
+          "reason": "the create endpoint returned 422",
+          "durationMs": 180
+        },
+        {
+          "adapter": "ui",
+          "outcome": "succeeded",
+          "reason": null,
+          "durationMs": 4200
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "order-1",
+          "entity": "Order",
+          "externalRef": "ORD-4903",
+          "payload": {
+            "id": 4903,
+            "status": "Pending approval"
+          },
+          "inverseOp": {
+            "kind": "api",
+            "method": "DELETE",
+            "path": "/api/v2/orders/4903"
+          }
+        }
+      ],
+      "verifiedAt": "2026-07-25T09:30:00.000Z",
+      "failureReason": null,
+      "durationMs": 4380
+    },
+    {
+      "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "outcome": "failed",
+      "adapterUsed": null,
+      "attempts": [
+        {
+          "adapter": "ui",
+          "outcome": "failed",
+          "reason": "the create form rejected the amount",
+          "durationMs": 5100
+        }
+      ],
+      "records": [],
+      "verifiedAt": null,
+      "failureReason": "every adapter in the chain failed",
+      "durationMs": 5100
+    }
+  ],
+  "MaterializedRecord": [
+    {
+      "nodeId": "order-1",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "payload": {
+        "id": 4903,
+        "status": "Pending approval"
+      },
+      "inverseOp": {
+        "kind": "api",
+        "method": "DELETE",
+        "path": "/api/v2/orders/4903"
+      }
+    },
+    {
+      "nodeId": "order-1",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "payload": {
+        "id": 4903,
+        "status": "Pending approval"
+      },
+      "inverseOp": {
+        "kind": "none",
+        "reason": "no delete flow was indexed"
+      }
+    }
+  ],
+  "MaterializerDescriptor": [
+    {
+      "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "spec": {
+        "kind": "api",
+        "method": "POST",
+        "path": "/api/v2/orders",
+        "payloadTemplate": {
+          "accountId": null,
+          "lines": [],
+          "poNumber": null
+        },
+        "auth": "session",
+        "readBackPath": "/api/v2/orders/{id}"
+      },
+      "priority": 1,
+      "verifiedAt": "2026-07-25T09:30:00.000Z",
+      "verificationTtlHours": 168
+    },
+    {
+      "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "spec": {
+        "kind": "api",
+        "method": "POST",
+        "path": "/api/v2/orders",
+        "payloadTemplate": {
+          "accountId": null,
+          "lines": [],
+          "poNumber": null
+        },
+        "auth": "session",
+        "readBackPath": "/api/v2/orders/{id}"
+      },
+      "priority": 1,
+      "verifiedAt": null,
+      "verificationTtlHours": 168
+    }
+  ],
+  "MaterializerKind": [
+    "api",
+    "ui",
+    "fixture"
+  ],
+  "MaterializerSpec": [
+    {
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/v2/orders",
+      "payloadTemplate": {},
+      "auth": "session",
+      "readBackPath": null
+    },
+    {
+      "kind": "ui",
+      "form": "orders.create",
+      "route": "/orders/new"
+    },
+    {
+      "kind": "fixture",
+      "command": "rake wispr:seed[order]"
+    }
+  ],
+  "MemorySnapshot": [
+    {
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersion": {
+        "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "applicationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "version": 18,
+        "status": "active",
+        "createdAt": "2026-07-25T09:30:00.000Z",
+        "approvedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "failureReason": null
+      },
+      "screens": [
+        {
+          "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "routePattern": "/orders/:id",
+          "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "label": "Order detail",
+          "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "indexedAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "elements": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "screenId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "elementKey": "orders.detail.approve",
+          "fingerprint": {
+            "role": "button",
+            "tagName": "button",
+            "accessibleNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "accessibleNameRedacted": "Approve",
+            "landmarkPath": [
+              "main",
+              "region:orders"
+            ],
+            "stableAttributes": {
+              "data-testid": "order-approve"
+            },
+            "ordinal": 0,
+            "textShingleHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bbox": {
+              "x": 0.12,
+              "y": 0.4,
+              "width": 0.18,
+              "height": 0.05
+            }
+          },
+          "confidence": 0.94,
+          "stability": 0.88
+        }
+      ],
+      "navEdges": [
+        {
+          "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "fromScreenId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "toScreenId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "triggerElementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "preconditions": [
+            {
+              "kind": "no_modal_open"
+            }
+          ],
+          "confidence": 0.91
+        }
+      ],
+      "aliases": [
+        {
+          "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+          "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "phrase": "the pending filter",
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "source": "t2_writeback",
+          "hits": 12,
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "generatedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "MemoryVersion": [
+    {
+      "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "version": 18,
+      "status": "active",
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "approvedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "failureReason": null
+    },
+    {
+      "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "version": 18,
+      "status": "failed",
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "approvedBy": null,
+      "failureReason": "login timed out"
+    }
+  ],
+  "MemoryVersionStatus": [
+    "building",
+    "active",
+    "superseded",
+    "failed"
+  ],
+  "NavEdge": [
+    {
+      "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "fromScreenId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "toScreenId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "triggerElementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "preconditions": [
+        {
+          "kind": "no_modal_open"
+        }
+      ],
+      "confidence": 0.91
+    }
+  ],
+  "NavPrecondition": [
+    {
+      "kind": "element_visible",
+      "elementKey": "orders.detail.approve"
+    },
+    {
+      "kind": "route_matches",
+      "routePattern": "/orders/:id"
+    },
+    {
+      "kind": "modal_open",
+      "modalLabel": "Confirm approval"
+    },
+    {
+      "kind": "no_modal_open"
+    }
+  ],
+  "NonEmptyString": [
+    "Order"
+  ],
+  "NormalizedBBox": [
+    {
+      "x": 0.12,
+      "y": 0.4,
+      "width": 0.18,
+      "height": 0.05
+    }
+  ],
+  "Ordinal": [
+    0,
+    41
+  ],
+  "PredicateClause": [
+    {
+      "field": "due_date",
+      "op": "lt",
+      "operand": {
+        "kind": "now",
+        "offsetDays": 0
+      }
+    }
+  ],
+  "PredicateDefinition": [
+    {
+      "name": "overdue",
+      "entity": "Invoice",
+      "clauses": [
+        {
+          "field": "due_date",
+          "op": "lt",
+          "operand": {
+            "kind": "now",
+            "offsetDays": 0
+          }
+        },
+        {
+          "field": "status",
+          "op": "neq",
+          "operand": {
+            "kind": "literal",
+            "value": "Paid"
+          }
+        }
+      ],
+      "source": "inferred",
+      "confidence": 0.87,
+      "sampleSize": 128
+    },
+    {
+      "name": "overdue",
+      "entity": "Invoice",
+      "clauses": [
+        {
+          "field": "due_date",
+          "op": "lt",
+          "operand": {
+            "kind": "now",
+            "offsetDays": 0
+          }
+        },
+        {
+          "field": "status",
+          "op": "neq",
+          "operand": {
+            "kind": "literal",
+            "value": "Paid"
+          }
+        }
+      ],
+      "source": "manual",
+      "confidence": 1,
+      "sampleSize": 0
+    }
+  ],
+  "PredicateOperand": [
+    {
+      "kind": "literal",
+      "value": "Paid"
+    },
+    {
+      "kind": "now",
+      "offsetDays": -22
+    }
+  ],
+  "ProvenanceEntry": [
+    {
+      "field": "status",
+      "value": "Pending approval",
+      "source": "requested",
+      "explanation": "matched the enum value spoken as \"pending\"",
+      "confidence": 0.96
+    },
+    {
+      "field": "amount",
+      "value": 46200,
+      "source": "derived",
+      "explanation": "sum of the three line item amounts",
+      "confidence": 1
+    }
+  ],
+  "ProvenanceSource": [
+    "requested",
+    "reference_matched",
+    "sampled",
+    "derived",
+    "predicate_solved",
+    "default"
+  ],
+  "QueryConstraint": [
+    {
+      "kind": "ordinal",
+      "index": 2
+    },
+    {
+      "kind": "within",
+      "landmark": "region:orders"
+    },
+    {
+      "kind": "value",
+      "text": "Acme Industrial"
+    }
+  ],
+  "RedactedText": [
+    "Approve",
+    ""
+  ],
+  "ResolutionCandidate": [
+    {
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "elementKey": "orders.filter.pending",
+      "label": "Pending",
+      "confidence": 0.97,
+      "signalScores": {
+        "role": 0.2,
+        "accessible_name": 0.25,
+        "landmark_path": 0.15
+      }
+    }
+  ],
+  "ResolutionResult": [
+    {
+      "outcome": "resolved",
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "elementKey": "orders.filter.pending",
+      "confidence": 0.97,
+      "tier": "T0",
+      "latencyMs": 4.2,
+      "candidates": [
+        {
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "elementKey": "orders.filter.pending",
+          "label": "Pending",
+          "confidence": 0.97,
+          "signalScores": {
+            "role": 0.2,
+            "accessible_name": 0.25,
+            "landmark_path": 0.15
+          }
+        }
+      ]
+    },
+    {
+      "outcome": "ambiguous",
+      "tier": "T1",
+      "latencyMs": 31.8,
+      "candidates": [
+        {
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "elementKey": "orders.filter.pending",
+          "label": "Pending",
+          "confidence": 0.97,
+          "signalScores": {
+            "role": 0.2,
+            "accessible_name": 0.25,
+            "landmark_path": 0.15
+          }
+        },
+        {
+          "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "elementKey": "orders.filter.approved",
+          "label": "Approved",
+          "confidence": 0.41,
+          "signalScores": {
+            "role": 0.2,
+            "accessible_name": 0.08
+          }
+        }
+      ]
+    },
+    {
+      "outcome": "not_found",
+      "tier": "T2",
+      "latencyMs": 612,
+      "candidates": []
+    }
+  ],
+  "RoutePath": [
+    "/orders/1841",
+    "/"
+  ],
+  "RoutePattern": [
+    "/orders/:id",
+    "/orders"
+  ],
+  "RuntimeState": [
+    {
+      "route": "/orders/1841",
+      "routePattern": "/orders/:id",
+      "modalStack": [],
+      "focusedLandmark": "region:orders",
+      "visibleElementKeys": [
+        "orders.detail.approve"
+      ],
+      "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "capturedAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "route": "/orders/1841",
+      "routePattern": "/orders/:id",
+      "modalStack": [
+        "Confirm approval"
+      ],
+      "focusedLandmark": null,
+      "visibleElementKeys": [],
+      "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "capturedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "SampleSize": [
+    0,
+    128
+  ],
+  "SchemaChange": [
+    {
+      "entity": "Order",
+      "kind": "enum_values_changed",
+      "field": "status",
+      "detail": "status gained the value \"Archived\""
+    }
+  ],
+  "ScopedQuery": [
+    {
+      "verb": "filter",
+      "targetPhrase": "only the pending ones",
+      "constraints": [
+        {
+          "kind": "within",
+          "landmark": "region:orders"
+        }
+      ],
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "candidateElementKeys": [
+        "orders.filter.pending",
+        "orders.filter.approved"
+      ]
+    },
+    {
+      "verb": "filter",
+      "targetPhrase": "only the pending ones",
+      "constraints": [],
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "candidateElementKeys": []
+    }
+  ],
+  "ScreenNode": [
+    {
+      "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "routePattern": "/orders/:id",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "label": "Order detail",
+      "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "indexedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "SeedLedgerEntry": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "planId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "nodeId": "order-1",
+      "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "adapterUsed": "ui",
+      "payload": {
+        "id": 4903
+      },
+      "provenance": [
+        {
+          "field": "status",
+          "value": "Pending approval",
+          "source": "requested",
+          "explanation": "matched the enum value spoken as \"pending\"",
+          "confidence": 0.96
+        },
+        {
+          "field": "amount",
+          "value": 46200,
+          "source": "derived",
+          "explanation": "sum of the three line item amounts",
+          "confidence": 1
+        }
+      ],
+      "inverseOp": {
+        "kind": "api",
+        "method": "DELETE",
+        "path": "/api/v2/orders/4903"
+      },
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "revertedAt": null
+    }
+  ],
+  "SessionStep": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "ordinal": 4,
+      "utterance": "show me only the pending ones",
+      "intent": {
+        "verb": "filter",
+        "targetPhrase": "only the pending ones",
+        "constraints": [
+          {
+            "kind": "within",
+            "landmark": "region:orders"
+          }
+        ],
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "candidateElementKeys": [
+          "orders.filter.pending",
+          "orders.filter.approved"
+        ]
+      },
+      "resolution": {
+        "outcome": "resolved",
+        "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "elementKey": "orders.filter.pending",
+        "confidence": 0.97,
+        "tier": "T0",
+        "latencyMs": 4.2,
+        "candidates": [
+          {
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "elementKey": "orders.filter.pending",
+            "label": "Pending",
+            "confidence": 0.97,
+            "signalScores": {
+              "role": 0.2,
+              "accessible_name": 0.25,
+              "landmark_path": 0.15
+            }
+          }
+        ]
+      },
+      "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "tier": "T0",
+      "confidence": 0.97,
+      "actionClass": "R",
+      "latencyMs": 312,
+      "outcome": "executed",
+      "evidence": [
+        {
+          "kind": "screenshot",
+          "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+          "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "capturedAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "ordinal": 5,
+      "utterance": "approve it",
+      "intent": {
+        "verb": "filter",
+        "targetPhrase": "only the pending ones",
+        "constraints": [
+          {
+            "kind": "within",
+            "landmark": "region:orders"
+          }
+        ],
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "candidateElementKeys": [
+          "orders.filter.pending",
+          "orders.filter.approved"
+        ]
+      },
+      "resolution": {
+        "outcome": "not_found",
+        "tier": "T2",
+        "latencyMs": 780,
+        "candidates": []
+      },
+      "elementId": null,
+      "tier": null,
+      "confidence": null,
+      "actionClass": null,
+      "latencyMs": 900,
+      "outcome": "failed",
+      "evidence": [],
+      "createdAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "Sha256Hex": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+  ],
+  "StateFingerprint": [
+    "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+  ],
+  "StructuralDiff": [
+    {
+      "added": [
+        {
+          "elementKey": "orders.filter.archived",
+          "role": "button",
+          "accessibleNameRedacted": "Archived",
+          "landmarkPath": [
+            "main",
+            "region:orders"
+          ]
+        }
+      ],
+      "removed": [
+        {
+          "elementKey": "orders.filter.draft",
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "role": "button"
+        }
+      ],
+      "moved": [
+        {
+          "elementKey": "orders.detail.approve",
+          "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "fromLandmarkPath": [
+            "main"
+          ],
+          "toLandmarkPath": [
+            "main",
+            "region:actions"
+          ],
+          "matchConfidence": 0.82
+        }
+      ],
+      "renamed": [
+        {
+          "elementKey": "orders.filter.pending",
+          "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "toNameRedacted": "Awaiting approval",
+          "matchConfidence": 0.79
+        }
+      ],
+      "schemaChanges": [
+        {
+          "entity": "Order",
+          "kind": "enum_values_changed",
+          "field": "status",
+          "detail": "status gained the value \"Archived\""
+        }
+      ]
+    },
+    {
+      "added": [],
+      "removed": [],
+      "moved": [],
+      "renamed": [],
+      "schemaChanges": []
+    }
+  ],
+  "StructuralHash": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "Tier": [
+    "T0",
+    "T1",
+    "T2"
+  ],
+  "Uuid": [
+    "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    "9c5b94b1-35ad-49bb-b118-8e8fc24abf80"
+  ],
+  "ValidationIssue": [
+    {
+      "path": "nodes.0.fields.amount",
+      "message": "expected a number"
+    }
+  ],
+  "WisprError": [
+    {
+      "code": "resolution_ambiguous",
+      "message": "Two controls match \"pending\". Say one or two.",
+      "retryable": false,
+      "candidateElementKeys": [
+        "orders.filter.pending",
+        "orders.status.pending"
+      ],
+      "tier": "T1"
+    },
+    {
+      "code": "resolution_not_found",
+      "message": "Nothing on this screen matches \"the archive toggle\".",
+      "retryable": false,
+      "targetPhrase": "the archive toggle",
+      "tier": "T2"
+    },
+    {
+      "code": "resolution_timeout",
+      "message": "The model did not answer in time; falling back to disambiguation.",
+      "retryable": true,
+      "tier": "T2",
+      "budgetMs": 800,
+      "elapsedMs": 812
+    },
+    {
+      "code": "memory_version_mismatch",
+      "message": "This application was re-indexed. Refreshing memory.",
+      "retryable": true,
+      "expectedVersion": 18,
+      "actualVersion": 19
+    },
+    {
+      "code": "memory_snapshot_unavailable",
+      "message": "This application has not finished indexing yet.",
+      "retryable": true,
+      "applicationId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    },
+    {
+      "code": "action_confirmation_required",
+      "message": "Approving an order needs an explicit yes.",
+      "retryable": false,
+      "actionClass": "C"
+    },
+    {
+      "code": "action_target_stale",
+      "message": "The page changed while you were speaking. Say it again.",
+      "retryable": true,
+      "expectedStateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "observedStateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "code": "action_dispatch_failed",
+      "message": "The approve button did not accept the click.",
+      "retryable": true,
+      "elementKey": "orders.detail.approve"
+    },
+    {
+      "code": "constraint_unsatisfiable",
+      "message": "An order cannot be both paid and overdue.",
+      "retryable": false,
+      "entity": "Invoice",
+      "conflicting": [
+        {
+          "kind": "equals",
+          "field": "status",
+          "value": "Paid"
+        },
+        {
+          "kind": "predicate",
+          "name": "overdue"
+        }
+      ]
+    },
+    {
+      "code": "schema_confidence_too_low",
+      "message": "Too little is known about Order to create one. Index the create form first.",
+      "retryable": false,
+      "entity": "Order",
+      "confidence": 0.31,
+      "threshold": 0.7,
+      "missingFields": [
+        "terms",
+        "po_number"
+      ]
+    },
+    {
+      "code": "reference_target_missing",
+      "message": "No account called \"Acme Industrial\" exists yet.",
+      "retryable": false,
+      "entity": "Order",
+      "field": "account",
+      "phrase": "Acme Industrial"
+    },
+    {
+      "code": "uniqueness_exhausted",
+      "message": "Could not find an unused purchase order number after 10 tries.",
+      "retryable": true,
+      "entity": "Order",
+      "field": "po_number",
+      "attempts": 10
+    },
+    {
+      "code": "materializer_unavailable",
+      "message": "No way to create an Order has been learned for this application.",
+      "retryable": false,
+      "entity": "Order",
+      "triedAdapters": [
+        "fixture",
+        "api",
+        "ui"
+      ]
+    },
+    {
+      "code": "materialization_failed",
+      "message": "Every way of creating this order failed.",
+      "retryable": true,
+      "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "adapter": "ui"
+    },
+    {
+      "code": "seeding_forbidden",
+      "message": "Seeding is disabled for production.",
+      "retryable": false,
+      "applicationId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "environment": "production"
+    },
+    {
+      "code": "drift_approval_required",
+      "message": "This screen changed. A lead needs to approve the update.",
+      "retryable": false,
+      "driftReportId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    },
+    {
+      "code": "unauthorized",
+      "message": "Sign in to continue.",
+      "retryable": false
+    },
+    {
+      "code": "forbidden",
+      "message": "Approving a memory change needs the lead role.",
+      "retryable": false,
+      "requiredRole": "lead"
+    },
+    {
+      "code": "rate_limited",
+      "message": "Too many requests.",
+      "retryable": true,
+      "retryAfterSeconds": 30
+    },
+    {
+      "code": "validation_failed",
+      "message": "The plan did not match the contract.",
+      "retryable": false,
+      "issues": [
+        {
+          "path": "nodes.0.fields.amount",
+          "message": "expected a number"
+        }
+      ]
+    },
+    {
+      "code": "internal",
+      "message": "Something failed unexpectedly. Quote this id to support.",
+      "retryable": true,
+      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+    }
+  ],
+  "WisprErrorCode": [
+    "resolution_ambiguous",
+    "constraint_unsatisfiable",
+    "internal"
+  ]
+}

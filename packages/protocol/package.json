@@ -9,17 +9,24 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schema.json": "./dist/schema.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && tsx scripts/emit-schema.ts",
+    "gen:python": "tsx scripts/gen-python.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p scripts/tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
   "devDependencies": {
+    "@types/node": "22.20.1",
+    "tsx": "4.23.1",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
   }

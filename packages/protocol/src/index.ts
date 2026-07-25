@@ -11,6 +11,7 @@
  * |------------|---------|
  * | Memory     | `ElementFingerprint`, `ElementRecord`, `ScreenNode`, `NavEdge`, `MemoryVersion`, `MemorySnapshot`, `Alias` |
  * | Indexing   | `CrawlJob`, `CrawlBounds`, `AuthProfile`, `SecretRef`, `IndexProgressEvent` |
+ * | Auth       | `ExtensionToken`, `ExtensionTokenRequest`, `ExtensionTokenScope` |
  * | Resolution | `ScopedQuery`, `ResolutionResult`, `Tier`, `ResolutionCandidate`, `QueryConstraint` |
  * | Runtime    | `RuntimeState`, `StateFingerprint`, `ActionClass`, `ActionRequest`, `ActionResult`, `SessionStep` |
  * | Data       | `EntitySchema`, `FieldSpec`, `Constraint`, `ConstraintSet`, `CompositionPlan`, `ProvenanceEntry`, `MaterializationResult`, `InverseOperation`, `SeedLedgerEntry` |
@@ -52,6 +53,7 @@ export * from './primitives.js';
 export * from './vocabulary.js';
 export * from './memory.js';
 export * from './indexing.js';
+export * from './auth.js';
 export * from './resolution.js';
 export * from './runtime.js';
 export * from './data.js';

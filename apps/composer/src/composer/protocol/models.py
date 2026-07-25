@@ -294,6 +294,20 @@ class Kind(StrEnum):
     DOM_SNAPSHOT = "dom_snapshot"
 
 
+class ExtensionTokenScope(StrEnum):
+    """
+    A capability a scoped extension token may carry.
+    """
+
+    MEMORY_READ = "memory:read"
+    ALIAS_WRITE = "alias:write"
+    SESSION_WRITE = "session:write"
+    RESOLVE_ESCALATE = "resolve:escalate"
+    SEED_PLAN = "seed:plan"
+    SEED_EXECUTE = "seed:execute"
+    DRIFT_REPORT = "drift:report"
+
+
 class FieldType(StrEnum):
     """
     Inferred type of a field on a learned entity schema.
@@ -1906,6 +1920,15 @@ class CrawlBounds(BaseModel):
             le=200,
         ),
     ]
+    interaction_observe_ms: Annotated[
+        int,
+        Field(
+            alias="interactionObserveMs",
+            description="How long to watch for a navigation after a click, in ms.",
+            ge=50,
+            le=30000,
+        ),
+    ]
     settle_delay_ms: Annotated[
         int,
         Field(
@@ -2457,6 +2480,59 @@ class EvidenceRef(BaseModel):
             alias="capturedAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
+        ),
+    ]
+
+
+class ExtensionToken(BaseModel):
+    """
+    A short-lived scoped token issued to the extension for one origin.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    token: Annotated[
+        str,
+        Field(
+            description="Bearer token. Never logged and never persisted to disk.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    token_type: Annotated[Literal["Bearer"], Field(alias="tokenType")]
+    expires_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="expiresAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID | None, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    scopes: Annotated[list[ExtensionTokenScope], Field(min_length=1)]
+
+
+class ExtensionTokenRequest(BaseModel):
+    """
+    Request for a scoped token covering one application origin.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    origin: Annotated[
+        AnyUrl,
+        Field(
+            description="Origin of the page under test, as the content script sees it.",
+            title="HttpUrl",
         ),
     ]
 

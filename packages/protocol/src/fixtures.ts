@@ -889,6 +889,87 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
     ],
   },
 
+  /* ---------------------------------------------------------------------------------- auth */
+
+  ExtensionTokenScope: {
+    schema: p.ExtensionTokenScope,
+    valid: ['memory:read', 'session:write', 'seed:execute'],
+    invalid: [
+      { why: 'there is no wildcard scope, by design', value: '*' },
+      {
+        why: 'the extension never approves a drift report — it only reports one',
+        value: 'drift:approve',
+      },
+    ],
+  },
+  ExtensionTokenRequest: {
+    schema: p.ExtensionTokenRequest,
+    valid: [{ origin: 'https://orders.northwind.example' }],
+    invalid: [
+      { why: 'an origin with a non-http scheme', value: { origin: 'chrome://extensions' } },
+      {
+        why: 'naming an application directly — the gateway resolves that from the origin',
+        value: { origin: 'https://orders.northwind.example', applicationId: UUID_A },
+      },
+    ],
+  },
+  ExtensionToken: {
+    schema: p.ExtensionToken,
+    valid: [
+      {
+        token: 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.scoped.signature',
+        tokenType: 'Bearer',
+        expiresAt: NOW,
+        tenantId: UUID_A,
+        applicationId: UUID_B,
+        scopes: ['memory:read', 'alias:write', 'session:write'],
+      },
+      {
+        // A tester browsing an application nobody has indexed yet: a normal answer, not an error.
+        token: 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.unscoped-app.signature',
+        tokenType: 'Bearer',
+        expiresAt: NOW,
+        tenantId: UUID_A,
+        applicationId: null,
+        scopes: ['memory:read'],
+      },
+    ],
+    invalid: [
+      {
+        why: 'no expiry, so the service worker could not refresh it before it failed',
+        value: {
+          token: 'opaque',
+          tokenType: 'Bearer',
+          tenantId: UUID_A,
+          applicationId: UUID_B,
+          scopes: ['memory:read'],
+        },
+      },
+      {
+        why: 'no scopes — a token that names no capability is not a scoped token',
+        value: {
+          token: 'opaque',
+          tokenType: 'Bearer',
+          expiresAt: NOW,
+          tenantId: UUID_A,
+          applicationId: UUID_B,
+          scopes: [],
+        },
+      },
+      {
+        why: 'a token type the extension does not send',
+        value: {
+          token: 'opaque',
+          tokenType: 'Basic',
+          expiresAt: NOW,
+          tenantId: UUID_A,
+          applicationId: UUID_B,
+          scopes: ['memory:read'],
+        },
+      },
+    ],
+  },
+
   /* ---------------------------------------------------------------------------- resolution */
 
   QueryConstraint: {

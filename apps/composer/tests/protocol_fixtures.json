@@ -370,6 +370,7 @@
         "button[name=\"void\"]"
       ],
       "maxInteractionsPerRoute": 12,
+      "interactionObserveMs": 1500,
       "settleDelayMs": 250,
       "networkIdleTimeoutMs": 5000,
       "navigationTimeoutMs": 20000,
@@ -390,6 +391,7 @@
       "maxPages": 200,
       "neverInteractSelectors": [],
       "maxInteractionsPerRoute": 12,
+      "interactionObserveMs": 1500,
       "settleDelayMs": 250,
       "networkIdleTimeoutMs": 5000,
       "navigationTimeoutMs": 20000,
@@ -421,6 +423,7 @@
           "button[name=\"void\"]"
         ],
         "maxInteractionsPerRoute": 12,
+        "interactionObserveMs": 1500,
         "settleDelayMs": 250,
         "networkIdleTimeoutMs": 5000,
         "navigationTimeoutMs": 20000,
@@ -466,6 +469,7 @@
           "button[name=\"void\"]"
         ],
         "maxInteractionsPerRoute": 12,
+        "interactionObserveMs": 1500,
         "settleDelayMs": 250,
         "networkIdleTimeoutMs": 5000,
         "navigationTimeoutMs": 20000,
@@ -888,6 +892,40 @@
       "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "capturedAt": "2026-07-25T09:30:00.000Z"
     }
+  ],
+  "ExtensionToken": [
+    {
+      "token": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.scoped.signature",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-07-25T09:30:00.000Z",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "scopes": [
+        "memory:read",
+        "alias:write",
+        "session:write"
+      ]
+    },
+    {
+      "token": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.unscoped-app.signature",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-07-25T09:30:00.000Z",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": null,
+      "scopes": [
+        "memory:read"
+      ]
+    }
+  ],
+  "ExtensionTokenRequest": [
+    {
+      "origin": "https://orders.northwind.example"
+    }
+  ],
+  "ExtensionTokenScope": [
+    "memory:read",
+    "session:write",
+    "seed:execute"
   ],
   "FieldDistribution": [
     {

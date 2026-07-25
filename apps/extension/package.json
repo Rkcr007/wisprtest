@@ -4,14 +4,31 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "tsx src/build.ts",
+    "build:prod": "tsx src/build.ts --env production",
+    "dev": "tsx src/build.ts --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.2",
     "@types/chrome": "0.2.2",
+    "@types/node": "22.20.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.1",
+    "happy-dom": "20.11.1",
+    "playwright": "1.61.0",
+    "tsx": "4.23.1",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "protocol": "workspace:*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "ui": "workspace:*",
+    "zod": "4.4.3"
   }
 }

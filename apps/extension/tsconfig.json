@@ -2,10 +2,19 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
-    "types": ["chrome"],
-    // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
-    // no rootDir. Emit is configured by tsconfig.build.json.
+    "types": ["chrome", "node"],
+    "jsx": "react-jsx",
+    // Typecheck against the workspace packages' source, not their built `.d.ts`. The extension
+    // bundles them anyway (see `src/build.ts`), so a stale `dist` should not be able to make a
+    // typecheck pass or fail against something the build will never read.
+    "paths": {
+      "protocol": ["../../packages/protocol/src/index.ts"],
+      "ui": ["../../packages/ui/src/index.ts"]
+    },
+    // Typecheck-only. The artifact is produced by esbuild via `src/build.ts` — `tsc` cannot emit
+    // a loadable extension, because a content script has no module resolution and React has to be
+    // bundled into it.
     "noEmit": true
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts"]
 }

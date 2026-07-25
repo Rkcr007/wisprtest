@@ -103,6 +103,28 @@ export const ElementKey = contract(
 );
 export type ElementKey = z.infer<typeof ElementKey>;
 
+/**
+ * An absolute `http(s)` URL — an application's base URL, a crawl origin.
+ *
+ * The scheme restriction is the first of the two SSRF defences from docs/ARCHITECTURE.md § 8:
+ * `file:`, `javascript:` and `data:` are rejected here, before a URL can reach a browser. It is
+ * not the last one. Scheme is all a schema can check; the address a hostname resolves to is a
+ * runtime fact, so `apps/indexer` re-validates every target against the application's allowlist
+ * and against the private address ranges immediately before navigating.
+ *
+ * JSON Schema records this as `format: "uri"`. The scheme constraint has no draft 2020-12
+ * expression that survives alongside a format, so the generated pydantic model types it as a
+ * plain URI string; nothing on the Python side consumes crawl targets.
+ */
+export const HttpUrl = contract(
+  'HttpUrl',
+  z.url({ protocol: /^https?$/ }).meta({
+    title: 'HttpUrl',
+    description: 'Absolute URL with an http or https scheme.',
+  }),
+);
+export type HttpUrl = z.infer<typeof HttpUrl>;
+
 /** A concrete URL path as observed in the browser, e.g. `/orders/1841`. */
 export const RoutePath = contract(
   'RoutePath',

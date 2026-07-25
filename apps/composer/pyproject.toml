@@ -68,7 +68,12 @@ select = [
 # Generated from packages/protocol. The docstrings and field descriptions are the contract's
 # own prose, carried over verbatim from the Zod schemas; enforcing the line limit here would
 # mean truncating documentation in a file nobody edits by hand.
-"src/composer/protocol/models.py" = ["E501"]
+#
+# S105 flags `SECRET_UNAVAILABLE = "secret_unavailable"` on IndexFailureCode as a hardcoded
+# password. It is the opposite: the enum exists to report that a secret could NOT be resolved,
+# and the contract has no representation for a credential value at all (see the indexing module
+# in packages/protocol). The alternative is renaming a failure code to appease a substring match.
+"src/composer/protocol/models.py" = ["E501", "S105"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

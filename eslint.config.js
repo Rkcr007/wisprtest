@@ -74,6 +74,18 @@ export default tseslint.config(
     },
   },
 
+  // Files written by a generator, not by a person. `kysely-codegen` emits its `JsonObject` as a
+  // `type` alias, which `consistent-type-definitions` objects to — and "fixing" it would be undone
+  // by the next `make db-codegen`, whose diff check then fails the build. The contents are
+  // verified against the live database by that same target, which is a stronger guarantee than a
+  // style rule. Correctness rules still apply; only the stylistic one is switched off.
+  {
+    files: ['**/src/db/schema.generated.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-definitions': 'off',
+    },
+  },
+
   // Config files at the repo root are plain JS and belong to no tsconfig.
   {
     files: ['**/*.js', '**/*.cjs', '**/*.mjs'],

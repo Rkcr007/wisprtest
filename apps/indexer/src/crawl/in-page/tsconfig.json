@@ -1,0 +1,16 @@
+{
+  "extends": "../../../../../tsconfig.base.json",
+  "compilerOptions": {
+    // The only part of this service that runs in a browser. DOM types on, Node types off — the
+    // same constraint `packages/fingerprint` holds to, and for the same reason: this code has no
+    // `process`, no `Buffer` and no `node:` modules available to it.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    // esbuild compiles these sources at runtime (see ../fingerprint-bundle.ts); tsc's job here is
+    // only to typecheck them. It lives in this directory rather than beside the package's other
+    // configs so that ESLint's project service — which looks for the nearest `tsconfig.json` —
+    // finds it, and type-aware linting applies here too.
+    "noEmit": true
+  },
+  "include": ["./", "../collected.ts"]
+}

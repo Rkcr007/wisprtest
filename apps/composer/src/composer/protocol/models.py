@@ -13,7 +13,7 @@ from enum import Enum, StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
+from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
 class ActionClass(StrEnum):
@@ -122,6 +122,18 @@ class AliasSource(StrEnum):
     MANUAL = "manual"
 
 
+class NoAuthProfile(BaseModel):
+    """
+    The application needs no authentication to crawl.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["none"]
+
+
 class Mode(StrEnum):
     CREATE = "create"
     REUSE_EXISTING = "reuse_existing"
@@ -132,6 +144,33 @@ class Op(StrEnum):
     LT = "lt"
     GTE = "gte"
     LTE = "lte"
+
+
+class CrawlSkipReason(StrEnum):
+    """
+    Why a discovered route was not indexed.
+    """
+
+    OFF_ALLOWLIST = "off_allowlist"
+    DEPTH_EXCEEDED = "depth_exceeded"
+    PAGE_CAP_REACHED = "page_cap_reached"
+    ALREADY_INDEXED = "already_indexed"
+    NAVIGATION_FAILED = "navigation_failed"
+    SSRF_REJECTED = "ssrf_rejected"
+    NON_HTML_CONTENT = "non_html_content"
+
+
+class CrawlViewport(BaseModel):
+    """
+    Browser viewport the crawl runs at; fingerprint geometry is normalised to it.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    width: Annotated[int, Field(ge=320, le=7680)]
+    height: Annotated[int, Field(ge=240, le=4320)]
 
 
 class Fit(StrEnum):
@@ -294,6 +333,22 @@ class FieldValueConstraints(BaseModel):
             title="NonEmptyString",
         ),
     ]
+
+
+class IndexFailureCode(StrEnum):
+    """
+    Cause of an index job failure, as written to memory_versions.failure_reason.
+    """
+
+    BOUNDS_INVALID = "bounds_invalid"
+    SSRF_REJECTED = "ssrf_rejected"
+    AUTH_FAILED = "auth_failed"
+    SECRET_UNAVAILABLE = "secret_unavailable"
+    BROWSER_FAILED = "browser_failed"
+    NAVIGATION_FAILED = "navigation_failed"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    PERSISTENCE_FAILED = "persistence_failed"
+    CANCELLED = "cancelled"
 
 
 class Outcome(StrEnum):
@@ -495,6 +550,17 @@ class QueryConstraintWithin(BaseModel):
     ]
 
 
+class RoutePath(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+
+
 class Kind1(StrEnum):
     FIELD_ADDED = "field_added"
     FIELD_REMOVED = "field_removed"
@@ -534,6 +600,35 @@ class SchemaChange(BaseModel):
         str,
         Field(
             description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class SecretProvider(StrEnum):
+    """
+    How a secret reference is resolved: an environment variable, or a file path.
+    """
+
+    ENV = "env"
+    FILE = "file"
+
+
+class SecretRef(BaseModel):
+    """
+    Reference to a credential held outside WisprTest, resolved at the point of use.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: SecretProvider
+    key: Annotated[
+        str,
+        Field(
+            description="Environment variable name, or absolute file path.",
             min_length=1,
             title="NonEmptyString",
         ),
@@ -1510,6 +1605,77 @@ class Alias(BaseModel):
     ]
 
 
+class FormAuthProfile(BaseModel):
+    """
+    Form login, using credentials fetched from a tenant-configured secret reference.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["form"]
+    login_path: Annotated[
+        str,
+        Field(
+            alias="loginPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    username_label: Annotated[
+        str,
+        Field(
+            alias="usernameLabel",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    password_label: Annotated[
+        str,
+        Field(
+            alias="passwordLabel",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    submit_label: Annotated[
+        str,
+        Field(
+            alias="submitLabel",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    credentials_ref: Annotated[SecretRef, Field(alias="credentialsRef")]
+    success_path: Annotated[
+        str,
+        Field(
+            alias="successPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+
+
+class StorageStateAuthProfile(BaseModel):
+    """
+    A browser storage state captured by the tester and held outside WisprTest.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["storage_state"]
+    state_ref: Annotated[SecretRef, Field(alias="stateRef")]
+
+
 class CompositionEdge(BaseModel):
     """
     A dependency edge: `from` cannot be created until `to` exists.
@@ -1689,6 +1855,147 @@ class ConstraintSet(BaseModel):
         Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
     ]
     unparsed_fragments: Annotated[list[NonEmptyStringModel], Field(alias="unparsedFragments")]
+
+
+class CrawlBounds(BaseModel):
+    """
+    The limits a crawl runs under. Every field required; an unbounded crawl cannot be requested.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    allowed_origins: Annotated[
+        list[AnyUrl],
+        Field(
+            alias="allowedOrigins",
+            description="Origins the crawler may navigate to. Anything else is skipped.",
+            min_length=1,
+        ),
+    ]
+    route_allowlist: Annotated[
+        list[RoutePath],
+        Field(
+            alias="routeAllowlist",
+            description='Path prefixes the crawl may enter. ["/"] permits the whole application.',
+            min_length=1,
+        ),
+    ]
+    max_depth: Annotated[
+        int,
+        Field(alias="maxDepth", description="Maximum BFS depth from the base URL.", ge=0, le=32),
+    ]
+    max_pages: Annotated[
+        int,
+        Field(alias="maxPages", description="Maximum number of screens to index.", ge=1, le=5000),
+    ]
+    never_interact_selectors: Annotated[
+        list[NonEmptyStringModel],
+        Field(
+            alias="neverInteractSelectors",
+            description="Selectors the crawl may never click. Evaluated before any interaction.",
+        ),
+    ]
+    max_interactions_per_route: Annotated[
+        int,
+        Field(
+            alias="maxInteractionsPerRoute",
+            description="Interactions attempted per screen when observing navigation edges.",
+            ge=0,
+            le=200,
+        ),
+    ]
+    settle_delay_ms: Annotated[
+        int,
+        Field(
+            alias="settleDelayMs",
+            description="Settle delay after network idle, in ms.",
+            ge=0,
+            le=30000,
+        ),
+    ]
+    network_idle_timeout_ms: Annotated[
+        int,
+        Field(
+            alias="networkIdleTimeoutMs",
+            description="Network idle timeout, in ms.",
+            ge=100,
+            le=120000,
+        ),
+    ]
+    navigation_timeout_ms: Annotated[
+        int,
+        Field(
+            alias="navigationTimeoutMs",
+            description="Per-navigation timeout, in ms.",
+            ge=100,
+            le=300000,
+        ),
+    ]
+    requests_per_minute: Annotated[
+        int,
+        Field(
+            alias="requestsPerMinute",
+            description="Maximum navigations per minute against the application under test.",
+            ge=1,
+            le=600,
+        ),
+    ]
+    viewport: CrawlViewport
+
+
+class CrawlJob(BaseModel):
+    """
+    A request to crawl one application and build a new memory version.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    base_url: Annotated[
+        AnyUrl,
+        Field(
+            alias="baseUrl",
+            description="Absolute URL with an http or https scheme.",
+            title="HttpUrl",
+        ),
+    ]
+    bounds: CrawlBounds
+    auth_profile: Annotated[
+        NoAuthProfile | FormAuthProfile | StorageStateAuthProfile,
+        Field(
+            alias="authProfile",
+            description="How the indexer authenticates against the application under test.",
+        ),
+    ]
+    requested_by: Annotated[
+        UUID, Field(alias="requestedBy", description="UUID identifier.", title="Uuid")
+    ]
+    requested_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="requestedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+    traceparent: Annotated[
+        str | None,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
 
 
 class DerivedRuleSum(BaseModel):
@@ -2181,6 +2488,292 @@ class FieldDistribution(BaseModel):
         ),
     ]
     distinct_count: Annotated[int, Field(alias="distinctCount", ge=0, le=9007199254740991)]
+
+
+class IndexJobStarted(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["job_started"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    version: Annotated[int, Field(ge=1, le=9007199254740991)]
+    resumed: bool
+
+
+class IndexRouteStarted(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["route_started"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    path: Annotated[
+        str,
+        Field(
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    depth: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+
+
+class IndexRouteIndexed(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["route_indexed"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    screen_id: Annotated[
+        UUID, Field(alias="screenId", description="UUID identifier.", title="Uuid")
+    ]
+    route_pattern: Annotated[
+        str,
+        Field(
+            alias="routePattern",
+            description="Route with dynamic segments generalised, e.g. /orders/:id.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePattern",
+        ),
+    ]
+    state_fingerprint: Annotated[
+        str,
+        Field(
+            alias="stateFingerprint",
+            description="SHA-256 over route pattern, modal stack and focused landmark; identifies a runtime state.",
+            pattern="^[0-9a-f]{64}$",
+            title="StateFingerprint",
+        ),
+    ]
+    element_count: Annotated[int, Field(alias="elementCount", ge=0, le=9007199254740991)]
+    duration_ms: Annotated[
+        float,
+        Field(
+            alias="durationMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+
+
+class IndexRouteSkipped(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["route_skipped"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    path: Annotated[
+        str,
+        Field(
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    reason: CrawlSkipReason
+
+
+class IndexEdgeRecorded(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["edge_recorded"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    from_screen_id: Annotated[
+        UUID, Field(alias="fromScreenId", description="UUID identifier.", title="Uuid")
+    ]
+    to_screen_id: Annotated[
+        UUID, Field(alias="toScreenId", description="UUID identifier.", title="Uuid")
+    ]
+    trigger_element_key: Annotated[
+        str,
+        Field(
+            alias="triggerElementKey",
+            description="Stable element identifier in the form screen.component.element.",
+            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
+            title="ElementKey",
+        ),
+    ]
+    confidence: Annotated[
+        float,
+        Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
+    ]
+
+
+class IndexJobCompleted(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["job_completed"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    screen_count: Annotated[int, Field(alias="screenCount", ge=0, le=9007199254740991)]
+    element_count: Annotated[int, Field(alias="elementCount", ge=0, le=9007199254740991)]
+    edge_count: Annotated[int, Field(alias="edgeCount", ge=0, le=9007199254740991)]
+    duration_ms: Annotated[
+        float,
+        Field(
+            alias="durationMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+
+
+class IndexJobFailed(BaseModel):
+    """
+    Live progress of an index job, streamed to the console.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["job_failed"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    sequence: Annotated[
+        int, Field(description="Zero-based position.", ge=0, le=9007199254740991, title="Ordinal")
+    ]
+    at: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    memory_version_id: Annotated[
+        UUID | None, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    code: IndexFailureCode
+    detail: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class IndexProgressEvent(
+    RootModel[
+        IndexJobStarted
+        | IndexRouteStarted
+        | IndexRouteIndexed
+        | IndexRouteSkipped
+        | IndexEdgeRecorded
+        | IndexJobCompleted
+        | IndexJobFailed
+    ]
+):
+    root: Annotated[
+        IndexJobStarted
+        | IndexRouteStarted
+        | IndexRouteIndexed
+        | IndexRouteSkipped
+        | IndexEdgeRecorded
+        | IndexJobCompleted
+        | IndexJobFailed,
+        Field(description="Live progress of an index job, streamed to the console."),
+    ]
 
 
 class InverseOperationApi(BaseModel):

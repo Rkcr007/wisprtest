@@ -37,12 +37,12 @@ FIXTURES: dict[str, list[Any]] = json.loads(
 INLINED_BY_DESIGN = {
     # Primitives.
     "Confidence",
+    "HttpUrl",
     "IsoDateTime",
     "LatencyMs",
     "NonEmptyString",
     "Ordinal",
     "RedactedText",
-    "RoutePath",
     "RoutePattern",
     "SampleSize",
     "Sha256Hex",
@@ -50,6 +50,7 @@ INLINED_BY_DESIGN = {
     "Uuid",
     # Discriminated unions, inlined at each use site as `Member | Member | …`.
     "ActionPayload",
+    "AuthProfile",
     "Constraint",
     "DerivedRuleSpec",
     "DistributionShape",
@@ -64,8 +65,8 @@ INLINED_BY_DESIGN = {
 # A schema arrives here as either a pydantic model or a StrEnum; `TypeAdapter` validates both.
 Validatable = type[BaseModel] | type[enum.Enum]
 
-# `StateFingerprint` and `ElementKey` survive as root models because they appear as list
-# elements, where a constraint cannot be attached to the field.
+# `StateFingerprint`, `ElementKey` and `RoutePath` survive as root models because they appear
+# as list elements, where a constraint cannot be attached to the field.
 VALIDATABLE: list[tuple[str, Validatable]] = sorted(
     (name, getattr(models, name))
     for name in FIXTURES

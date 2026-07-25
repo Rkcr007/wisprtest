@@ -27,13 +27,16 @@ build: db-codegen
 	pnpm --filter protocol gen:python
 	pnpm build
 
-## db-codegen: regenerate the gateway's Kysely types from the live database
+## db-codegen: regenerate the Kysely types of every service that talks to the database
+# Each service generates its own file from the same live schema, so the two cannot disagree with
+# the database — or, therefore, with each other.
 db-codegen: .env
 	@set -a; . ./.env; set +a; \
-	pnpm --filter gateway db:codegen --url "$$DATABASE_URL"
-	@git diff --quiet -- apps/gateway/src/db/schema.generated.ts || { \
+	pnpm --filter gateway db:codegen --url "$$DATABASE_URL"; \
+	pnpm --filter indexer db:codegen --url "$$DATABASE_URL"
+	@git diff --quiet -- apps/gateway/src/db/schema.generated.ts apps/indexer/src/db/schema.generated.ts || { \
 		echo ""; \
-		echo "apps/gateway/src/db/schema.generated.ts is out of date with the database."; \
+		echo "a generated Kysely schema is out of date with the database."; \
 		echo "The regenerated file differs from the committed one — review and commit it."; \
 		exit 1; \
 	}

@@ -7,5 +7,9 @@
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true
   },
-  "include": ["src", "vitest.config.ts"]
+  // `src/crawl/in-page` is excluded here and checked by tsconfig.in-page.json instead. That code
+  // runs inside the page under test, so it needs DOM types — and the worker must NOT have them,
+  // or a stray `document` reference in a Node module would typecheck and fail at runtime.
+  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts"],
+  "exclude": ["src/crawl/in-page"]
 }

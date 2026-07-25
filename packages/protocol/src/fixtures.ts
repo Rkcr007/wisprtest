@@ -110,6 +110,41 @@ const ALIAS = {
   createdAt: NOW,
 };
 
+const CRAWL_BOUNDS = {
+  allowedOrigins: ['https://orders.northwind.example'],
+  routeAllowlist: ['/orders', '/settings'],
+  maxDepth: 3,
+  maxPages: 200,
+  neverInteractSelectors: ['[data-testid="order-delete"]', 'button[name="void"]'],
+  maxInteractionsPerRoute: 12,
+  interactionObserveMs: 1500,
+  settleDelayMs: 250,
+  networkIdleTimeoutMs: 5000,
+  navigationTimeoutMs: 20_000,
+  requestsPerMinute: 120,
+  viewport: { width: 1280, height: 720 },
+};
+
+const CRAWL_JOB = {
+  jobId: UUID_A,
+  tenantId: UUID_B,
+  applicationId: UUID_C,
+  baseUrl: 'https://orders.northwind.example',
+  bounds: CRAWL_BOUNDS,
+  authProfile: {
+    kind: 'form',
+    loginPath: '/login',
+    usernameLabel: 'Email address',
+    passwordLabel: 'Password',
+    submitLabel: 'Sign in',
+    credentialsRef: { provider: 'env', key: 'NORTHWIND_CRAWLER_CREDENTIALS' },
+    successPath: '/orders',
+  },
+  requestedBy: UUID_D,
+  requestedAt: NOW,
+  traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+};
+
 const RESOLUTION_CANDIDATE = {
   elementId: UUID_A,
   elementKey: 'orders.filter.pending',
@@ -409,6 +444,15 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       { why: 'uppercase', value: 'Orders.Filter.Pending' },
     ],
   },
+  HttpUrl: {
+    schema: p.HttpUrl,
+    valid: ['https://orders.northwind.example', 'http://localhost:4300/orders'],
+    invalid: [
+      { why: 'file scheme — the first SSRF defence', value: 'file:///etc/passwd' },
+      { why: 'javascript scheme', value: 'javascript:alert(1)' },
+      { why: 'a bare path, with no origin to check against an allowlist', value: '/orders' },
+    ],
+  },
   RoutePath: {
     schema: p.RoutePath,
     valid: ['/orders/1841', '/'],
@@ -605,6 +649,241 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
           navEdges: [],
           aliases: [],
           generatedAt: NOW,
+        },
+      },
+    ],
+  },
+
+  /* ------------------------------------------------------------------------------ indexing */
+
+  SecretProvider: {
+    schema: p.SecretProvider,
+    valid: ['env', 'file'],
+    invalid: [
+      {
+        why: 'an inline literal is not a reference — a credential may never appear in the contract',
+        value: 'literal',
+      },
+    ],
+  },
+  SecretRef: {
+    schema: p.SecretRef,
+    valid: [
+      { provider: 'env', key: 'NORTHWIND_CRAWLER_CREDENTIALS' },
+      { provider: 'file', key: '/var/run/secrets/wispr/northwind.json' },
+    ],
+    invalid: [
+      {
+        why: 'carries the secret itself rather than a pointer to it',
+        value: { provider: 'env', key: 'PASSWORD', value: 'hunter2' },
+      },
+      { why: 'empty key', value: { provider: 'env', key: '' } },
+    ],
+  },
+  AuthProfile: {
+    schema: p.AuthProfile,
+    valid: [
+      { kind: 'none' },
+      CRAWL_JOB.authProfile,
+      {
+        kind: 'storage_state',
+        stateRef: { provider: 'file', key: '/var/run/secrets/wispr/northwind-state.json' },
+      },
+    ],
+    invalid: [
+      {
+        why: 'a password inlined instead of referenced',
+        value: {
+          kind: 'form',
+          loginPath: '/login',
+          usernameLabel: 'Email address',
+          passwordLabel: 'Password',
+          submitLabel: 'Sign in',
+          password: 'hunter2',
+          successPath: '/orders',
+        },
+      },
+      {
+        why: 'a storage state blob inlined instead of referenced — it holds live session cookies',
+        value: { kind: 'storage_state', storageState: { cookies: [], origins: [] } },
+      },
+      { why: 'unknown auth kind', value: { kind: 'basic', credentialsRef: null } },
+    ],
+  },
+  CrawlViewport: {
+    schema: p.CrawlViewport,
+    valid: [{ width: 1280, height: 720 }],
+    invalid: [
+      { why: 'narrower than any real browser', value: { width: 100, height: 720 } },
+      { why: 'fractional pixels', value: { width: 1280.5, height: 720 } },
+    ],
+  },
+  CrawlBounds: {
+    schema: p.CrawlBounds,
+    valid: [CRAWL_BOUNDS, { ...CRAWL_BOUNDS, neverInteractSelectors: [], routeAllowlist: ['/'] }],
+    invalid: [
+      {
+        why: 'no page cap — an unbounded crawl must not be expressible',
+        value: without(CRAWL_BOUNDS, 'maxPages'),
+      },
+      {
+        why: 'no never-interact list, so nobody decided what must not be clicked',
+        value: without(CRAWL_BOUNDS, 'neverInteractSelectors'),
+      },
+      {
+        why: 'no rate limit',
+        value: without(CRAWL_BOUNDS, 'requestsPerMinute'),
+      },
+      {
+        why: 'empty origin allowlist would permit any target',
+        value: withField(CRAWL_BOUNDS, 'allowedOrigins', []),
+      },
+    ],
+  },
+  CrawlJob: {
+    schema: p.CrawlJob,
+    valid: [CRAWL_JOB, { ...CRAWL_JOB, authProfile: { kind: 'none' }, traceparent: null }],
+    invalid: [
+      {
+        why: 'a crawl target with a non-http scheme',
+        value: withField(CRAWL_JOB, 'baseUrl', 'file:///etc/passwd'),
+      },
+      { why: 'no bounds at all', value: without(CRAWL_JOB, 'bounds') },
+      {
+        why: 'traceparent omitted rather than explicitly null',
+        value: without(CRAWL_JOB, 'traceparent'),
+      },
+    ],
+  },
+  CrawlSkipReason: {
+    schema: p.CrawlSkipReason,
+    valid: ['off_allowlist', 'ssrf_rejected', 'page_cap_reached'],
+    invalid: [
+      { why: 'not a skip reason — a crawl never skips because it guessed', value: 'unsure' },
+    ],
+  },
+  IndexFailureCode: {
+    schema: p.IndexFailureCode,
+    valid: ['ssrf_rejected', 'auth_failed', 'budget_exhausted'],
+    invalid: [{ why: 'unknown failure code', value: 'unknown' }],
+  },
+  IndexProgressEvent: {
+    schema: p.IndexProgressEvent,
+    valid: [
+      {
+        kind: 'job_started',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 0,
+        at: NOW,
+        memoryVersionId: UUID_C,
+        version: 4,
+        resumed: false,
+      },
+      {
+        kind: 'route_started',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 1,
+        at: NOW,
+        path: '/orders/1841',
+        depth: 2,
+      },
+      {
+        kind: 'route_indexed',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 2,
+        at: NOW,
+        screenId: UUID_D,
+        routePattern: '/orders/:id',
+        stateFingerprint: HASH_C,
+        elementCount: 37,
+        durationMs: 812.4,
+      },
+      {
+        kind: 'route_skipped',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 3,
+        at: NOW,
+        path: '/admin/danger',
+        reason: 'off_allowlist',
+      },
+      {
+        kind: 'edge_recorded',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 4,
+        at: NOW,
+        fromScreenId: UUID_B,
+        toScreenId: UUID_D,
+        triggerElementKey: 'orders.list.row-link',
+        confidence: 1,
+      },
+      {
+        kind: 'job_completed',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 5,
+        at: NOW,
+        memoryVersionId: UUID_C,
+        screenCount: 5,
+        elementCount: 96,
+        edgeCount: 7,
+        durationMs: 42_310,
+      },
+      {
+        kind: 'job_failed',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 6,
+        at: NOW,
+        memoryVersionId: UUID_C,
+        code: 'auth_failed',
+        detail: 'login did not reach /orders within the navigation timeout',
+      },
+      {
+        kind: 'job_failed',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        sequence: 0,
+        at: NOW,
+        memoryVersionId: null,
+        code: 'bounds_invalid',
+        detail: 'bounds.maxPages: Invalid input',
+      },
+    ],
+    invalid: [
+      {
+        why: 'unknown event kind',
+        value: { kind: 'route_guessed', jobId: UUID_A, tenantId: UUID_B, sequence: 0, at: NOW },
+      },
+      {
+        why: 'no sequence, so a dropped event would be undetectable',
+        value: {
+          kind: 'route_started',
+          jobId: UUID_A,
+          tenantId: UUID_B,
+          at: NOW,
+          path: '/orders',
+          depth: 0,
+        },
+      },
+      {
+        why: 'carries page text, which never leaves the browser',
+        value: {
+          kind: 'route_indexed',
+          jobId: UUID_A,
+          tenantId: UUID_B,
+          sequence: 2,
+          at: NOW,
+          screenId: UUID_D,
+          routePattern: '/orders/:id',
+          stateFingerprint: HASH_C,
+          elementCount: 37,
+          durationMs: 812.4,
+          heading: 'Order 1841 — Acme Industrial',
         },
       },
     ],

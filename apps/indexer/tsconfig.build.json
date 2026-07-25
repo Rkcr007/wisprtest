@@ -6,5 +6,7 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  // In-page sources are copied into `dist` as TypeScript by the build script rather than
+  // compiled: esbuild is the only thing that reads them, and one form means no stale copy.
+  "exclude": ["src/**/*.test.ts", "src/crawl/in-page/**"]
 }

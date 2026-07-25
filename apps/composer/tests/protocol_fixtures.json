@@ -147,6 +147,30 @@
     "t2_writeback",
     "manual"
   ],
+  "AuthProfile": [
+    {
+      "kind": "none"
+    },
+    {
+      "kind": "form",
+      "loginPath": "/login",
+      "usernameLabel": "Email address",
+      "passwordLabel": "Password",
+      "submitLabel": "Sign in",
+      "credentialsRef": {
+        "provider": "env",
+        "key": "NORTHWIND_CRAWLER_CREDENTIALS"
+      },
+      "successPath": "/orders"
+    },
+    {
+      "kind": "storage_state",
+      "stateRef": {
+        "provider": "file",
+        "key": "/var/run/secrets/wispr/northwind-state.json"
+      }
+    }
+  ],
   "CompositionEdge": [
     {
       "fromNodeId": "order-1",
@@ -328,6 +352,146 @@
       "unparsedFragments": [
         "with the usual terms"
       ]
+    }
+  ],
+  "CrawlBounds": [
+    {
+      "allowedOrigins": [
+        "https://orders.northwind.example"
+      ],
+      "routeAllowlist": [
+        "/orders",
+        "/settings"
+      ],
+      "maxDepth": 3,
+      "maxPages": 200,
+      "neverInteractSelectors": [
+        "[data-testid=\"order-delete\"]",
+        "button[name=\"void\"]"
+      ],
+      "maxInteractionsPerRoute": 12,
+      "settleDelayMs": 250,
+      "networkIdleTimeoutMs": 5000,
+      "navigationTimeoutMs": 20000,
+      "requestsPerMinute": 120,
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "allowedOrigins": [
+        "https://orders.northwind.example"
+      ],
+      "routeAllowlist": [
+        "/"
+      ],
+      "maxDepth": 3,
+      "maxPages": 200,
+      "neverInteractSelectors": [],
+      "maxInteractionsPerRoute": 12,
+      "settleDelayMs": 250,
+      "networkIdleTimeoutMs": 5000,
+      "navigationTimeoutMs": 20000,
+      "requestsPerMinute": 120,
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      }
+    }
+  ],
+  "CrawlJob": [
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "baseUrl": "https://orders.northwind.example",
+      "bounds": {
+        "allowedOrigins": [
+          "https://orders.northwind.example"
+        ],
+        "routeAllowlist": [
+          "/orders",
+          "/settings"
+        ],
+        "maxDepth": 3,
+        "maxPages": 200,
+        "neverInteractSelectors": [
+          "[data-testid=\"order-delete\"]",
+          "button[name=\"void\"]"
+        ],
+        "maxInteractionsPerRoute": 12,
+        "settleDelayMs": 250,
+        "networkIdleTimeoutMs": 5000,
+        "navigationTimeoutMs": 20000,
+        "requestsPerMinute": 120,
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        }
+      },
+      "authProfile": {
+        "kind": "form",
+        "loginPath": "/login",
+        "usernameLabel": "Email address",
+        "passwordLabel": "Password",
+        "submitLabel": "Sign in",
+        "credentialsRef": {
+          "provider": "env",
+          "key": "NORTHWIND_CRAWLER_CREDENTIALS"
+        },
+        "successPath": "/orders"
+      },
+      "requestedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "requestedAt": "2026-07-25T09:30:00.000Z",
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "baseUrl": "https://orders.northwind.example",
+      "bounds": {
+        "allowedOrigins": [
+          "https://orders.northwind.example"
+        ],
+        "routeAllowlist": [
+          "/orders",
+          "/settings"
+        ],
+        "maxDepth": 3,
+        "maxPages": 200,
+        "neverInteractSelectors": [
+          "[data-testid=\"order-delete\"]",
+          "button[name=\"void\"]"
+        ],
+        "maxInteractionsPerRoute": 12,
+        "settleDelayMs": 250,
+        "networkIdleTimeoutMs": 5000,
+        "navigationTimeoutMs": 20000,
+        "requestsPerMinute": 120,
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        }
+      },
+      "authProfile": {
+        "kind": "none"
+      },
+      "requestedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "requestedAt": "2026-07-25T09:30:00.000Z",
+      "traceparent": null
+    }
+  ],
+  "CrawlSkipReason": [
+    "off_allowlist",
+    "ssrf_rejected",
+    "page_cap_reached"
+  ],
+  "CrawlViewport": [
+    {
+      "width": 1280,
+      "height": 720
     }
   ],
   "DerivedRule": [
@@ -824,6 +988,100 @@
       "minLength": null,
       "maxLength": null,
       "pattern": "^ORD-\\d+$"
+    }
+  ],
+  "HttpUrl": [
+    "https://orders.northwind.example",
+    "http://localhost:4300/orders"
+  ],
+  "IndexFailureCode": [
+    "ssrf_rejected",
+    "auth_failed",
+    "budget_exhausted"
+  ],
+  "IndexProgressEvent": [
+    {
+      "kind": "job_started",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 0,
+      "at": "2026-07-25T09:30:00.000Z",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "version": 4,
+      "resumed": false
+    },
+    {
+      "kind": "route_started",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 1,
+      "at": "2026-07-25T09:30:00.000Z",
+      "path": "/orders/1841",
+      "depth": 2
+    },
+    {
+      "kind": "route_indexed",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 2,
+      "at": "2026-07-25T09:30:00.000Z",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "elementCount": 37,
+      "durationMs": 812.4
+    },
+    {
+      "kind": "route_skipped",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 3,
+      "at": "2026-07-25T09:30:00.000Z",
+      "path": "/admin/danger",
+      "reason": "off_allowlist"
+    },
+    {
+      "kind": "edge_recorded",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 4,
+      "at": "2026-07-25T09:30:00.000Z",
+      "fromScreenId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "toScreenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "triggerElementKey": "orders.list.row-link",
+      "confidence": 1
+    },
+    {
+      "kind": "job_completed",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 5,
+      "at": "2026-07-25T09:30:00.000Z",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "screenCount": 5,
+      "elementCount": 96,
+      "edgeCount": 7,
+      "durationMs": 42310
+    },
+    {
+      "kind": "job_failed",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 6,
+      "at": "2026-07-25T09:30:00.000Z",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "code": "auth_failed",
+      "detail": "login did not reach /orders within the navigation timeout"
+    },
+    {
+      "kind": "job_failed",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sequence": 0,
+      "at": "2026-07-25T09:30:00.000Z",
+      "memoryVersionId": null,
+      "code": "bounds_invalid",
+      "detail": "bounds.maxPages: Invalid input"
     }
   ],
   "InverseOperation": [
@@ -1441,6 +1699,20 @@
       "label": "Order detail",
       "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "indexedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "SecretProvider": [
+    "env",
+    "file"
+  ],
+  "SecretRef": [
+    {
+      "provider": "env",
+      "key": "NORTHWIND_CRAWLER_CREDENTIALS"
+    },
+    {
+      "provider": "file",
+      "key": "/var/run/secrets/wispr/northwind.json"
     }
   ],
   "SeedLedgerEntry": [

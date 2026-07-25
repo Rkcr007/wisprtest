@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test lint typecheck db-up db-down db-logs db-migrate db-reset db-seed require-atlas
+.PHONY: help dev build test lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas
 
 COMPOSE := docker compose
 
@@ -17,12 +17,26 @@ help:
 dev: db-up
 	set -a; . ./.env; set +a; pnpm dev
 
-## build: regenerate the composer's protocol models, then build every workspace package
-# gen:python runs first so anything typechecked afterwards is checked against the current
-# contract rather than the last generated copy of it.
-build:
+## build: regenerate generated sources, then build every workspace package
+# Both generators run before the build so that anything typechecked afterwards is checked
+# against the current contract and the current schema, rather than the last generated copy of
+# either. `db:codegen` introspects the live database, so this target needs one running and
+# migrated; the generated file is committed, and the diff check turns a schema that has outrun
+# its types into a build failure rather than a runtime surprise.
+build: db-codegen
 	pnpm --filter protocol gen:python
 	pnpm build
+
+## db-codegen: regenerate the gateway's Kysely types from the live database
+db-codegen: .env
+	@set -a; . ./.env; set +a; \
+	pnpm --filter gateway db:codegen --url "$$DATABASE_URL"
+	@git diff --quiet -- apps/gateway/src/db/schema.generated.ts || { \
+		echo ""; \
+		echo "apps/gateway/src/db/schema.generated.ts is out of date with the database."; \
+		echo "The regenerated file differs from the committed one — review and commit it."; \
+		exit 1; \
+	}
 
 ## test: run every workspace test suite
 test:

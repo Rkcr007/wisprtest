@@ -1,13 +1,26 @@
+import { WisprError as WisprErrorSchema, type WisprError, type WisprErrorCode } from 'protocol';
+
 /**
- * Gateway error taxonomy.
+ * Gateway error taxonomy, and its single mapping to HTTP.
  *
  * CLAUDE.md § "Conventions" forbids throwing a bare `Error`: every failure carries a stable
- * machine-readable `code` so it can be mapped to an HTTP status by a single error handler and
- * counted in metrics without string matching. Phase 4 extends this union with the auth,
- * tenancy and repository codes; Phase 0 only needs the ones its bootstrap can actually raise.
+ * machine-readable `code` so it can be mapped to a status by one handler and counted in metrics
+ * without string matching.
+ *
+ * There are two layers here, deliberately:
+ *
+ * - **`WisprErrorCode`**, from `packages/protocol` — every failure that crosses a process
+ *   boundary. These are what a client sees, and the contract owns their shape.
+ * - **`GatewayInternalCode`** — failures that never leave this process: a missing environment
+ *   variable, a repository reached without a tenant in context. They are mapped to a protocol
+ *   code before serialisation, so no internal vocabulary leaks into a response.
  */
 
-export type GatewayErrorCode = 'config_invalid' | 'startup_failed';
+/** Failures internal to the gateway. Never serialised as-is; see {@link toWisprError}. */
+export type GatewayInternalCode =
+  'config_invalid' | 'startup_failed' | 'tenant_context_missing' | 'dependency_unavailable';
+
+export type GatewayErrorCode = GatewayInternalCode | WisprErrorCode;
 
 export class GatewayError extends Error {
   readonly code: GatewayErrorCode;
@@ -37,4 +50,198 @@ export class ConfigError extends GatewayError {
     super('config_invalid', `invalid gateway configuration: ${issues.join('; ')}`, { issues });
     this.issues = issues;
   }
+}
+
+/**
+ * Raised when something tries to reach the database without a tenant in context.
+ *
+ * A programming error, not a user error: it means a code path bypassed `withTenant`. Reported
+ * as 500 rather than 403 — the caller did nothing wrong, and calling it a permission failure
+ * would send whoever investigates in exactly the wrong direction.
+ */
+export class TenantContextMissingError extends GatewayError {
+  constructor(operation: string) {
+    super(
+      'tenant_context_missing',
+      `attempted to reach the database without a tenant in context: ${operation}`,
+      { operation },
+    );
+  }
+}
+
+/** Raised when a dependency a request needed was unreachable. */
+export class DependencyUnavailableError extends GatewayError {
+  constructor(dependency: string, options?: ErrorOptions) {
+    super('dependency_unavailable', `${dependency} is unavailable`, { dependency }, options);
+  }
+}
+
+/** Raised when a bearer token is absent, malformed, or fails verification. */
+export class UnauthorizedError extends GatewayError {
+  constructor(reason: string, options?: ErrorOptions) {
+    // `reason` is for the log line, not the response body. Telling an unauthenticated caller
+    // precisely why their token failed is a gift to whoever is probing the endpoint.
+    super('unauthorized', 'authentication required', { reason }, options);
+  }
+}
+
+/** Raised when an authenticated principal lacks the permission a route requires. */
+export class ForbiddenError extends GatewayError {
+  constructor(permission: string, requiredRole: string) {
+    super('forbidden', `this action requires the ${requiredRole} role`, {
+      permission,
+      requiredRole,
+    });
+  }
+}
+
+/** Raised when a tenant exceeds its request budget. */
+export class RateLimitedError extends GatewayError {
+  constructor(retryAfterSeconds: number) {
+    super('rate_limited', 'too many requests', { retryAfterSeconds });
+  }
+}
+
+/**
+ * How each code is reported over HTTP.
+ *
+ * Exhaustive over `GatewayErrorCode` by construction: `satisfies` turns a missing entry into a
+ * compile error, so a code added to the protocol without a decision about its status cannot
+ * ship.
+ */
+export const HTTP_STATUS_BY_CODE = {
+  // Internal — mapped through `toWisprError` before they reach a client.
+  config_invalid: 500,
+  startup_failed: 500,
+  tenant_context_missing: 500,
+  dependency_unavailable: 503,
+
+  // Resolution.
+  resolution_ambiguous: 409,
+  resolution_not_found: 404,
+  resolution_timeout: 504,
+
+  // Memory.
+  memory_version_mismatch: 409,
+  memory_snapshot_unavailable: 503,
+
+  // Actions.
+  action_confirmation_required: 428,
+  action_target_stale: 409,
+  action_dispatch_failed: 502,
+
+  // Composition. An unsatisfiable constraint set is a well-formed request the system cannot
+  // fulfil — 422 rather than 400, which would suggest the payload itself was malformed.
+  constraint_unsatisfiable: 422,
+  schema_confidence_too_low: 422,
+  reference_target_missing: 422,
+  uniqueness_exhausted: 409,
+
+  // Materialization.
+  materializer_unavailable: 501,
+  materialization_failed: 502,
+  seeding_forbidden: 403,
+
+  // Governance.
+  drift_approval_required: 409,
+
+  // Platform.
+  unauthorized: 401,
+  forbidden: 403,
+  rate_limited: 429,
+  validation_failed: 400,
+  internal: 500,
+} as const satisfies Record<GatewayErrorCode, number>;
+
+export function httpStatusFor(code: GatewayErrorCode): number {
+  return HTTP_STATUS_BY_CODE[code];
+}
+
+/** Internal codes, mapped to the protocol code a client is allowed to see. */
+const INTERNAL_TO_PROTOCOL = {
+  config_invalid: 'internal',
+  startup_failed: 'internal',
+  tenant_context_missing: 'internal',
+  dependency_unavailable: 'internal',
+} as const satisfies Record<GatewayInternalCode, WisprErrorCode>;
+
+function isInternalCode(code: GatewayErrorCode): code is GatewayInternalCode {
+  return code in INTERNAL_TO_PROTOCOL;
+}
+
+const OPAQUE_INTERNAL = 'Something failed unexpectedly. Quote this id to support.';
+
+/**
+ * A thrown value that is already a valid protocol error.
+ *
+ * Plugins raise these: `@fastify/rate-limit`'s `errorResponseBuilder` returns the body it wants
+ * sent, and it arrives here as the thrown value rather than as a `GatewayError`. Rather than
+ * special-casing that one plugin, anything that satisfies the contract's own schema is passed
+ * through — validated by the schema itself, so a payload that merely looks close is not.
+ */
+export function asWisprError(value: unknown): WisprError | null {
+  const parsed = WisprErrorSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Convert any thrown value into the `WisprError` that goes on the wire.
+ *
+ * Every branch produces a payload that satisfies the contract's own schema, including the
+ * branch for a thrown value that is not an `Error` at all — a handler that throws while
+ * handling a failure is how a 500 becomes a hung connection.
+ *
+ * `traceId` is required rather than optional. The `internal` variant carries it, and it is the
+ * only thing a tester should ever be asked to quote back to support.
+ */
+export function toWisprError(error: unknown, traceId: string): WisprError {
+  if (error instanceof GatewayError) return fromGatewayError(error, traceId);
+
+  const passthrough = asWisprError(error);
+  if (passthrough !== null) return passthrough;
+
+  return { code: 'internal', message: OPAQUE_INTERNAL, retryable: true, traceId };
+}
+
+function fromGatewayError(error: GatewayError, traceId: string): WisprError {
+  // Internal detail stays in the log line, which carries the same trace id. The response says
+  // only that something failed, and how to find out what.
+  if (isInternalCode(error.code)) {
+    return { code: 'internal', message: OPAQUE_INTERNAL, retryable: true, traceId };
+  }
+
+  switch (error.code) {
+    case 'unauthorized':
+      return { code: 'unauthorized', message: error.message, retryable: false };
+    case 'forbidden':
+      return {
+        code: 'forbidden',
+        message: error.message,
+        retryable: false,
+        requiredRole: readRole(error.details.requiredRole),
+      };
+    case 'rate_limited':
+      return {
+        code: 'rate_limited',
+        message: error.message,
+        retryable: true,
+        retryAfterSeconds: readNonNegativeInt(error.details.retryAfterSeconds),
+      };
+    default:
+      // A protocol code this phase can name but has no richer construction for yet. Reported as
+      // `internal` rather than guessed at: a half-populated variant would fail the contract's
+      // own schema, which is a worse outcome than an honest 500.
+      return { code: 'internal', message: OPAQUE_INTERNAL, retryable: true, traceId };
+  }
+}
+
+const ROLES = ['owner', 'lead', 'tester', 'viewer'] as const;
+type Role = (typeof ROLES)[number];
+
+function readRole(value: unknown): Role {
+  return ROLES.includes(value as Role) ? (value as Role) : 'owner';
+}
+
+function readNonNegativeInt(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
 }

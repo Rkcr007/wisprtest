@@ -1,3 +1,4 @@
+import { pathOf, screenLabel, toRoutePattern } from 'fingerprint';
 import type { Page, Response } from 'playwright';
 import type { CrawlBounds, CrawlSkipReason, ElementFingerprint } from 'protocol';
 
@@ -6,7 +7,6 @@ import type { CollectedElement, CollectedPage, CollectOptions } from './collecte
 import { ElementKeyMinter } from './element-key.js';
 import { BUNDLE_GLOBAL, MARKER_ATTRIBUTE } from './fingerprint-bundle.js';
 import type { RateLimiter } from './rate-limiter.js';
-import { pathOf, screenLabel, toRoutePattern } from './route-pattern.js';
 import type { UrlPolicy } from './url-policy.js';
 
 /**

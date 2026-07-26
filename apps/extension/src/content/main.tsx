@@ -1,8 +1,9 @@
-import { StrictMode, useCallback, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { HUD_PORT, INITIAL_UPDATE, parseUpdate, type HudUpdate } from '../messaging.js';
+import { createRuntimeStateEngine, type RuntimeStateEngine } from '../runtime/index.js';
 import { Hud } from './Hud.js';
 import { mountHudHost } from './mount.js';
 
@@ -24,13 +25,56 @@ import { mountHudHost } from './mount.js';
  *
  * Nothing here calls `focus()`. The tester is typing into the application under test, and an
  * overlay that steals focus on mount would eat the keystroke that was in flight.
+ *
+ * ## The runtime state engine starts on attach, not on injection
+ *
+ * `src/runtime` observes the page: a `MutationObserver` over the whole document, an
+ * `IntersectionObserver` per interactive element, and a structural hash of the body. That is a
+ * reasonable cost while a tester is testing, and an unreasonable one on every page they happen to
+ * visit — this script is injected into all of them. So the engine is created when the attach
+ * state machine reaches `attached` and disposed the moment it leaves.
  */
 
 declare const __WISPR_VERSION__: string;
 
-function HudApp({ version }: { readonly version: string }): ReactNode {
+function HudApp({
+  version,
+  hudHost,
+}: {
+  readonly version: string;
+  readonly hudHost: Element;
+}): ReactNode {
   const [update, setUpdate] = useState<HudUpdate>(INITIAL_UPDATE);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
+
+  /**
+   * The engine, while attached.
+   *
+   * Held in a ref rather than in state because nothing rendered depends on it — re-rendering the
+   * HUD when the engine appears would be a render for no visible reason. Phase 8's resolver
+   * subscribes to `engine.state` and reads `engine.scopedIndex`; this phase's job is that the
+   * engine exists, runs against the real page, and is torn down cleanly.
+   */
+  const engine = useRef<RuntimeStateEngine | null>(null);
+  const attached = update.attach === 'attached';
+
+  useEffect(() => {
+    if (!attached) return undefined;
+
+    const started = createRuntimeStateEngine({
+      window,
+      // Our own shadow host is not the application. Without this the state fingerprint would
+      // move every time the tester dragged the panel — invalidating the scoped resolution cache
+      // and, through the same key, reading as drift.
+      ignoreFocus: (element) => element === hudHost,
+    });
+    engine.current = started;
+
+    return () => {
+      engine.current = null;
+      started.dispose();
+    };
+  }, [attached, hudHost]);
 
   useEffect(() => {
     const connection = chrome.runtime.connect({ name: HUD_PORT });
@@ -91,7 +135,7 @@ export function start(): void {
   const root = createRoot(mounted.container);
   root.render(
     <StrictMode>
-      <HudApp version={__WISPR_VERSION__} />
+      <HudApp version={__WISPR_VERSION__} hudHost={mounted.host} />
     </StrictMode>,
   );
 }

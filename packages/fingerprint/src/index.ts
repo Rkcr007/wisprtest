@@ -19,6 +19,20 @@
  * Shapes come from `packages/protocol`. This package computes the contract's payloads; it does
  * not define them.
  *
+ * ## What else is shared, and why it is here
+ *
+ * Element identity is not the only thing the indexer and the extension must agree on to the
+ * byte. Three more families of DOM semantics live here for exactly the same reason:
+ *
+ * - `route-pattern.ts` — `/orders/1841` → `/orders/:id`. One half of the screen key.
+ * - `runtime-state.ts` — `computeStateFingerprint`, and the modal stack and focused landmark it
+ *   hashes. The other half of the screen key: what a screen is stored under and looked up by.
+ * - `interactive.ts` — which elements are candidates at all. The indexer records this set; the
+ *   runtime scopes resolution to it.
+ *
+ * A drift in any of these fails silently — memory looks complete and resolution simply returns
+ * nothing — which is worse than a drift in scoring, where confidence at least sags visibly.
+ *
  * ## The seven signals
  *
  * Implemented with the weights in docs/ARCHITECTURE.md § 2, which live in `DEFAULT_CONFIG` and
@@ -63,12 +77,38 @@ export type {
 } from './config.js';
 export { computeFingerprint, computeOrdinal } from './fingerprint.js';
 export { bboxSimilarity, normalizeRect } from './geometry.js';
+export {
+  INTERACTIVE_ROLES,
+  interactiveCandidates,
+  isDisabled,
+  isInert,
+  isInteractiveByAuthorIntent,
+  isInteractiveCandidate,
+  isSemanticallyHidden,
+  isStyleHidden,
+  isVisible,
+} from './interactive.js';
 export { computeLandmarkPath, landmarkPathSimilarity } from './landmarks.js';
 export { defaultRedactor, normalizeWhitespace } from './redact.js';
 export type { Redactor } from './redact.js';
 export { resolve } from './resolve.js';
 export type { ResolveOptions, ScopedCandidate } from './resolve.js';
 export { computeRole } from './role.js';
+export {
+  DATE_PLACEHOLDER,
+  ID_PLACEHOLDER,
+  generalizeSegment,
+  pathOf,
+  screenLabel,
+  toRoutePattern,
+} from './route-pattern.js';
+export {
+  computeStateFingerprint,
+  landmarkOf,
+  readFocusedLandmark,
+  readModalStack,
+  topmostDialog,
+} from './runtime-state.js';
 export {
   compareFingerprints,
   scoreCandidate,

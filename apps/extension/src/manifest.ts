@@ -91,6 +91,33 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
         // Top frame only. A HUD per iframe would render several panels on a framed application.
         all_frames: false,
       },
+
+      /**
+       * The route bridge, in the application's own JavaScript world.
+       *
+       * **Why a second script:** a content script runs in an isolated world, where `history` is a
+       * different wrapper object from the page's. Patching `pushState` there observes nothing the
+       * application does — and `pushState` is how every single-page application routes. `popstate`
+       * and `hashchange` do cross worlds; the two methods do not. Without this, the runtime state
+       * engine would not notice a route change until the DOM happened to mutate.
+       *
+       * **Why not the `webNavigation` permission instead:** it would work, and it would cost a
+       * permission that reveals the tester's full browsing history to the extension, plus a
+       * service-worker round trip on what is a hot-path input. This costs neither.
+       *
+       * **What it is allowed to be:** see `src/runtime/route-bridge.ts`. It shares globals with
+       * the customer's application, so it has no imports, touches no extension API, reads no page
+       * content, and announces only that the URL changed — never to what.
+       */
+      {
+        matches: ['<all_urls>'],
+        js: ['route-bridge.js'],
+        world: 'MAIN',
+        // Before the application's own scripts, so the patch is in place for the first route it
+        // pushes. `document_idle` would miss every navigation that happens during bootstrap.
+        run_at: 'document_start',
+        all_frames: false,
+      },
     ],
 
     /**

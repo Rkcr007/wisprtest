@@ -8,6 +8,7 @@
     // bundles them anyway (see `src/build.ts`), so a stale `dist` should not be able to make a
     // typecheck pass or fail against something the build will never read.
     "paths": {
+      "fingerprint": ["../../packages/fingerprint/src/index.ts"],
       "protocol": ["../../packages/protocol/src/index.ts"],
       "ui": ["../../packages/ui/src/index.ts"]
     },
@@ -16,5 +17,5 @@
     // bundled into it.
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts", "vitest.bench.config.ts"]
 }

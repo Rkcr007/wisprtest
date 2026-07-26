@@ -9,7 +9,9 @@
     "dev": "tsx src/build.ts --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:runtime": "vitest run src/runtime",
+    "bench:scope": "vitest run --config vitest.bench.config.ts"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.2",
@@ -25,6 +27,7 @@
     "vitest": "4.1.10"
   },
   "dependencies": {
+    "fingerprint": "workspace:*",
     "protocol": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8",

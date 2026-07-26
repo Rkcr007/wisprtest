@@ -19,9 +19,10 @@ import { buildManifest } from './manifest.js';
  * `manifest.ts`) so that every permission can carry its justification in code.
  *
  * ```
- * dist/manifest.json   generated from src/manifest.ts
- * dist/background.js   ESM — MV3 service workers support modules
- * dist/content.js      IIFE — content scripts do not
+ * dist/manifest.json     generated from src/manifest.ts
+ * dist/background.js     ESM — MV3 service workers support modules
+ * dist/content.js        IIFE — content scripts do not
+ * dist/route-bridge.js   IIFE — runs in the page's own world, see src/runtime/route-bridge.ts
  * ```
  *
  * ## Build-time constants
@@ -53,6 +54,9 @@ const here = fileURLToPath(new URL('.', import.meta.url));
  * this file.
  */
 export const WORKSPACE_ALIASES: Readonly<Record<string, string>> = {
+  fingerprint: fileURLToPath(
+    new URL('../../../packages/fingerprint/src/index.ts', import.meta.url),
+  ),
   protocol: fileURLToPath(new URL('../../../packages/protocol/src/index.ts', import.meta.url)),
   ui: fileURLToPath(new URL('../../../packages/ui/src/index.ts', import.meta.url)),
 };
@@ -60,6 +64,7 @@ export const WORKSPACE_ALIASES: Readonly<Record<string, string>> = {
 export function buildOptions(config: BuildConfig): {
   background: BuildOptions;
   content: BuildOptions;
+  routeBridge: BuildOptions;
 } {
   const define = {
     __WISPR_GATEWAY_ORIGIN__: JSON.stringify(config.gatewayOrigin),
@@ -102,6 +107,18 @@ export function buildOptions(config: BuildConfig): {
       // A content script is a classic script: `import` at its top level is a syntax error.
       format: 'iife',
     },
+    routeBridge: {
+      ...shared,
+      entryPoints: [`${here}runtime/route-bridge.main.ts`],
+      outfile: `${config.outDir}/route-bridge.js`,
+      format: 'iife',
+      // This one runs in the application's own JavaScript world, sharing globals with the page.
+      // Nothing about the extension may leak into it: no React, no design tokens, no
+      // `__WISPR_GATEWAY_ORIGIN__`. It is a few dozen lines with no imports, and keeping it
+      // minified even in development is part of keeping it that way.
+      minify: true,
+      sourcemap: false,
+    },
   };
 }
 
@@ -118,14 +135,14 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     )}\n`,
   );
 
-  const options = buildOptions(config);
+  const options = Object.values(buildOptions(config));
 
   if (!config.watch) {
-    await Promise.all([build(options.background), build(options.content)]);
+    await Promise.all(options.map((option) => build(option)));
     return;
   }
 
-  const contexts = await Promise.all([context(options.background), context(options.content)]);
+  const contexts = await Promise.all(options.map((option) => context(option)));
   await Promise.all(contexts.map((ctx) => ctx.watch()));
 }
 

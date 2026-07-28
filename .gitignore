@@ -32,3 +32,6 @@ __pycache__/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Bundled T1 embedding model — fetched by `pnpm --filter extension fetch:model`, not committed.
+apps/extension/assets/models/

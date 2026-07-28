@@ -227,6 +227,27 @@ function fromGatewayError(error: GatewayError, traceId: string): WisprError {
         retryable: true,
         retryAfterSeconds: readNonNegativeInt(error.details.retryAfterSeconds),
       };
+    case 'validation_failed':
+      return {
+        code: 'validation_failed',
+        message: error.message,
+        retryable: false,
+        issues: readIssues(error.details.issues, error.message),
+      };
+    case 'memory_snapshot_unavailable': {
+      const applicationId = readUuid(error.details.applicationId);
+      // The contract's variant carries the application id; without a valid one the honest thing
+      // is an internal error rather than a body that fails its own schema.
+      if (applicationId === null) {
+        return { code: 'internal', message: OPAQUE_INTERNAL, retryable: true, traceId };
+      }
+      return {
+        code: 'memory_snapshot_unavailable',
+        message: error.message,
+        retryable: true,
+        applicationId,
+      };
+    }
     default:
       // A protocol code this phase can name but has no richer construction for yet. Reported as
       // `internal` rather than guessed at: a half-populated variant would fail the contract's
@@ -244,4 +265,39 @@ function readRole(value: unknown): Role {
 
 function readNonNegativeInt(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function readUuid(value: unknown): string | null {
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
+}
+
+interface WireValidationIssue {
+  readonly path: string;
+  readonly message: string;
+}
+
+/**
+ * Coerce the `details.issues` a route attached into the contract's `ValidationIssue[]`.
+ *
+ * The variant requires at least one issue with a non-empty path and message. A route that
+ * supplied well-formed ones has them passed through; anything else collapses to a single issue
+ * carrying the error's own message, so the body always satisfies its schema.
+ */
+function readIssues(value: unknown, fallbackMessage: string): WireValidationIssue[] {
+  if (Array.isArray(value)) {
+    const issues = value.filter(
+      (issue): issue is WireValidationIssue =>
+        typeof issue === 'object' &&
+        issue !== null &&
+        typeof (issue as { path?: unknown }).path === 'string' &&
+        (issue as { path: string }).path.length > 0 &&
+        typeof (issue as { message?: unknown }).message === 'string' &&
+        (issue as { message: string }).message.length > 0,
+    );
+    if (issues.length > 0)
+      return issues.map((issue) => ({ path: issue.path, message: issue.message }));
+  }
+  return [{ path: 'root', message: fallbackMessage }];
 }

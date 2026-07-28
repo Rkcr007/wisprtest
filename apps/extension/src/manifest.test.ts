@@ -11,10 +11,11 @@ import { buildManifest } from './manifest.js';
 const manifest = buildManifest({ version: '1.2.3', gatewayOrigin: 'https://gateway.example' });
 
 describe('permissions', () => {
-  it('asks for storage and alarms, and nothing else', () => {
+  it('asks for storage, alarms and offscreen, and nothing else', () => {
     // Adding to this list should require changing this test, and changing this test should
-    // require an answer to "what breaks without it?".
-    expect(manifest.permissions).toEqual(['storage', 'alarms']);
+    // require an answer to "what breaks without it?". `offscreen` is what breaks the microphone:
+    // getUserMedia is unavailable in a service worker, so the voice pipeline needs a document.
+    expect(manifest.permissions).toEqual(['storage', 'alarms', 'offscreen']);
   });
 
   it('can reach the control plane and nothing else', () => {
@@ -31,10 +32,19 @@ describe('permissions', () => {
     expect(local.host_permissions).toEqual(['http://127.0.0.1:8080/*']);
   });
 
-  it('exposes no web-accessible resources', () => {
-    // Any exposed resource lets an arbitrary page detect that this extension is installed. A QA
-    // tool has no reason to add a fingerprinting surface.
-    expect(manifest).not.toHaveProperty('web_accessible_resources');
+  it('exposes only the embedding model, and behind a dynamic URL', () => {
+    // The T1 model and its WASM runtime are the one thing that cannot be bundled into the content
+    // script — onnxruntime-web loads them by URL — so they are web-accessible. Nothing else is,
+    // and `use_dynamic_url` randomises the path per session so exposing them does not become a
+    // stable way for a page to detect that this extension is installed.
+    const war = manifest.web_accessible_resources as {
+      resources: string[];
+      matches: string[];
+      use_dynamic_url: boolean;
+    }[];
+    expect(war).toHaveLength(1);
+    expect(war[0]?.resources).toEqual(['models/*']);
+    expect(war[0]?.use_dynamic_url).toBe(true);
   });
 
   it('does not ask for tabs, scripting or downloads', () => {

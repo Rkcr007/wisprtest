@@ -98,6 +98,22 @@ export const hudCss = `
   text-overflow: ellipsis;
 }
 
+/* Confirmed speech: a finalized transcript reads as settled, in the primary text colour. */
+.wispr-hud__transcript-final { color: var(--wispr-text); }
+
+/*
+ * The unconfirmed tail — the in-flight hypothesis that may still be revised. Rendered in the
+ * signal amber the reticle uses while aiming, and de-emphasised, so a tester can see at a glance
+ * which words are committed and which the system is still hearing. This is the phase requirement:
+ * the tail must be visually distinguished from the confirmed transcript.
+ */
+.wispr-hud__transcript-tail {
+  color: var(--wispr-signal);
+  opacity: 0.85;
+}
+
+.wispr-hud__transcript-final + .wispr-hud__transcript-tail { margin-left: 4px; }
+
 .wispr-hud__actions { display: flex; gap: var(--wispr-space-1); margin-left: auto; flex: none; }
 
 .wispr-hud__button {

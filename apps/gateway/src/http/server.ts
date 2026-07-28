@@ -8,6 +8,7 @@ import { currentContext } from '../context/request-context.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { asWisprError, GatewayError, httpStatusFor, toWisprError } from '../errors.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
+import { registerMemoryRoutes } from '../routes/memory.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
 import { registerRateLimit } from './rate-limit.js';
@@ -62,6 +63,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   });
   await registerRateLimit(app, { config, redis: options.redis });
   registerHealth(app, { config, database: options.database, redis: options.redis });
+  registerMemoryRoutes(app, {
+    config,
+    database: options.database,
+    redis: options.redis,
+    metrics,
+  });
 
   app.addHook('onResponse', (request, reply, done) => {
     const attributes = {

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { VoicePhase } from './voice/messages.js';
+
 /**
  * The channel between the content script and the service worker.
  *
@@ -60,6 +62,20 @@ export const HudRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('attach') }),
   /** The tester detached, or the HUD is unmounting. */
   z.strictObject({ kind: z.literal('detach') }),
+  /**
+   * The content script found its held snapshot stale — a `memory_version_mismatch` — and is
+   * asking the worker to refetch. Out of band: it never blocks a resolution, per the contract's
+   * note on that error code.
+   */
+  z.strictObject({ kind: z.literal('refetch_snapshot') }),
+  /**
+   * The tester engaged push-to-talk (or toggled it on). The hotkey is detected in the content
+   * script — the offscreen document sees no keyboard events — and relayed here so the worker can
+   * bring the microphone up. It carries no audio and no key: just the intent to start.
+   */
+  z.strictObject({ kind: z.literal('voice_start') }),
+  /** Push-to-talk released, toggled off, or focus lost. The worker finalizes and releases the mic. */
+  z.strictObject({ kind: z.literal('voice_stop') }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 
@@ -96,6 +112,90 @@ export function parseRequest(message: unknown): HudRequest | null {
   const parsed = HudRequest.safeParse(message);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * Where the memory snapshot is, as the HUD is allowed to know it.
+ *
+ * `loaded` means the content script has a snapshot and the resolver is live; `stale` means a
+ * version mismatch was seen and a refetch is in flight, and the tester keeps working against the
+ * held snapshot meanwhile — a refetch never blocks the hot path.
+ */
+export const SnapshotState = z.enum(['absent', 'loading', 'loaded', 'stale', 'failed']);
+export type SnapshotState = z.infer<typeof SnapshotState>;
+
+/**
+ * Service worker → content script: the memory snapshot itself.
+ *
+ * The snapshot is Product Memory — redacted structure, never page content — so it is safe to hand
+ * to the content script, which is where the resolver runs (the hot path is in-process). It is
+ * carried opaquely here and validated against `MemorySnapshot` on arrival: this internal channel
+ * ships in one artifact with both ends and has no reason to restate the cross-deployable contract.
+ */
+export const HudSnapshot = z.strictObject({
+  kind: z.literal('snapshot'),
+  state: SnapshotState,
+  applicationId: z.string().nullable(),
+  /** The held version, so the content script can tell a refetch's result apart from a no-op. */
+  memoryVersionId: z.string().nullable(),
+  /** The `MemorySnapshot`, present only when `state` is `loaded`. Validated by the receiver. */
+  snapshot: z.unknown(),
+});
+export type HudSnapshot = z.infer<typeof HudSnapshot>;
+
+/** One line of transcript with the revision it was produced at, so the HUD can order updates. */
+export const HudVoiceLine = z.strictObject({
+  revision: z.number().int().nonnegative(),
+  text: z.string(),
+});
+export type HudVoiceLine = z.infer<typeof HudVoiceLine>;
+
+/**
+ * Service worker → content script: the voice pipeline's tester-facing state.
+ *
+ * The worker distils the offscreen document's event stream into a single current picture, the same
+ * way it does for attach state — the HUD renders from this directly and a message missed while the
+ * tab was backgrounded cannot strand it in a state that never existed.
+ *
+ * `final` is the last committed line, rendered as confirmed; `partial` is the in-flight hypothesis,
+ * rendered as the *unconfirmed tail*, visually distinguished, per the phase requirement. The text
+ * here is the tester's own speech held for the session only — never the application's content.
+ */
+export const HudVoice = z.strictObject({
+  kind: z.literal('voice'),
+  phase: VoicePhase,
+  /** VAD activity in [0, 1], for the meter. 0 when not listening. */
+  level: z.number().min(0).max(1),
+  partial: HudVoiceLine.nullable(),
+  final: HudVoiceLine.nullable(),
+});
+export type HudVoice = z.infer<typeof HudVoice>;
+
+/** Everything the worker may push to the content script. */
+export type WorkerMessage = HudUpdate | HudSnapshot | HudVoice;
+
+/** Parse any worker → content message, or null if it is not one of ours. */
+export function parseWorkerMessage(message: unknown): WorkerMessage | null {
+  if (typeof message !== 'object' || message === null) return null;
+  const kind = (message as { kind?: unknown }).kind;
+  if (kind === 'snapshot') {
+    const parsed = HudSnapshot.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  if (kind === 'voice') {
+    const parsed = HudVoice.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  return parseUpdate(message);
+}
+
+/** The voice state a freshly connected HUD shows before anyone has spoken. */
+export const INITIAL_VOICE: HudVoice = {
+  kind: 'voice',
+  phase: 'idle',
+  level: 0,
+  partial: null,
+  final: null,
+};
 
 /** The state a freshly connected HUD shows before the worker has said anything. */
 export const INITIAL_UPDATE: HudUpdate = {

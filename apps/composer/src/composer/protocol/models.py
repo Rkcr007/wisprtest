@@ -122,6 +122,40 @@ class AliasSource(StrEnum):
     MANUAL = "manual"
 
 
+class Source(StrEnum):
+    """
+    Where the alias came from: a T2 resolution, or a tester correction.
+    """
+
+    T2_WRITEBACK = "t2_writeback"
+    MANUAL = "manual"
+
+
+class AliasWritebackResult(BaseModel):
+    """
+    Outcome of persisting a batch of alias write-backs.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    accepted: Annotated[
+        int, Field(description="Total write-backs processed.", ge=0, le=9007199254740991)
+    ]
+    inserted: Annotated[
+        int, Field(description="Write-backs that created a new alias.", ge=0, le=9007199254740991)
+    ]
+    updated: Annotated[
+        int,
+        Field(
+            description="Write-backs that matched an existing phrase and bumped it.",
+            ge=0,
+            le=9007199254740991,
+        ),
+    ]
+
+
 class NoAuthProfile(BaseModel):
     """
     The application needs no authentication to crawl.
@@ -487,7 +521,7 @@ class Op1(StrEnum):
     GTE = "gte"
 
 
-class Source(StrEnum):
+class Source1(StrEnum):
     INFERRED = "inferred"
     MANUAL = "manual"
 
@@ -1615,6 +1649,54 @@ class Alias(BaseModel):
             alias="createdAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
+        ),
+    ]
+
+
+class AliasWriteback(BaseModel):
+    """
+    A single phrase → element mapping to persist as an alias.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    phrase: Annotated[
+        str,
+        Field(
+            description="Normalised, redacted phrase as spoken by a tester.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    element_id: Annotated[
+        UUID, Field(alias="elementId", description="UUID identifier.", title="Uuid")
+    ]
+    state_fingerprint: Annotated[StateFingerprint | None, Field(alias="stateFingerprint")]
+    source: Annotated[
+        Source,
+        Field(description="Where the alias came from: a T2 resolution, or a tester correction."),
+    ]
+
+
+class AliasWritebackBatch(BaseModel):
+    """
+    Alias write-backs to persist against one memory version, scoped to the tenant.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    items: Annotated[
+        list[AliasWriteback],
+        Field(
+            description="At least one write-back; an empty batch is a bug, not a no-op.",
+            min_length=1,
         ),
     ]
 
@@ -3230,7 +3312,7 @@ class PredicateDefinition(BaseModel):
         ),
     ]
     clauses: Annotated[list[PredicateClause], Field(min_length=1)]
-    source: Source
+    source: Source1
     confidence: Annotated[
         float,
         Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),

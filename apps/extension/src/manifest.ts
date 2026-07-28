@@ -48,6 +48,15 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
        * expired one.
        */
       'alarms',
+
+      /**
+       * `offscreen` — the voice pipeline captures the microphone with `getUserMedia`, which is
+       * unavailable in a service worker. An offscreen document is the sanctioned MV3 place for it
+       * (see `src/voice/offscreen.ts`); the worker creates one on demand with the `USER_MEDIA`
+       * reason and tears it down when the tester stops. It hosts audio only — it renders nothing,
+       * reads no page, and never persists what it hears.
+       */
+      'offscreen',
     ],
 
     /**
@@ -129,11 +138,25 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
     },
 
     /**
-     * No `web_accessible_resources`.
+     * The T1 embedding model and its WASM runtime, and nothing else.
      *
-     * Everything the HUD needs is bundled into the content script and rendered into a shadow
-     * root. Exposing a resource would let any page on the internet detect that this extension is
-     * installed, which is a fingerprinting surface a QA tool has no need to add.
+     * Everything the HUD needs is bundled into the content script, but the bge-small model and the
+     * onnxruntime WASM cannot be — they are loaded at runtime by onnxruntime-web, which fetches
+     * them by URL. T1 resolution runs in the content script (the hot path is in-process, rule #2),
+     * so the content script has to be able to reach these resources, which requires listing them
+     * here.
+     *
+     * **`use_dynamic_url: true`** is what keeps this from reintroducing the fingerprinting surface
+     * a QA tool has no need for: the resource URL is randomised per session, so a page cannot probe
+     * a fixed path to detect that WisprTest is installed. Only the model assets are exposed — never
+     * the content script, the HUD, or anything carrying behaviour.
      */
+    web_accessible_resources: [
+      {
+        resources: ['models/*'],
+        matches: ['<all_urls>'],
+        use_dynamic_url: true,
+      },
+    ],
   };
 }

@@ -1,6 +1,11 @@
 node_modules/
 dist/
 coverage/
+
+# The bundled T1 embedding model — a binary ONNX graph and a 30k-line vocabulary, fetched by
+# `pnpm --filter extension fetch:model`, not committed and not formattable.
+apps/extension/assets/
+
 apps/console/.next/
 apps/console/next-env.d.ts
 pnpm-lock.yaml

@@ -9,8 +9,9 @@
     "db:codegen": "kysely-codegen --dialect postgres --out-file src/db/schema.generated.ts --camel-case --singularize",
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
-    "test": "vitest run && vitest run --config vitest.db.config.ts",
+    "test": "vitest run && vitest run --config vitest.db.config.ts && vitest run --config vitest.memory.config.ts",
     "test:db": "vitest run --config vitest.db.config.ts",
+    "test:memory": "vitest run --config vitest.memory.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

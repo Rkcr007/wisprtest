@@ -288,3 +288,76 @@ export const MemorySnapshot = contract(
     .describe('Complete resolvable memory for one application at one version.'),
 );
 export type MemorySnapshot = z.infer<typeof MemorySnapshot>;
+
+/**
+ * One learned phrase → element mapping the extension asks the gateway to persist.
+ *
+ * The write-back item, as opposed to {@link Alias} which is the stored row. It carries no `id`,
+ * no `tenantId` and no `hits`: the tenant comes from the scoped token, the id and hit count are
+ * the database's, and the memory version is named once on the enclosing batch. `phrase` is
+ * already normalised and redacted — the raw utterance never leaves the extension, per
+ * CLAUDE.md § "PII rule".
+ *
+ * `source` excludes `indexed`: an indexed alias is written by the crawl, not fed back from a
+ * runtime resolution. The two sources that reach this endpoint are a T2 escalation that
+ * succeeded and a tester's correction, and a correction is the highest-quality signal the
+ * system gets.
+ */
+export const AliasWriteback = contract(
+  'AliasWriteback',
+  z
+    .strictObject({
+      phrase: NonEmptyString.describe('Normalised, redacted phrase as spoken by a tester.'),
+      elementId: Uuid,
+      stateFingerprint: StateFingerprint.nullable(),
+      source: z
+        .enum(['t2_writeback', 'manual'])
+        .describe('Where the alias came from: a T2 resolution, or a tester correction.'),
+    })
+    .describe('A single phrase → element mapping to persist as an alias.'),
+);
+export type AliasWriteback = z.infer<typeof AliasWriteback>;
+
+/**
+ * A batch of alias write-backs for one memory version.
+ *
+ * Batched because the extension flushes its write-back queue rather than making a request per
+ * resolution (docs/BUILD-PLAN.md Phase 11: "Flush the queue in batches every 10s and on
+ * detach"). The `memoryVersionId` scopes every item: an alias learned against one version does
+ * not silently migrate to the next, which is a different version's decision to make.
+ */
+export const AliasWritebackBatch = contract(
+  'AliasWritebackBatch',
+  z
+    .strictObject({
+      memoryVersionId: Uuid,
+      items: z
+        .array(AliasWriteback)
+        .min(1)
+        .describe('At least one write-back; an empty batch is a bug, not a no-op.'),
+    })
+    .describe('Alias write-backs to persist against one memory version, scoped to the tenant.'),
+);
+export type AliasWritebackBatch = z.infer<typeof AliasWritebackBatch>;
+
+/**
+ * What the gateway reports back after persisting a batch.
+ *
+ * `inserted` and `updated` sum to `accepted`. The split matters to the compounding-loop metric:
+ * an `updated` means the phrase was already known and its hit count climbed, an `inserted` means
+ * a genuinely new mapping was learned.
+ */
+export const AliasWritebackResult = contract(
+  'AliasWritebackResult',
+  z
+    .strictObject({
+      accepted: z.int().min(0).describe('Total write-backs processed.'),
+      inserted: z.int().min(0).describe('Write-backs that created a new alias.'),
+      updated: z
+        .int()
+        .min(0)
+        .describe('Write-backs that matched an existing phrase and bumped it.'),
+    })
+    .describe('Outcome of persisting a batch of alias write-backs.'),
+);
+export type AliasWritebackResult = z.infer<typeof AliasWritebackResult>;

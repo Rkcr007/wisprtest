@@ -653,6 +653,75 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       },
     ],
   },
+  AliasWriteback: {
+    schema: p.AliasWriteback,
+    valid: [
+      {
+        phrase: 'only the pending ones',
+        elementId: UUID_A,
+        stateFingerprint: HASH_C,
+        source: 't2_writeback',
+      },
+      { phrase: 'the approve button', elementId: UUID_B, stateFingerprint: null, source: 'manual' },
+    ],
+    invalid: [
+      {
+        why: 'an indexed alias is written by the crawl, never fed back at runtime',
+        value: { phrase: 'pending', elementId: UUID_A, stateFingerprint: null, source: 'indexed' },
+      },
+      {
+        why: 'a write-back item carries no tenant — the scoped token supplies it',
+        value: {
+          phrase: 'pending',
+          elementId: UUID_A,
+          stateFingerprint: null,
+          source: 'manual',
+          tenantId: UUID_A,
+        },
+      },
+    ],
+  },
+  AliasWritebackBatch: {
+    schema: p.AliasWritebackBatch,
+    valid: [
+      {
+        memoryVersionId: UUID_C,
+        items: [
+          {
+            phrase: 'only the pending ones',
+            elementId: UUID_A,
+            stateFingerprint: HASH_C,
+            source: 't2_writeback',
+          },
+        ],
+      },
+    ],
+    invalid: [
+      {
+        why: 'an empty batch is a bug, not a no-op',
+        value: { memoryVersionId: UUID_C, items: [] },
+      },
+      {
+        why: 'the memory version is required — an alias is scoped to one',
+        value: {
+          items: [
+            { phrase: 'pending', elementId: UUID_A, stateFingerprint: null, source: 'manual' },
+          ],
+        },
+      },
+    ],
+  },
+  AliasWritebackResult: {
+    schema: p.AliasWritebackResult,
+    valid: [
+      { accepted: 3, inserted: 2, updated: 1 },
+      { accepted: 0, inserted: 0, updated: 0 },
+    ],
+    invalid: [
+      { why: 'counts are never negative', value: { accepted: -1, inserted: 0, updated: 0 } },
+      { why: 'counts are integers', value: { accepted: 1.5, inserted: 1, updated: 0 } },
+    ],
+  },
 
   /* ------------------------------------------------------------------------------ indexing */
 

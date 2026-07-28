@@ -11,7 +11,12 @@
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:runtime": "vitest run src/runtime",
-    "bench:scope": "vitest run --config vitest.bench.config.ts"
+    "test:resolver": "vitest run --config vitest.resolver.config.ts",
+    "test:voice": "vitest run --config vitest.voice.config.ts",
+    "bench:scope": "vitest run --config vitest.bench.config.ts",
+    "bench:resolve": "vitest run --config vitest.resolve-bench.config.ts",
+    "fetch:model": "tsx scripts/fetch-embedding-model.ts",
+    "make:voice-fixture": "tsx scripts/make-voice-fixture.ts"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.2",
@@ -28,6 +33,7 @@
   },
   "dependencies": {
     "fingerprint": "workspace:*",
+    "onnxruntime-web": "1.21.0",
     "protocol": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -151,14 +151,30 @@ describe('the instrument names', () => {
     metrics.falseExecutionTotal.add(1, {});
     metrics.httpRequestsTotal.add(1, {});
     metrics.httpRequestDurationMs.record(1, {});
+    metrics.memorySnapshotTotal.add(1, {});
+    metrics.memorySnapshotBuildMs.record(1, {});
 
     expect((await collect()).map((entry) => entry.name).sort()).toEqual([
       'wispr_false_execution_total',
       'wispr_gateway_request_duration_ms',
       'wispr_gateway_requests_total',
+      'wispr_memory_snapshot_build_ms',
+      'wispr_memory_snapshot_total',
       'wispr_seed_materialize_total',
       'wispr_seed_plan_latency_ms',
       'wispr_tier_total',
     ]);
+  });
+
+  it('labels a snapshot fetch by cache result', async () => {
+    // The compounding loop's cache-efficiency signal: a hit served the held snapshot, a miss paid
+    // to reassemble it from Postgres. A low hit rate means memory is churning under the tester.
+    metrics.memorySnapshotTotal.add(1, { result: 'hit' });
+    metrics.memorySnapshotTotal.add(1, { result: 'miss' });
+
+    const metric = (await collect()).find((entry) => entry.name === 'wispr_memory_snapshot_total');
+    expect(metric?.points.map((point) => point.attributes)).toEqual(
+      expect.arrayContaining([{ result: 'hit' }, { result: 'miss' }]),
+    );
   });
 });

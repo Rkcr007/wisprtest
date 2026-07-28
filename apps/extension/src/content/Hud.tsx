@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Cell, Chip, Toast, useDraggable, VadBars, type Tone } from 'ui';
 
-import type { AttachState, HudUpdate } from '../messaging.js';
+import { INITIAL_VOICE, type AttachState, type HudUpdate, type HudVoice } from '../messaging.js';
+import type { VoicePhase } from '../voice/messages.js';
 
 /**
  * The HUD.
@@ -27,6 +28,8 @@ import type { AttachState, HudUpdate } from '../messaging.js';
 
 export interface HudProps {
   readonly update: HudUpdate;
+  /** The voice pipeline's tester-facing state. Defaults to idle before anyone has spoken. */
+  readonly voice?: HudVoice;
   readonly onAttach: () => void;
   readonly onDetach: () => void;
   /** The page the HUD is mounted on. Origin only — never the path, which is content. */
@@ -55,12 +58,42 @@ const FAILURE_DETAIL: Record<'unauthenticated' | 'unreachable' | 'internal', str
   internal: 'Something went wrong on our side. Try again, and report it if it persists.',
 };
 
-export function Hud({ update, onAttach, onDetach, origin, version }: HudProps): ReactNode {
+/** The voice phase, phrased for the state chip. `dropped` is called out as a loss, not a status. */
+const VOICE_LABEL: Record<VoicePhase, string> = {
+  idle: 'Hold to talk',
+  connecting: 'Connecting…',
+  listening: 'Listening',
+  reconnecting: 'Reconnecting…',
+  dropped: 'Audio dropped',
+  error: 'Voice unavailable',
+};
+
+const VOICE_TONE: Record<VoicePhase, Tone> = {
+  idle: 'neutral',
+  connecting: 'signal',
+  listening: 'signal',
+  reconnecting: 'signal',
+  dropped: 'drift',
+  error: 'drift',
+};
+
+/** The mic is open only while these phases are live; the meter is flat (null) otherwise. */
+const LISTENING_PHASES = new Set<VoicePhase>(['listening', 'reconnecting', 'dropped']);
+
+export function Hud({
+  update,
+  voice = INITIAL_VOICE,
+  onAttach,
+  onDetach,
+  origin,
+  version,
+}: HudProps): ReactNode {
   const [collapsed, setCollapsed] = useState(true);
   const draggable = useDraggable({ initial: { x: 16, y: 16 } });
 
   const attached = update.attach === 'attached';
   const busy = update.attach === 'attaching';
+  const listening = LISTENING_PHASES.has(voice.phase);
 
   return (
     <div className="wispr-hud-root" data-wispr-hud="root">
@@ -91,12 +124,16 @@ export function Hud({ update, onAttach, onDetach, origin, version }: HudProps): 
             data-testid="wispr-hud-orb"
           />
 
-          {/* Level is null: the microphone is not open in this phase, and a flat-but-live meter
-              would say it was. Phase 9 supplies the level. */}
-          <VadBars level={null} />
+          {/* Live only while the microphone is open; flat otherwise, so "not listening" and
+              "listening to a quiet room" never look the same. */}
+          <VadBars level={listening ? voice.level : null} />
 
-          <span className="wispr-hud__transcript" data-testid="wispr-hud-transcript">
-            {attached ? 'Ready — voice arrives in a later phase' : 'Not attached'}
+          <span
+            className="wispr-hud__transcript"
+            data-testid="wispr-hud-transcript"
+            data-voice-phase={voice.phase}
+          >
+            {renderTranscript(attached, voice)}
           </span>
 
           <span className="wispr-hud__actions">
@@ -129,8 +166,10 @@ export function Hud({ update, onAttach, onDetach, origin, version }: HudProps): 
             {/* ── Band 2: intent ──────────────────────────────────────────────────────── */}
             <div className="wispr-hud__band wispr-hud__intent" data-testid="wispr-hud-intent">
               <span className="wispr-hud__intent-row">
-                <span className="wispr-hud__intent-label">Intent</span>
-                <Chip tone="signal">awaiting speech</Chip>
+                <span className="wispr-hud__intent-label">Voice</span>
+                <Chip tone={VOICE_TONE[voice.phase]} live>
+                  {VOICE_LABEL[voice.phase]}
+                </Chip>
               </span>
               <span className="wispr-hud__intent-row">
                 <span className="wispr-hud__intent-label">Target</span>
@@ -185,6 +224,35 @@ export function Hud({ update, onAttach, onDetach, origin, version }: HudProps): 
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The live transcript: the confirmed line, then the unconfirmed tail, visually distinguished.
+ *
+ * The finalized transcript reads as settled; the partial — the in-flight hypothesis, still subject
+ * to revision — is rendered in the signal colour as the tail. Showing both is the point: a tester
+ * watches their words land and can see which the system has committed to before an action fires.
+ */
+function renderTranscript(attached: boolean, voice: HudVoice): ReactNode {
+  if (!attached) return 'Not attached';
+
+  const final = voice.final?.text ?? '';
+  const partial = voice.partial?.text ?? '';
+
+  if (final === '' && partial === '') {
+    return voice.phase === 'listening' ? 'Listening…' : 'Hold to talk';
+  }
+
+  return (
+    <>
+      {final !== '' ? <span className="wispr-hud__transcript-final">{final}</span> : null}
+      {partial !== '' ? (
+        <span className="wispr-hud__transcript-tail" data-testid="wispr-hud-transcript-tail">
+          {partial}
+        </span>
+      ) : null}
+    </>
   );
 }
 

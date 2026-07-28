@@ -39,6 +39,10 @@ export interface GatewayMetrics {
   readonly httpRequestsTotal: Counter;
   /** Request duration, so a latency regression is visible without an APM. */
   readonly httpRequestDurationMs: Histogram;
+  /** Snapshot requests, labelled by cache `result` (hit/miss). A low hit rate means churn. */
+  readonly memorySnapshotTotal: Counter;
+  /** Time to assemble a snapshot from Postgres on a cache miss. Paid once per version. */
+  readonly memorySnapshotBuildMs: Histogram;
 }
 
 export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): GatewayMetrics {
@@ -61,6 +65,13 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Gate
     }),
     httpRequestDurationMs: meter.createHistogram('wispr_gateway_request_duration_ms', {
       description: 'HTTP request duration, in milliseconds.',
+      unit: 'ms',
+    }),
+    memorySnapshotTotal: meter.createCounter('wispr_memory_snapshot_total', {
+      description: 'Snapshot fetches, labelled by cache result (hit or miss).',
+    }),
+    memorySnapshotBuildMs: meter.createHistogram('wispr_memory_snapshot_build_ms', {
+      description: 'Time to assemble a memory snapshot from Postgres on a cache miss.',
       unit: 'ms',
     }),
   };

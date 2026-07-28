@@ -17,5 +17,14 @@
     // bundled into it.
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts", "vitest.bench.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts",
+    "vitest.bench.config.ts",
+    "vitest.resolver.config.ts",
+    "vitest.resolve-bench.config.ts",
+    "vitest.voice.config.ts"
+  ]
 }

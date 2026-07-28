@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  The MV3 offscreen document.
+
+  Invisible and never shown to the tester; it exists only to host getUserMedia and the audio
+  graph, which a service worker cannot. Loads its script as a module. No content, no styles — it
+  renders nothing.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WisprTest voice</title>
+  </head>
+  <body>
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>

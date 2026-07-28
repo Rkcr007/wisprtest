@@ -21,5 +21,8 @@ export default async function setup(): Promise<void> {
     env: 'test',
     version: '0.0.0',
     watch: false,
+    // No ASR credential in the e2e build: voice surfaces `no_token` rather than opening a mic a
+    // headless Chromium has no device for. The pipeline itself is proven in `test:voice`.
+    asrToken: '',
   });
 }

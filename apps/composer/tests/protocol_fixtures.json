@@ -147,6 +147,45 @@
     "t2_writeback",
     "manual"
   ],
+  "AliasWriteback": [
+    {
+      "phrase": "only the pending ones",
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "source": "t2_writeback"
+    },
+    {
+      "phrase": "the approve button",
+      "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "stateFingerprint": null,
+      "source": "manual"
+    }
+  ],
+  "AliasWritebackBatch": [
+    {
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "items": [
+        {
+          "phrase": "only the pending ones",
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "source": "t2_writeback"
+        }
+      ]
+    }
+  ],
+  "AliasWritebackResult": [
+    {
+      "accepted": 3,
+      "inserted": 2,
+      "updated": 1
+    },
+    {
+      "accepted": 0,
+      "inserted": 0,
+      "updated": 0
+    }
+  ],
   "AuthProfile": [
     {
       "kind": "none"

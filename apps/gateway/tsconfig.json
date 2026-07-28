@@ -13,5 +13,5 @@
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "vitest.db.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.db.config.ts", "vitest.memory.config.ts"]
 }

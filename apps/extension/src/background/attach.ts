@@ -5,10 +5,14 @@ import {
   parseRequest,
   type AttachFailure,
   type AttachState,
+  type HudSnapshot,
   type HudUpdate,
+  type SnapshotState,
 } from '../messaging.js';
+import type { MemoryClient } from './memory-client.js';
 import { isUsable, type TokenClient } from './token-client.js';
 import type { TokenStore } from './token-store.js';
+import type { VoiceController } from './voice-controller.js';
 
 /**
  * The attach state machine, and the per-tab sessions it drives.
@@ -54,6 +58,18 @@ export interface AttachControllerOptions {
   readonly tokens: TokenClient;
   readonly store: TokenStore;
   readonly alarms: AlarmScheduler;
+  /**
+   * Loads and holds the memory snapshot. Optional so the token lifecycle can be tested in
+   * isolation; when present, a successful attach fetches the snapshot and pushes it to the HUD,
+   * and a `refetch_snapshot` request reloads it out of band.
+   */
+  readonly memory?: MemoryClient;
+  /**
+   * The voice pipeline's worker half. Optional so the attach lifecycle can be tested in isolation;
+   * when present, the HUD's push-to-talk requests are relayed to it and its transcript state is
+   * pushed back over the same port.
+   */
+  readonly voice?: VoiceController;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -99,12 +115,77 @@ export function createAttachController(options: AttachControllerOptions): Attach
     tokens,
     store,
     alarms,
+    memory,
+    voice,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
     now = () => Date.now(),
     onError,
   } = options;
 
   const sessions = new Map<number, Session>();
+
+  /** Post a snapshot state to the HUD, tolerating a tab that navigated away mid-flight. */
+  function postSnapshot(session: Session, message: HudSnapshot): void {
+    try {
+      session.port.postMessage(message);
+    } catch (error: unknown) {
+      onError?.('snapshot.post_failed', error);
+    }
+  }
+
+  function snapshotMessage(
+    state: SnapshotState,
+    applicationId: string | null,
+    memoryVersionId: string | null,
+    snapshot?: unknown,
+  ): HudSnapshot {
+    return { kind: 'snapshot', state, applicationId, memoryVersionId, snapshot };
+  }
+
+  /**
+   * Fetch the snapshot for an attached tab and push it to its HUD.
+   *
+   * A no-op without a memory client. An origin that matches no registered application has a token
+   * with `applicationId: null` and simply has nothing to load — reported as `absent`, not an
+   * error, so the HUD says "not indexed" rather than showing a failure for a normal page.
+   */
+  async function loadSnapshot(tabId: number): Promise<void> {
+    if (memory === undefined) return;
+    const session = sessions.get(tabId);
+    if (session?.token == null) return;
+
+    const applicationId = session.token.applicationId;
+    if (applicationId === null) {
+      postSnapshot(session, snapshotMessage('absent', null, null));
+      return;
+    }
+
+    postSnapshot(session, snapshotMessage('loading', applicationId, null));
+
+    try {
+      const snapshot = await memory.load(applicationId, session.token.token);
+
+      // The tab may have detached while the fetch was in flight; pushing a snapshot to a session
+      // that is gone would revive a HUD for a page that no longer exists.
+      const current = sessions.get(tabId);
+      if (current?.state !== 'attached') return;
+
+      if (snapshot === null) {
+        postSnapshot(current, snapshotMessage('absent', applicationId, null));
+        return;
+      }
+      postSnapshot(
+        current,
+        snapshotMessage('loaded', applicationId, snapshot.memoryVersion.id, snapshot),
+      );
+    } catch (error: unknown) {
+      const current = sessions.get(tabId);
+      if (current?.state === 'attached') {
+        postSnapshot(current, snapshotMessage('failed', applicationId, null));
+      }
+      onError?.('snapshot.load_failed', error);
+    }
+  }
 
   function publish(tabId: number): void {
     const session = sessions.get(tabId);
@@ -175,6 +256,9 @@ export function createAttachController(options: AttachControllerOptions): Attach
       publish(tabId);
 
       scheduleRefresh(tabId, token);
+      // The snapshot load is off the attach path: the HUD reaches `attached` as soon as the token
+      // is held, and memory streams in behind it rather than gating the panel on a fetch.
+      void loadSnapshot(tabId);
     } catch (error: unknown) {
       const current = sessions.get(tabId);
       if (current === undefined) return;
@@ -194,6 +278,9 @@ export function createAttachController(options: AttachControllerOptions): Attach
   async function detach(tabId: number): Promise<void> {
     const session = sessions.get(tabId);
     if (session === undefined) return;
+
+    // Drop the held snapshot with the token that fetched it: a detached tab keeps no memory.
+    if (session.token?.applicationId != null) memory?.invalidate(session.token.applicationId);
 
     session.state = 'detached';
     session.failure = null;
@@ -246,10 +333,27 @@ export function createAttachController(options: AttachControllerOptions): Attach
           case 'detach':
             void detach(tabId);
             return;
+          case 'refetch_snapshot': {
+            // The content script found its snapshot stale. Drop the held copy and reload; the
+            // tester keeps working against the old one until the new one arrives.
+            const applicationId = session.token?.applicationId;
+            if (applicationId != null) memory?.invalidate(applicationId);
+            void loadSnapshot(tabId);
+            return;
+          }
+          case 'voice_start':
+            // Only an attached tab may open the microphone: capture needs a session, and the ASR
+            // credential is minted against the same authenticated context the token gives.
+            if (session.state === 'attached') void voice?.start(port);
+            return;
+          case 'voice_stop':
+            void voice?.stop(port);
+            return;
         }
       });
 
       port.onDisconnect.addListener(() => {
+        voice?.release(port);
         sessions.delete(tabId);
         void alarms.clear(alarmNameFor(tabId));
       });

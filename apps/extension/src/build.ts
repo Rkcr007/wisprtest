@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { build, context, type BuildOptions } from 'esbuild';
@@ -23,6 +23,9 @@ import { buildManifest } from './manifest.js';
  * dist/background.js     ESM — MV3 service workers support modules
  * dist/content.js        IIFE — content scripts do not
  * dist/route-bridge.js   IIFE — runs in the page's own world, see src/runtime/route-bridge.ts
+ * dist/offscreen.js      ESM — the voice pipeline's document, owns getUserMedia (Phase 9)
+ * dist/offscreen.html    the offscreen document's shell, copied verbatim
+ * dist/audio-worklet.js  IIFE — runs on the audio thread, see src/voice/audio-worklet.ts
  * ```
  *
  * ## Build-time constants
@@ -38,6 +41,12 @@ export interface BuildConfig {
   readonly env: 'development' | 'production' | 'test';
   readonly version: string;
   readonly watch: boolean;
+  /**
+   * A short-lived ASR credential for local development only, empty by default so nothing is baked
+   * into a shipped bundle. In production the worker mints one from the gateway (a later phase);
+   * without either, voice surfaces a truthful `no_token` state rather than opening a dead mic.
+   */
+  readonly asrToken: string;
 }
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -65,11 +74,14 @@ export function buildOptions(config: BuildConfig): {
   background: BuildOptions;
   content: BuildOptions;
   routeBridge: BuildOptions;
+  offscreen: BuildOptions;
+  audioWorklet: BuildOptions;
 } {
   const define = {
     __WISPR_GATEWAY_ORIGIN__: JSON.stringify(config.gatewayOrigin),
     __WISPR_ENV__: JSON.stringify(config.env),
     __WISPR_VERSION__: JSON.stringify(config.version),
+    __WISPR_ASR_TOKEN__: JSON.stringify(config.asrToken),
     // React reads this. Without it the development build ships React's dev warnings into a
     // customer's page, and the production build keeps its invariant messages.
     'process.env.NODE_ENV': JSON.stringify(
@@ -119,6 +131,21 @@ export function buildOptions(config: BuildConfig): {
       minify: true,
       sourcemap: false,
     },
+    offscreen: {
+      ...shared,
+      entryPoints: [`${here}voice/offscreen.ts`],
+      outfile: `${config.outDir}/offscreen.js`,
+      // An offscreen document is a real extension page, so its script is a module like the worker.
+      format: 'esm',
+    },
+    audioWorklet: {
+      ...shared,
+      entryPoints: [`${here}voice/audio-worklet.ts`],
+      outfile: `${config.outDir}/audio-worklet.js`,
+      // Loaded by `audioWorklet.addModule` into the audio rendering thread, which has no module
+      // system. It has no imports and touches no extension API — it only forwards samples.
+      format: 'iife',
+    },
   };
 }
 
@@ -135,6 +162,15 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     )}\n`,
   );
 
+  // The offscreen document's shell is static HTML esbuild does not process; copy it verbatim so
+  // `chrome.offscreen.createDocument({ url: 'offscreen.html' })` has something to load.
+  await copyFile(
+    fileURLToPath(new URL('./voice/offscreen.html', import.meta.url)),
+    `${config.outDir}/offscreen.html`,
+  );
+
+  await copyModelAssets(config.outDir);
+
   const options = Object.values(buildOptions(config));
 
   if (!config.watch) {
@@ -144,6 +180,57 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   const contexts = await Promise.all(options.map((option) => context(option)));
   await Promise.all(contexts.map((ctx) => ctx.watch()));
+}
+
+/**
+ * Copy the T1 embedding model and the onnxruntime WASM runtime into `dist/models/`.
+ *
+ * The model is fetched, not committed (`pnpm --filter extension fetch:model`), so a build without
+ * it is a real state — a developer who has not run the fetch. That warns and continues rather than
+ * failing: the extension still builds and loads, and T1 degrades to "model unavailable" at runtime
+ * rather than the whole build breaking. A release build is expected to have run the fetch first.
+ *
+ * The WASM files come straight from the installed `onnxruntime-web`, so the runtime the extension
+ * ships is exactly the one it was built against — there is no second copy to drift.
+ */
+async function copyModelAssets(outDir: string): Promise<void> {
+  const modelDir = fileURLToPath(new URL('../assets/models/bge-small/', import.meta.url));
+  const ortDir = fileURLToPath(new URL('../node_modules/onnxruntime-web/dist/', import.meta.url));
+
+  if (!(await exists(`${modelDir}model_quantized.onnx`))) {
+    process.stderr.write(
+      `${JSON.stringify({
+        event: 'extension.model_missing',
+        detail: 'run `pnpm --filter extension fetch:model`; T1 will be unavailable until then',
+      })}\n`,
+    );
+    return;
+  }
+
+  await mkdir(`${outDir}/models/bge-small`, { recursive: true });
+  await copyFile(
+    `${modelDir}model_quantized.onnx`,
+    `${outDir}/models/bge-small/model_quantized.onnx`,
+  );
+  await copyFile(`${modelDir}vocab.txt`, `${outDir}/models/bge-small/vocab.txt`);
+
+  await mkdir(`${outDir}/models/ort`, { recursive: true });
+  // Every `ort-wasm*.{wasm,mjs}` the runtime might select, copied verbatim so onnxruntime-web
+  // finds its glue and binary under `wasmPaths` whichever variant it picks at load time.
+  for (const file of await readdir(ortDir)) {
+    if (/^ort-wasm.*\.(wasm|mjs)$/.test(file)) {
+      await copyFile(`${ortDir}${file}`, `${outDir}/models/ort/${file}`);
+    }
+  }
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** `--flag value` and `--flag=value` both, because both get typed. */
@@ -204,6 +291,9 @@ export function configFromArgs(argv: readonly string[], env: NodeJS.ProcessEnv):
     env: envName,
     version: requireString(args.version, 'version', '0.0.0'),
     watch: args.watch === true,
+    // Empty unless a developer passes one for local voice testing. Never committed, never defaulted
+    // to a real value — a bundle with a baked-in provider key would violate CLAUDE.md rule #10.
+    asrToken: requireString(args['asr-token'], 'asr-token', env.ASR_TOKEN ?? ''),
   };
 }
 

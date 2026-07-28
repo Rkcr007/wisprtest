@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Cell, Chip, Toast, useDraggable, VadBars, type Tone } from 'ui';
+import { Cell, Chip, Reticle, Toast, useDraggable, VadBars, type Tone } from 'ui';
 
 import { INITIAL_VOICE, type AttachState, type HudUpdate, type HudVoice } from '../messaging.js';
+import type { SpeculationView } from '../speculation/index.js';
+import type { ActionClass } from 'protocol';
 import type { VoicePhase } from '../voice/messages.js';
 
 /**
@@ -26,10 +28,33 @@ import type { VoicePhase } from '../voice/messages.js';
  * of the band is real, its plumbing is real, and its values are honestly empty.
  */
 
+/** The idle speculation view, so a HUD rendered before anyone speaks shows no reticle. */
+const IDLE_SPECULATION: SpeculationView = {
+  phase: 'idle',
+  rect: null,
+  label: null,
+  verb: null,
+  actionClass: null,
+  confidence: null,
+  awaitingConfirmation: false,
+};
+
+/** The tone each reversibility class is drawn in — truthful about what is about to happen. */
+const CLASS_TONE: Record<ActionClass, Tone> = {
+  R: 'commit', // reversible; runs freely
+  C: 'signal', // committing; aimed, awaiting the tester's yes
+  A: 'memory', // ambiguous; needs disambiguation
+  S: 'seed', // seeding; previewed before write
+};
+
 export interface HudProps {
   readonly update: HudUpdate;
   /** The voice pipeline's tester-facing state. Defaults to idle before anyone has spoken. */
   readonly voice?: HudVoice;
+  /** The speculation controller's view: the reticle, the understood intent, and its class. */
+  readonly speculation?: SpeculationView;
+  /** Called when the tester approves a staged class-C action. */
+  readonly onConfirm?: () => void;
   readonly onAttach: () => void;
   readonly onDetach: () => void;
   /** The page the HUD is mounted on. Origin only — never the path, which is content. */
@@ -83,6 +108,8 @@ const LISTENING_PHASES = new Set<VoicePhase>(['listening', 'reconnecting', 'drop
 export function Hud({
   update,
   voice = INITIAL_VOICE,
+  speculation = IDLE_SPECULATION,
+  onConfirm,
   onAttach,
   onDetach,
   origin,
@@ -95,8 +122,18 @@ export function Hud({
   const busy = update.attach === 'attaching';
   const listening = LISTENING_PHASES.has(voice.phase);
 
+  // The reticle is hidden when idle; its colour tracks the taxonomy — `staged` for a class-C action
+  // waiting on a yes, `executed` only once something has actually run.
+  const reticleRect = speculation.phase === 'idle' ? null : speculation.rect;
+  const reticleState = speculation.phase === 'idle' ? 'aiming' : speculation.phase;
+
   return (
     <div className="wispr-hud-root" data-wispr-hud="root">
+      <Reticle
+        rect={reticleRect}
+        state={reticleState}
+        {...(speculation.label === null ? {} : { label: speculation.label })}
+      />
       <div
         ref={draggable.ref}
         className={`wispr-hud${collapsed ? ' wispr-hud--collapsed' : ''}${draggable.dragging ? ' wispr-hud--dragging' : ''}`}
@@ -173,8 +210,24 @@ export function Hud({
               </span>
               <span className="wispr-hud__intent-row">
                 <span className="wispr-hud__intent-label">Target</span>
-                <Cell label="element" value={null} />
-                <Cell label="class" value={null} />
+                <Cell label="element" value={speculation.label} />
+                <Cell
+                  label="class"
+                  value={speculation.actionClass}
+                  {...(speculation.actionClass === null
+                    ? {}
+                    : { tone: CLASS_TONE[speculation.actionClass] })}
+                />
+                {speculation.awaitingConfirmation && onConfirm ? (
+                  <button
+                    type="button"
+                    className="wispr-hud__button wispr-hud__button--primary"
+                    onClick={onConfirm}
+                    data-testid="wispr-hud-confirm"
+                  >
+                    Confirm
+                  </button>
+                ) : null}
               </span>
             </div>
 

@@ -45,13 +45,22 @@ const PAGE_HTML = `<!doctype html>
     <main>
       <h1>Orders</h1>
       <button id="approve">Approve order</button>
+      <input id="search" aria-label="Search orders" />
       <p id="log">no clicks</p>
     </main>
     <script>
       // Records that a click reached the application. The HUD's container spans the viewport, so
       // "the page still receives clicks outside the panel" needs the page to be able to say so.
-      document.getElementById('approve').addEventListener('click', () => {
+      // The command e2e also reads data-trusted, to prove the CDP-dispatched click carried
+      // isTrusted — the exact property an approve button is entitled to gate on.
+      document.getElementById('approve').addEventListener('click', (event) => {
         document.getElementById('log').textContent = 'approve clicked';
+        document.documentElement.dataset.trusted = String(event.isTrusted);
+      });
+      // Records typed characters and whether the keystrokes were trusted, for the type verb.
+      var search = document.getElementById('search');
+      search.addEventListener('keydown', (event) => {
+        document.documentElement.dataset.typedTrusted = String(event.isTrusted);
       });
     </script>
   </body>

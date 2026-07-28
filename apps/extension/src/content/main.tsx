@@ -2,7 +2,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { MemorySnapshot } from 'protocol';
+import { MemorySnapshot, type ResolutionResult } from 'protocol';
 
 import {
   HUD_PORT,
@@ -12,12 +12,56 @@ import {
   type HudUpdate,
   type HudVoice,
 } from '../messaging.js';
+import {
+  CDP_MESSAGE,
+  createActionExecutor,
+  createRelayDispatcher,
+  type CdpCommand,
+} from '../executor/index.js';
 import { createBrowserEmbedder, createResolver, type Resolver } from '../resolver/index.js';
 import { createRuntimeStateEngine, type RuntimeStateEngine } from '../runtime/index.js';
+import {
+  buildIntentVocabulary,
+  createBinderLocator,
+  createIntentParser,
+  createSpeculationController,
+  IDLE_VIEW,
+  type SpeculationController,
+  type SpeculationView,
+} from '../speculation/index.js';
 import { createHotkey } from '../voice/hotkey.js';
 import { DEFAULT_VOICE_SETTINGS } from '../voice/config.js';
 import { Hud } from './Hud.js';
 import { mountHudHost } from './mount.js';
+
+/** A resolution the controller reads as "nothing matched" while the T1 model is still loading. */
+const NOT_FOUND: ResolutionResult = { outcome: 'not_found', tier: 'T1', latencyMs: 0, candidates: [] };
+
+/**
+ * Relay one CDP command to the service worker and await its acknowledgement.
+ *
+ * `chrome.debugger` is unreachable from a content script, so the executor's trusted dispatch goes
+ * worker-side; this awaits the reply so a command the worker could not run rejects here and the
+ * executor records a failed action rather than a silent miss.
+ */
+async function sendCdp(command: CdpCommand): Promise<void> {
+  const response: unknown = await chrome.runtime.sendMessage({ type: CDP_MESSAGE, command });
+  if (typeof response !== 'object' || response === null || (response as { ok?: unknown }).ok !== true) {
+    const error = (response as { error?: unknown } | null)?.error;
+    throw new Error(typeof error === 'string' ? error : 'cdp dispatch failed');
+  }
+}
+
+/** Destination route for a navigation trigger, learned from the snapshot's nav graph. */
+function buildNavRoutes(snapshot: MemorySnapshot): (elementId: string) => string | null {
+  const routeByScreen = new Map(snapshot.screens.map((screen) => [screen.id, screen.routePattern]));
+  const routeByTrigger = new Map<string, string>();
+  for (const edge of snapshot.navEdges) {
+    const route = routeByScreen.get(edge.toScreenId);
+    if (route !== undefined) routeByTrigger.set(edge.triggerElementId, route);
+  }
+  return (elementId) => routeByTrigger.get(elementId) ?? null;
+}
 
 /**
  * Content script entrypoint.
@@ -70,8 +114,15 @@ function HudApp({
    */
   const [engine, setEngine] = useState<RuntimeStateEngine | null>(null);
   const [snapshot, setSnapshot] = useState<MemorySnapshot | null>(null);
-  /** The resolver, once memory and the engine are both present. Consumed by Phase 10. */
+  /** The resolver, once memory and the engine are both present. Driven by the controller below. */
   const resolver = useRef<Resolver | null>(null);
+  /** The speculation controller and the view it publishes for the reticle and intent bands. */
+  const controllerRef = useRef<SpeculationController | null>(null);
+  const [speculation, setSpeculation] = useState<SpeculationView>(IDLE_VIEW);
+  // Transition tracking, so the voice snapshot below drives one onset/partial/final per change.
+  const prevPhaseRef = useRef<HudVoice['phase']>('idle');
+  const lastPartialRef = useRef(-1);
+  const lastFinalRef = useRef(-1);
   const attached = update.attach === 'attached';
 
   useEffect(() => {
@@ -106,9 +157,20 @@ function HudApp({
     // A holder rather than a bare `let`: the effect's cleanup flips `cancelled` after this async
     // build has already been scheduled, and reading a mutable field is what keeps the check honest
     // instead of a value flow-analysis would fold to a constant.
-    const lifecycle: { cancelled: boolean; built: Resolver | null } = {
-      cancelled: false,
-      built: null,
+    const lifecycle: {
+      cancelled: boolean;
+      built: Resolver | null;
+      controller: SpeculationController | null;
+      viewSub: { unsubscribe(): void } | null;
+    } = { cancelled: false, built: null, controller: null, viewSub: null };
+
+    // The live scope, shared by the resolver and the controller: the current screen's fingerprint
+    // and its visible, reachable elements.
+    const source = {
+      current: () => ({
+        stateFingerprint: engine.state.value.stateFingerprint,
+        candidates: engine.scopedIndex.candidates(),
+      }),
     };
 
     void (async () => {
@@ -120,18 +182,25 @@ function HudApp({
           await embedder.dispose();
           return;
         }
-        lifecycle.built = createResolver({
-          snapshot,
-          embedder,
-          // The scope, live: the current screen's fingerprint and its visible, reachable elements.
-          source: {
-            current: () => ({
-              stateFingerprint: engine.state.value.stateFingerprint,
-              candidates: engine.scopedIndex.candidates(),
-            }),
-          },
-        });
+        lifecycle.built = createResolver({ snapshot, embedder, source });
         resolver.current = lifecycle.built;
+
+        // The runtime loop: parse → resolve → speculate/stage → commit → execute, all in-process.
+        // The executor's trusted dispatch is relayed to the worker, which owns `chrome.debugger`.
+        const controller = createSpeculationController({
+          parser: createIntentParser({ vocabulary: buildIntentVocabulary(snapshot) }),
+          resolver: {
+            resolve: (phrase) => resolver.current?.resolve(phrase) ?? Promise.resolve(NOT_FOUND),
+          },
+          executor: createActionExecutor({ dispatcher: createRelayDispatcher(sendCdp), window }),
+          locator: createBinderLocator(snapshot),
+          source,
+          window,
+          navRouteFor: buildNavRoutes(snapshot),
+        });
+        lifecycle.controller = controller;
+        controllerRef.current = controller;
+        lifecycle.viewSub = controller.view.subscribe(setSpeculation);
       } catch (error: unknown) {
         console.warn('wispr: T1 embedding model unavailable', error);
       }
@@ -140,7 +209,11 @@ function HudApp({
     return () => {
       lifecycle.cancelled = true;
       resolver.current = null;
+      controllerRef.current = null;
+      lifecycle.viewSub?.unsubscribe();
+      lifecycle.controller?.dispose();
       lifecycle.built?.dispose();
+      setSpeculation(IDLE_VIEW);
     };
   }, [engine, snapshot]);
 
@@ -219,10 +292,41 @@ function HudApp({
     };
   }, [attached, port]);
 
+  /**
+   * Drive the speculation controller from the voice snapshot.
+   *
+   * The worker distils the ASR stream into one {@link HudVoice}; this turns its transitions back
+   * into the controller's event vocabulary — a fresh onset when the microphone opens, then each new
+   * partial and the final by their monotonic revision. The controller does the rest: speculate on a
+   * reversible target, stage a committing one, and never execute a class-C action from a partial.
+   */
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (controller === null) return;
+
+    if (voice.phase === 'listening' && prevPhaseRef.current !== 'listening') {
+      controller.onSpeechOnset();
+      lastPartialRef.current = -1;
+      lastFinalRef.current = -1;
+    }
+    prevPhaseRef.current = voice.phase;
+
+    if (voice.partial !== null && voice.partial.revision > lastPartialRef.current) {
+      lastPartialRef.current = voice.partial.revision;
+      void controller.onPartial({ revision: voice.partial.revision, transcript: voice.partial.text });
+    }
+    if (voice.final !== null && voice.final.revision > lastFinalRef.current) {
+      lastFinalRef.current = voice.final.revision;
+      void controller.onFinal({ revision: voice.final.revision, transcript: voice.final.text });
+    }
+  }, [voice]);
+
   return (
     <Hud
       update={update}
       voice={voice}
+      speculation={speculation}
+      onConfirm={() => controllerRef.current?.confirm()}
       onAttach={() => {
         send('attach');
       }}

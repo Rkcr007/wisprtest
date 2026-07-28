@@ -57,6 +57,21 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
        * reads no page, and never persists what it hears.
        */
       'offscreen',
+
+      /**
+       * `debugger` — the executor dispatches through the DevTools protocol
+       * (`Input.dispatchMouseEvent` / `dispatchKeyEvent`) so the application under test receives
+       * *trusted* events. A synthetic `click` carries `isTrusted === false`, and a class-C control —
+       * approve, submit, delete — is entitled to refuse it; only the debugger transport produces a
+       * click a bank's approve button will honour (docs/ARCHITECTURE.md § 3, CLAUDE.md § "Reversibility
+       * taxonomy"). It is the most invasive permission here and the most load-bearing.
+       *
+       * **What limits it:** the debugger is attached lazily, on the first command a tester issues on a
+       * tab, and detached when the tab goes away (`background/cdp-dispatch.ts`). A tab the tester only
+       * browses never has it attached, and Chrome shows its own banner whenever it is — the tester
+       * always sees when WisprTest is able to act.
+       */
+      'debugger',
     ],
 
     /**

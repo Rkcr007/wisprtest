@@ -2,6 +2,7 @@ import { consoleSink, createLogger } from '../log.js';
 import { HUD_PORT } from '../messaging.js';
 import type { OffscreenCommand } from '../voice/messages.js';
 import { createAttachController } from './attach.js';
+import { createCdpDispatchService } from './cdp-dispatch.js';
 import { createMemoryClient } from './memory-client.js';
 import { createTokenClient } from './token-client.js';
 import { createTokenStore } from './token-store.js';
@@ -89,6 +90,16 @@ const controller = createAttachController({
   },
 });
 
+/**
+ * The worker half of CDP dispatch. The content-script executor cannot reach `chrome.debugger`, so
+ * it relays each `Input.dispatch*` command here to be run against its own tab as trusted input.
+ */
+const cdp = createCdpDispatchService({
+  attach: (target, version) => chrome.debugger.attach(target, version),
+  detach: (target) => chrome.debugger.detach(target),
+  sendCommand: (target, method, params) => chrome.debugger.sendCommand(target, method, params),
+});
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== HUD_PORT) return;
   controller.connect(port);
@@ -99,6 +110,19 @@ chrome.runtime.onConnect.addListener((port) => {
 // anything that is not a voice event.
 chrome.runtime.onMessage.addListener((message: unknown) => {
   voice.handleEvent(message);
+});
+
+// The content-script executor relays each CDP command here; the worker runs it against the sender's
+// tab and answers so a dispatch that could not run is reported rather than silently lost.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!cdp.isCdpMessage(message)) return undefined;
+  void cdp.handle(message, sender.tab?.id).then(sendResponse);
+  return true; // keep the channel open for the async response
+});
+
+// Release the debugger session when a tab the tester was driving goes away.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  cdp.release(tabId);
 });
 
 // The toolbar button toggles the panel on the current tab. It is the tester's way to get the HUD

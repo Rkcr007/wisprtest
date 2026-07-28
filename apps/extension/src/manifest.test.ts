@@ -11,11 +11,13 @@ import { buildManifest } from './manifest.js';
 const manifest = buildManifest({ version: '1.2.3', gatewayOrigin: 'https://gateway.example' });
 
 describe('permissions', () => {
-  it('asks for storage, alarms and offscreen, and nothing else', () => {
+  it('asks for storage, alarms, offscreen and debugger, and nothing else', () => {
     // Adding to this list should require changing this test, and changing this test should
     // require an answer to "what breaks without it?". `offscreen` is what breaks the microphone:
     // getUserMedia is unavailable in a service worker, so the voice pipeline needs a document.
-    expect(manifest.permissions).toEqual(['storage', 'alarms', 'offscreen']);
+    // `debugger` is what makes dispatched clicks and keystrokes *trusted* (Phase 10): without it a
+    // synthetic click carries `isTrusted === false` and a class-C approve button may refuse it.
+    expect(manifest.permissions).toEqual(['storage', 'alarms', 'offscreen', 'debugger']);
   });
 
   it('can reach the control plane and nothing else', () => {

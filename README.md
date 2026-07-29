@@ -1,6 +1,9 @@
 <div align="center">
 
-<h1>🎙️ WisprTest</h1>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-lockup-dark.svg" />
+  <img src="docs/media/logo-lockup-light.svg" alt="WisprTest — Remember → Execute" width="360" />
+</picture>
 
 <h3>A voice-native execution layer for manual QA of enterprise web apps.</h3>
 

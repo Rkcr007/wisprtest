@@ -223,7 +223,16 @@ export const EscalateResponse = contract(
   'EscalateResponse',
   z
     .strictObject({
-      elementId: Uuid.describe('The chosen candidate; must be one of the request candidates.'),
+      /**
+       * The chosen candidate. Must be one of the request's candidates — the gateway rejects an id
+       * that was not offered rather than passing a hallucinated one through.
+       *
+       * Left as the bare `Uuid` on purpose: a `.describe()` here would inline the primitive's
+       * schema instead of referencing it, and the generated pydantic model would then carry a
+       * string `pattern` on a `UUID`-typed field, which cannot validate. The contract round-trip
+       * test in apps/composer is what catches that.
+       */
+      elementId: Uuid,
       confidence: Confidence,
       reasoning: NonEmptyString.describe("The model's short, PII-free justification for the pick."),
     })

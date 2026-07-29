@@ -2538,13 +2538,7 @@ class EscalateResponse(BaseModel):
         populate_by_name=True,
     )
     element_id: Annotated[
-        UUID,
-        Field(
-            alias="elementId",
-            description="The chosen candidate; must be one of the request candidates.",
-            pattern="^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            title="Uuid",
-        ),
+        UUID, Field(alias="elementId", description="UUID identifier.", title="Uuid")
     ]
     confidence: Annotated[
         float,

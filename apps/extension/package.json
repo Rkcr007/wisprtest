@@ -16,6 +16,7 @@
     "test:tier2": "vitest run src/resolver/tier2.test.ts src/resolver/writeback.test.ts src/resolver/disambiguation.test.ts",
     "test:writeback-loop": "vitest run --config vitest.writeback-loop.config.ts",
     "test:speculation": "vitest run src/speculation src/executor",
+    "test:session-buffer": "vitest run src/session",
     "test:voice": "vitest run --config vitest.voice.config.ts",
     "bench:scope": "vitest run --config vitest.bench.config.ts",
     "bench:resolve": "vitest run --config vitest.resolve-bench.config.ts",

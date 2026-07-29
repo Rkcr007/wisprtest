@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Cell, Chip, Reticle, Toast, useDraggable, VadBars, type Tone } from 'ui';
 
 import { INITIAL_VOICE, type AttachState, type HudUpdate, type HudVoice } from '../messaging.js';
+import type { Disambiguation } from '../resolver/index.js';
 import type { SpeculationView } from '../speculation/index.js';
 import type { ActionClass } from 'protocol';
 import type { VoicePhase } from '../voice/messages.js';
@@ -55,6 +56,16 @@ export interface HudProps {
   readonly speculation?: SpeculationView;
   /** Called when the tester approves a staged class-C action. */
   readonly onConfirm?: () => void;
+  /**
+   * The open disambiguation, when no tier could name an element (Phase 11).
+   *
+   * Numbered because the tester answers by *speaking* an ordinal — "one, two, or three" — while
+   * their hands are on the application under test. The buttons are the same choice for a tester
+   * who would rather click, and both paths write the correction back as an alias.
+   */
+  readonly disambiguation?: Disambiguation | null;
+  /** Called with the one-based ordinal the tester picked. */
+  readonly onChoose?: (ordinal: number) => void;
   readonly onAttach: () => void;
   readonly onDetach: () => void;
   /** The page the HUD is mounted on. Origin only — never the path, which is content. */
@@ -102,6 +113,14 @@ const VOICE_TONE: Record<VoicePhase, Tone> = {
   error: 'drift',
 };
 
+/**
+ * The word a tester says for each offered position.
+ *
+ * Only three, because that is `disambiguationLimit` — a spoken list longer than "one, two, or
+ * three" is one the tester has to re-read instead of answering.
+ */
+const ORDINAL_WORD: Record<number, string> = { 1: 'one', 2: 'two', 3: 'three' };
+
 /** The mic is open only while these phases are live; the meter is flat (null) otherwise. */
 const LISTENING_PHASES = new Set<VoicePhase>(['listening', 'reconnecting', 'dropped']);
 
@@ -110,6 +129,8 @@ export function Hud({
   voice = INITIAL_VOICE,
   speculation = IDLE_SPECULATION,
   onConfirm,
+  disambiguation = null,
+  onChoose,
   onAttach,
   onDetach,
   origin,
@@ -230,6 +251,38 @@ export function Hud({
                 ) : null}
               </span>
             </div>
+
+            {/* ── Disambiguation: only while a choice is open ─────────────────────────── */}
+            {disambiguation === null ? null : (
+              <div
+                className="wispr-hud__band wispr-hud__disambiguation"
+                data-testid="wispr-hud-disambiguation"
+              >
+                {/* A group, not a dialog: the tester can ignore it and say something else, and a
+                    dialog would imply they have to deal with it before touching the page again. */}
+                <span className="wispr-hud__intent-label" id="wispr-hud-disambiguation-label">
+                  Which one?
+                </span>
+                <div role="group" aria-labelledby="wispr-hud-disambiguation-label">
+                  {disambiguation.choices.map((choice) => (
+                    <button
+                      key={choice.candidate.elementId}
+                      type="button"
+                      className="wispr-hud__button"
+                      onClick={() => onChoose?.(choice.ordinal)}
+                      data-testid={`wispr-hud-choice-${String(choice.ordinal)}`}
+                    >
+                      {/* The spoken word, not just the digit: the tester says "two", and the label
+                          should be the thing they say rather than a number they have to translate. */}
+                      <span className="wispr-hud__ordinal">
+                        {ORDINAL_WORD[choice.ordinal] ?? String(choice.ordinal)}
+                      </span>{' '}
+                      {choice.candidate.label || choice.candidate.elementKey}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── Band 3: telemetry ───────────────────────────────────────────────────── */}
             <div className="wispr-hud__band">

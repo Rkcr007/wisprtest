@@ -179,6 +179,21 @@ const RESOLUTION_RESULT = {
   candidates: [RESOLUTION_CANDIDATE],
 };
 
+const ESCALATION_CANDIDATE = {
+  elementId: UUID_A,
+  elementKey: 'orders.filter.pending',
+  label: 'Pending',
+};
+
+const ESCALATE_REQUEST = {
+  utterance: 'the ones still waiting on someone',
+  stateFingerprint: HASH_C,
+  candidates: [
+    ESCALATION_CANDIDATE,
+    { elementId: UUID_B, elementKey: 'orders.filter.approved', label: 'Approved' },
+  ],
+};
+
 const EVIDENCE_REF = {
   kind: 'screenshot',
   storageKey: 'tenants/3f2504e0/sessions/9c5b94b1/step-4.png',
@@ -1109,6 +1124,55 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       {
         why: 'resolved without an element id',
         value: without(RESOLUTION_RESULT, 'elementId'),
+      },
+    ],
+  },
+  EscalationCandidate: {
+    schema: p.EscalationCandidate,
+    valid: [ESCALATION_CANDIDATE],
+    invalid: [
+      {
+        why: 'carries a raw accessible name field the redaction contract forbids',
+        value: withField(ESCALATION_CANDIDATE, 'accessibleName', 'Priya Sharma'),
+      },
+      {
+        why: 'element key is not screen.component.element',
+        value: withField(ESCALATION_CANDIDATE, 'elementKey', 'pending'),
+      },
+    ],
+  },
+  EscalateRequest: {
+    schema: p.EscalateRequest,
+    valid: [ESCALATE_REQUEST],
+    invalid: [
+      {
+        why: 'no candidate set — a T2 escalation must never widen to the whole document',
+        value: withField(ESCALATE_REQUEST, 'candidates', []),
+      },
+      {
+        why: 'missing the state fingerprint the write-back keys on',
+        value: without(ESCALATE_REQUEST, 'stateFingerprint'),
+      },
+    ],
+  },
+  EscalateResponse: {
+    schema: p.EscalateResponse,
+    valid: [
+      { elementId: UUID_A, confidence: 0.88, reasoning: 'best matches the pending-orders filter' },
+      {
+        elementId: UUID_B,
+        confidence: 0.34,
+        reasoning: 'weak match; nearest is the approved filter',
+      },
+    ],
+    invalid: [
+      {
+        why: 'confidence above 1',
+        value: { elementId: UUID_A, confidence: 1.4, reasoning: 'over-confident' },
+      },
+      {
+        why: 'empty reasoning is not a justification',
+        value: { elementId: UUID_A, confidence: 0.9, reasoning: '' },
       },
     ],
   },

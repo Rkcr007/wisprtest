@@ -89,7 +89,11 @@ const DEFAULT_MAX_RECONNECT_ATTEMPTS = 6;
 export function createVoicePipeline(config: PipelineConfig): VoicePipeline {
   const now = config.now ?? defaultNow;
   const schedule = config.schedule ?? ((fn, ms) => setTimeout(fn, ms));
-  const cancel = config.cancel ?? ((handle) => clearTimeout(handle));
+  const cancel =
+    config.cancel ??
+    ((handle) => {
+      clearTimeout(handle);
+    });
   const random = config.random ?? Math.random;
   const frameMs = config.frameMs ?? DEFAULT_FRAME_MS;
   const backoff = config.backoff ?? DEFAULT_BACKOFF;
@@ -246,7 +250,7 @@ export function createVoicePipeline(config: PipelineConfig): VoicePipeline {
       config.emit({ kind: 'level', level: vad.level });
       if (!isSpeech) return;
 
-      if (onsetAt === null) onsetAt = now();
+      onsetAt ??= now();
 
       if (phase === 'listening' && asr?.isOpen === true) {
         asr.send(frame);

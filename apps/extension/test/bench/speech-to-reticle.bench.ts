@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { createActionExecutor } from '../../src/executor/index.js';
 import { createIntentParser } from '../../src/speculation/index.js';
-import { createSpeculationController, type Locator, type ResolverLike } from '../../src/speculation/index.js';
+import {
+  createSpeculationController,
+  type Locator,
+  type ResolverLike,
+} from '../../src/speculation/index.js';
 import { SCRIPTED_UTTERANCE } from '../../src/voice/testing.js';
 
 /**
@@ -55,7 +59,9 @@ describe('speech onset → reticle rendered', () => {
     const locator: Locator = { locate: () => target };
 
     const controller = createSpeculationController({
-      parser: createIntentParser({ vocabulary: { navTargets: new Set(['orders']), landmarks: new Set() } }),
+      parser: createIntentParser({
+        vocabulary: { navTargets: new Set(['orders']), landmarks: new Set() },
+      }),
       resolver: fastResolver(KEY, ID),
       executor: createActionExecutor({
         dispatcher: { mouse: () => Promise.resolve(), key: () => Promise.resolve() },
@@ -80,7 +86,8 @@ describe('speech onset → reticle rendered', () => {
         await controller.onPartial({ revision: revision++, transcript });
         // The controller publishes its view synchronously inside `process`, before the await
         // settles — so the first non-idle phase after a partial is the reticle being rendered.
-        if (reticleAt === 0 && controller.view.value.phase !== 'idle') reticleAt = performance.now();
+        if (reticleAt === 0 && controller.view.value.phase !== 'idle')
+          reticleAt = performance.now();
       }
 
       if (reticleAt === 0) throw new Error('the reticle never rendered for the scripted utterance');

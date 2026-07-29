@@ -76,6 +76,28 @@ export const HudRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('voice_start') }),
   /** Push-to-talk released, toggled off, or focus lost. The worker finalizes and releases the mic. */
   z.strictObject({ kind: z.literal('voice_stop') }),
+  /**
+   * T0 and T1 both missed: escalate this phrase to the gateway's model (Phase 11).
+   *
+   * The request travels opaquely and is validated against `EscalateRequest` in the worker, for the
+   * same reason the snapshot is validated on arrival — this internal channel ships in one artifact
+   * with both ends and has no business restating the cross-deployable contract. `requestId`
+   * correlates the reply: a port is a stream, not a call, and two escalations can be in flight
+   * when speech revises mid-utterance.
+   */
+  z.strictObject({
+    kind: z.literal('escalate'),
+    requestId: z.string().min(1),
+    request: z.unknown(),
+  }),
+  /**
+   * A learned phrase → element mapping, on its way to the write-back queue.
+   *
+   * Fire-and-forget by design: the resolution it came from has already been returned, and nothing
+   * on the hot path waits for vocabulary to be persisted. The queue in the worker batches these
+   * and flushes every 10s and on detach.
+   */
+  z.strictObject({ kind: z.literal('alias_writeback'), writeback: z.unknown() }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 
@@ -170,8 +192,27 @@ export const HudVoice = z.strictObject({
 });
 export type HudVoice = z.infer<typeof HudVoice>;
 
+/**
+ * Service worker → content script: the answer to one escalation.
+ *
+ * Shaped as the resolver's own `EscalationOutcome` so the content script's transport can hand it
+ * straight back with no translation layer to drift. `response` is carried opaquely and validated
+ * against `EscalateResponse` by the worker before it is sent, so a failed validation arrives as a
+ * clean `not_found` rather than as a malformed pick the content script has to defend against.
+ */
+export const HudEscalateResult = z.strictObject({
+  kind: z.literal('escalate_result'),
+  requestId: z.string().min(1),
+  ok: z.boolean(),
+  /** Present when `ok`; an `EscalateResponse`, validated by the receiver. */
+  response: z.unknown(),
+  /** Present when not `ok`: why the escalation produced no pick. */
+  reason: z.enum(['timeout', 'unavailable', 'not_found']).nullable(),
+});
+export type HudEscalateResult = z.infer<typeof HudEscalateResult>;
+
 /** Everything the worker may push to the content script. */
-export type WorkerMessage = HudUpdate | HudSnapshot | HudVoice;
+export type WorkerMessage = HudUpdate | HudSnapshot | HudVoice | HudEscalateResult;
 
 /** Parse any worker → content message, or null if it is not one of ours. */
 export function parseWorkerMessage(message: unknown): WorkerMessage | null {
@@ -183,6 +224,10 @@ export function parseWorkerMessage(message: unknown): WorkerMessage | null {
   }
   if (kind === 'voice') {
     const parsed = HudVoice.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  if (kind === 'escalate_result') {
+    const parsed = HudEscalateResult.safeParse(message);
     return parsed.success ? parsed.data : null;
   }
   return parseUpdate(message);

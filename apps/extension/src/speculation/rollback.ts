@@ -123,7 +123,10 @@ export function captureRollback(
           element.value = value;
           if (selectionStart !== null && 'setSelectionRange' in element) {
             try {
-              (element as HTMLInputElement).setSelectionRange(selectionStart, selectionEnd ?? selectionStart);
+              (element as HTMLInputElement).setSelectionRange(
+                selectionStart,
+                selectionEnd ?? selectionStart,
+              );
             } catch {
               // A number/email input throws on setSelectionRange; the value restore is what matters.
             }

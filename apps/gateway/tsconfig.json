@@ -6,6 +6,9 @@
     // Resolve the contract from source, so a clean checkout typechecks without building
     // packages/protocol first. Emit is unaffected: tsconfig.build.json clears this, and the
     // compiled output resolves `protocol` to its built package by name.
+    // `fingerprint` is resolved through its built package, not source: it is a browser package
+    // whose source needs DOM lib, and this is a Node typecheck (types: node, no DOM). `skipLibCheck`
+    // keeps its `.d.ts`'s DOM references from erroring here — the same way the indexer consumes it.
     "paths": {
       "protocol": ["../../packages/protocol/src/index.ts"]
     },
@@ -13,5 +16,12 @@
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "vitest.db.config.ts", "vitest.memory.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "vitest.config.ts",
+    "vitest.db.config.ts",
+    "vitest.memory.config.ts",
+    "vitest.resolve.config.ts"
+  ]
 }

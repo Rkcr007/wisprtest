@@ -33,6 +33,8 @@ export interface GatewayMetrics {
   readonly seedMaterializeTotal: Counter;
   /** Resolution tier distribution. The single best health metric for the compounding loop. */
   readonly tierTotal: Counter;
+  /** T2 escalation latency, labelled by tier and outcome. The 800 ms budget is measured here. */
+  readonly resolutionLatencyMs: Histogram;
   /** False executions. Alerts at any nonzero value; there is no acceptable rate. */
   readonly falseExecutionTotal: Counter;
   /** Requests served, by route, status and outcome. Gateway-native rather than from § 7. */
@@ -56,6 +58,10 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Gate
     }),
     tierTotal: meter.createCounter('wispr_tier_total', {
       description: 'Resolutions reported to the gateway, labelled by tier.',
+    }),
+    resolutionLatencyMs: meter.createHistogram('wispr_resolution_latency_ms', {
+      description: 'T2 escalation latency, labelled by tier and outcome.',
+      unit: 'ms',
     }),
     falseExecutionTotal: meter.createCounter('wispr_false_execution_total', {
       description: 'Actions executed against the wrong element. Alerts at any nonzero rate.',

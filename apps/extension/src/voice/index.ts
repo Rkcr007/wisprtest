@@ -38,10 +38,6 @@ export {
   type SocketLike,
   type SocketFactory,
 } from './deepgram-asr.js';
-export type {
-  StreamingAsr,
-  StreamingAsrEvents,
-  StreamingAsrFactory,
-} from './streaming-asr.js';
+export type { StreamingAsr, StreamingAsrEvents, StreamingAsrFactory } from './streaming-asr.js';
 export { createMetrics, consoleMetricSink, type Metrics, type MetricSink } from './metrics.js';
 export { DEFAULT_VOICE_SETTINGS, type VoiceSettings, type AsrProviderConfig } from './config.js';

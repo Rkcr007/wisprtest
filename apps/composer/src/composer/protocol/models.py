@@ -2528,6 +2528,62 @@ class ElementRename(BaseModel):
     ]
 
 
+class EscalateResponse(BaseModel):
+    """
+    The T2 model's chosen candidate, its confidence, and why.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    element_id: Annotated[
+        UUID, Field(alias="elementId", description="UUID identifier.", title="Uuid")
+    ]
+    confidence: Annotated[
+        float,
+        Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
+    ]
+    reasoning: Annotated[
+        str,
+        Field(
+            description="The model's short, PII-free justification for the pick.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class EscalationCandidate(BaseModel):
+    """
+    One scoped candidate as presented to the T2 model, carrying only redacted text.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    element_id: Annotated[
+        UUID, Field(alias="elementId", description="UUID identifier.", title="Uuid")
+    ]
+    element_key: Annotated[
+        str,
+        Field(
+            alias="elementKey",
+            description="Stable element identifier in the form screen.component.element.",
+            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
+            title="ElementKey",
+        ),
+    ]
+    label: Annotated[
+        str,
+        Field(
+            description="Text that has passed PII redaction and is safe to persist or place in a prompt.",
+            title="RedactedText",
+        ),
+    ]
+
+
 class EvidenceRef(BaseModel):
     """
     Reference to a redacted evidence artifact held in object storage.
@@ -4067,6 +4123,40 @@ class DriftReport(BaseModel):
             alias="resolvedAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
+        ),
+    ]
+
+
+class EscalateRequest(BaseModel):
+    """
+    A T2 escalation: a redacted phrase plus the scoped candidates to choose among.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    utterance: Annotated[
+        str,
+        Field(
+            description="Redacted phrase to resolve against the candidate set.",
+            title="RedactedText",
+        ),
+    ]
+    state_fingerprint: Annotated[
+        str,
+        Field(
+            alias="stateFingerprint",
+            description="SHA-256 over route pattern, modal stack and focused landmark; identifies a runtime state.",
+            pattern="^[0-9a-f]{64}$",
+            title="StateFingerprint",
+        ),
+    ]
+    candidates: Annotated[
+        list[EscalationCandidate],
+        Field(
+            description="The scoped candidate set; the model may only pick from these.",
+            min_length=1,
         ),
     ]
 

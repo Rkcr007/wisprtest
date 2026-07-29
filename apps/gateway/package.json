@@ -9,9 +9,10 @@
     "db:codegen": "kysely-codegen --dialect postgres --out-file src/db/schema.generated.ts --camel-case --singularize",
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
-    "test": "vitest run && vitest run --config vitest.db.config.ts && vitest run --config vitest.memory.config.ts",
+    "test": "vitest run && vitest run --config vitest.db.config.ts && vitest run --config vitest.memory.config.ts && vitest run --config vitest.resolve.config.ts",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:memory": "vitest run --config vitest.memory.config.ts",
+    "test:resolve": "vitest run --config vitest.resolve.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@opentelemetry/sdk-node": "0.221.0",
     "@opentelemetry/semantic-conventions": "1.39.0",
     "fastify": "5.10.0",
+    "fingerprint": "workspace:*",
     "ioredis": "5.11.1",
     "jose": "6.2.4",
     "kysely": "0.29.4",

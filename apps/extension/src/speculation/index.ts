@@ -12,8 +12,18 @@
  * identity (CLAUDE.md rule #4).
  */
 
-export { createIntentParser, buildIntentVocabulary, EMPTY_VOCABULARY, DEFAULT_VERB_LEXICON } from './intent.js';
-export type { IntentParser, ParsedIntent, IntentVocabulary, IntentParserOptions } from './intent.js';
+export {
+  createIntentParser,
+  buildIntentVocabulary,
+  EMPTY_VOCABULARY,
+  DEFAULT_VERB_LEXICON,
+} from './intent.js';
+export type {
+  IntentParser,
+  ParsedIntent,
+  IntentVocabulary,
+  IntentParserOptions,
+} from './intent.js';
 export {
   classifyAction,
   DEFAULT_CLASSIFY_CONFIG,

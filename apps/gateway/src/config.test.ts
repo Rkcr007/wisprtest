@@ -23,6 +23,11 @@ const validEnv = {
   OIDC_CLOCK_TOLERANCE_SECONDS: '60',
   RATE_LIMIT_MAX: '600',
   RATE_LIMIT_WINDOW_MS: '60000',
+  MODEL_API_KEY: 'sk-ant-test',
+  MODEL_BASE_URL: 'https://api.anthropic.com',
+  MODEL_PRIMARY: 'claude-haiku-4-5-20251001',
+  MODEL_FALLBACK: 'claude-haiku-4-5-20251001',
+  MODEL_TIMEOUT_MS: '800',
   OTEL_SERVICE_NAME: 'wispr-gateway',
   SHUTDOWN_TIMEOUT_MS: '10000',
 } satisfies NodeJS.ProcessEnv;

@@ -918,6 +918,43 @@
       "createdAt": "2026-07-25T09:30:00.000Z"
     }
   ],
+  "EscalateRequest": [
+    {
+      "utterance": "the ones still waiting on someone",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "candidates": [
+        {
+          "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "elementKey": "orders.filter.pending",
+          "label": "Pending"
+        },
+        {
+          "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "elementKey": "orders.filter.approved",
+          "label": "Approved"
+        }
+      ]
+    }
+  ],
+  "EscalateResponse": [
+    {
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "confidence": 0.88,
+      "reasoning": "best matches the pending-orders filter"
+    },
+    {
+      "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "confidence": 0.34,
+      "reasoning": "weak match; nearest is the approved filter"
+    }
+  ],
+  "EscalationCandidate": [
+    {
+      "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "elementKey": "orders.filter.pending",
+      "label": "Pending"
+    }
+  ],
   "EvidenceRef": [
     {
       "kind": "screenshot",

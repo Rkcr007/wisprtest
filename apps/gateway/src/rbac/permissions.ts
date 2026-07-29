@@ -23,6 +23,7 @@ import { ForbiddenError } from '../errors.js';
  * |-------------------------|---------------------------------------------------|-------|
  * | `memory:read`           | snapshot load, memory browsing                     | 8     |
  * | `session:write`         | opening a session, ingesting steps                 | 12    |
+ * | `resolve:escalate`      | T2 model escalation                                | 11    |
  * | `alias:write`           | T2 write-back                                      | 11    |
  * | `seed:plan`             | composing a plan — writes nothing                  | 15    |
  * | `seed:execute`          | materializing a plan into the app under test       | 15    |
@@ -45,6 +46,7 @@ export type Role = (typeof ROLES)[number];
 export const PERMISSIONS = [
   'memory:read',
   'session:write',
+  'resolve:escalate',
   'alias:write',
   'seed:plan',
   'seed:execute',
@@ -62,11 +64,12 @@ const ROLE_RANK: Record<Role, number> = { viewer: 0, tester: 1, lead: 2, owner: 
 export const PERMISSIONS_BY_ROLE = {
   viewer: ['memory:read'],
 
-  tester: ['memory:read', 'session:write', 'alias:write', 'seed:plan'],
+  tester: ['memory:read', 'session:write', 'resolve:escalate', 'alias:write', 'seed:plan'],
 
   lead: [
     'memory:read',
     'session:write',
+    'resolve:escalate',
     'alias:write',
     'seed:plan',
     'seed:execute',
@@ -79,6 +82,7 @@ export const PERMISSIONS_BY_ROLE = {
   owner: [
     'memory:read',
     'session:write',
+    'resolve:escalate',
     'alias:write',
     'seed:plan',
     'seed:execute',

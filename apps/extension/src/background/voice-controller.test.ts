@@ -11,9 +11,9 @@ import { createVoiceController, type VoiceController } from './voice-controller.
 
 function fakeOffscreen() {
   return {
-    ensure: vi.fn<() => Promise<void>>(async () => undefined),
-    close: vi.fn<() => Promise<void>>(async () => undefined),
-    send: vi.fn<(command: OffscreenCommand) => Promise<void>>(async () => undefined),
+    ensure: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+    close: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+    send: vi.fn<(command: OffscreenCommand) => Promise<void>>(() => Promise.resolve()),
   };
 }
 
@@ -30,7 +30,10 @@ beforeEach(() => {
 
 describe('start — credential handling', () => {
   it('shows connecting, mints a token, and starts capture', async () => {
-    const controller = createVoiceController({ offscreen, mintToken: async () => 'tok' });
+    const controller = createVoiceController({
+      offscreen,
+      mintToken: () => Promise.resolve('tok'),
+    });
     const port = collectingPort();
 
     await controller.start(port);
@@ -41,7 +44,7 @@ describe('start — credential handling', () => {
   });
 
   it('surfaces an honest error and opens no microphone when no token is available', async () => {
-    const controller = createVoiceController({ offscreen, mintToken: async () => null });
+    const controller = createVoiceController({ offscreen, mintToken: () => Promise.resolve(null) });
     const port = collectingPort();
 
     await controller.start(port);
@@ -55,9 +58,7 @@ describe('start — credential handling', () => {
     const onError = vi.fn<(event: string, error: unknown) => void>();
     const controller = createVoiceController({
       offscreen,
-      mintToken: async () => {
-        throw new Error('gateway 503');
-      },
+      mintToken: () => Promise.reject(new Error('gateway 503')),
       onError,
     });
     const port = collectingPort();
@@ -75,7 +76,7 @@ describe('event distillation', () => {
   let port: ReturnType<typeof collectingPort>;
 
   beforeEach(async () => {
-    controller = createVoiceController({ offscreen, mintToken: async () => 'tok' });
+    controller = createVoiceController({ offscreen, mintToken: () => Promise.resolve('tok') });
     port = collectingPort();
     await controller.start(port);
     port.posts.length = 0; // drop the start-time posts; assert on events from here
@@ -85,7 +86,11 @@ describe('event distillation', () => {
     controller.handleEvent({ kind: 'partial', revision: 3, transcript: 'show me the bending' });
     expect(port.posts.at(-1)?.partial).toEqual({ revision: 3, text: 'show me the bending' });
 
-    controller.handleEvent({ kind: 'final', revision: 4, transcript: 'show me the pending orders' });
+    controller.handleEvent({
+      kind: 'final',
+      revision: 4,
+      transcript: 'show me the pending orders',
+    });
     const last = port.posts.at(-1);
     expect(last?.final).toEqual({ revision: 4, text: 'show me the pending orders' });
     expect(last?.partial).toBeNull(); // the tail clears when the line is confirmed
@@ -101,7 +106,11 @@ describe('event distillation', () => {
 
   it('forwards the metric out of band without posting to the HUD', () => {
     const onMetric = vi.fn<(name: string, valueMs: number) => void>();
-    const metered = createVoiceController({ offscreen, mintToken: async () => 'tok', onMetric });
+    const metered = createVoiceController({
+      offscreen,
+      mintToken: () => Promise.resolve('tok'),
+      onMetric,
+    });
     const p = collectingPort();
     metered.handleEvent({ kind: 'metric', name: 'wispr_speech_to_partial_ms', valueMs: 42 });
     expect(onMetric).toHaveBeenCalledWith('wispr_speech_to_partial_ms', 42);
@@ -126,7 +135,10 @@ describe('event distillation', () => {
 
 describe('session ownership', () => {
   it('last start wins, and a stop from a displaced tab is ignored', async () => {
-    const controller = createVoiceController({ offscreen, mintToken: async () => 'tok' });
+    const controller = createVoiceController({
+      offscreen,
+      mintToken: () => Promise.resolve('tok'),
+    });
     const first = collectingPort();
     const second = collectingPort();
 
@@ -142,7 +154,10 @@ describe('session ownership', () => {
   });
 
   it('stops posting to a released port and closes the document', () => {
-    const controller = createVoiceController({ offscreen, mintToken: async () => 'tok' });
+    const controller = createVoiceController({
+      offscreen,
+      mintToken: () => Promise.resolve('tok'),
+    });
     const port = collectingPort();
     void controller.start(port);
 

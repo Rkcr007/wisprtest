@@ -10,12 +10,12 @@ describe('offscreen event contract', () => {
   it('parses each event variant', () => {
     expect(parseOffscreenEvent({ kind: 'phase', phase: 'listening' })?.kind).toBe('phase');
     expect(parseOffscreenEvent({ kind: 'level', level: 0.4 })?.kind).toBe('level');
-    expect(parseOffscreenEvent({ kind: 'partial', revision: 3, transcript: 'open orders' })).toEqual(
-      { kind: 'partial', revision: 3, transcript: 'open orders' },
-    );
-    expect(parseOffscreenEvent({ kind: 'final', revision: 4, transcript: 'open orders' })?.kind).toBe(
-      'final',
-    );
+    expect(
+      parseOffscreenEvent({ kind: 'partial', revision: 3, transcript: 'open orders' }),
+    ).toEqual({ kind: 'partial', revision: 3, transcript: 'open orders' });
+    expect(
+      parseOffscreenEvent({ kind: 'final', revision: 4, transcript: 'open orders' })?.kind,
+    ).toBe('final');
     expect(
       parseOffscreenEvent({ kind: 'metric', name: SPEECH_TO_PARTIAL_METRIC, valueMs: 120 })?.kind,
     ).toBe('metric');

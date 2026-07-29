@@ -81,8 +81,7 @@ const FLOOR_FALL = 0.2;
 function frameEnergyDb(frame: Int16Array): number {
   if (frame.length === 0) return -Infinity;
   let sumSquares = 0;
-  for (let i = 0; i < frame.length; i += 1) {
-    const sample = frame[i] ?? 0;
+  for (const sample of frame) {
     sumSquares += sample * sample;
   }
   const rms = Math.sqrt(sumSquares / frame.length);

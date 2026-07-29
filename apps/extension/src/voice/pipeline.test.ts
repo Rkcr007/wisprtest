@@ -74,8 +74,12 @@ describe('voice pipeline — scripted utterance', () => {
     expect(revisions).toEqual([1, 2, 3, 4, 5, 6]);
 
     // A genuine revision: "bending" was corrected to "pending" at a strictly greater revision.
-    const misheard = events.find((e) => e.kind === 'partial' && e.transcript === 'show me the bending');
-    const corrected = events.find((e) => e.kind === 'partial' && e.transcript === 'show me the pending');
+    const misheard = events.find(
+      (e) => e.kind === 'partial' && e.transcript === 'show me the bending',
+    );
+    const corrected = events.find(
+      (e) => e.kind === 'partial' && e.transcript === 'show me the pending',
+    );
     expect(misheard?.kind === 'partial' && corrected?.kind === 'partial').toBe(true);
     if (misheard?.kind === 'partial' && corrected?.kind === 'partial') {
       expect(corrected.revision).toBeGreaterThan(misheard.revision);
@@ -92,7 +96,9 @@ describe('voice pipeline — scripted utterance', () => {
     expect(metricEvents).toHaveLength(1);
 
     // The phase trajectory the HUD sees: idle → connecting → listening → idle.
-    const phases = events.filter((e) => e.kind === 'phase').map((e) => (e as { phase: string }).phase);
+    const phases = events
+      .filter((e) => e.kind === 'phase')
+      .map((e) => (e as { phase: string }).phase);
     expect(phases).toEqual(['connecting', 'listening', 'idle']);
 
     // Never persist / never leak raw audio: no emitted event carries a buffer.
@@ -168,7 +174,7 @@ describe('voice pipeline — reconnect and buffering', () => {
 
   it('reconnects with a scheduled backoff after an unclean drop', () => {
     const { factory, instances } = createFakeAsrFactory({ autoOpen: true });
-    const scheduled: Array<{ fn: () => void; ms: number }> = [];
+    const scheduled: { fn: () => void; ms: number }[] = [];
     const pipeline = createVoicePipeline({
       asrFactory: factory,
       emit: () => undefined,
@@ -198,7 +204,7 @@ describe('voice pipeline — reconnect and buffering', () => {
   it('gives up with asr_failed once reconnect attempts are exhausted', () => {
     const { factory, instances } = createFakeAsrFactory({ autoOpen: false });
     const events: OffscreenEvent[] = [];
-    const scheduled: Array<() => void> = [];
+    const scheduled: (() => void)[] = [];
     const pipeline = createVoicePipeline({
       asrFactory: factory,
       emit: (event) => events.push(event),

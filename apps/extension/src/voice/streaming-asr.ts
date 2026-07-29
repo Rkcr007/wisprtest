@@ -28,7 +28,11 @@ export interface StreamingAsrEvents {
   /** A finalized transcript for one utterance. */
   onFinal(transcript: string): void;
   /** The socket closed. `wasClean` distinguishes an orderly close from a drop. */
-  onClose(info: { readonly code: number; readonly reason: string; readonly wasClean: boolean }): void;
+  onClose(info: {
+    readonly code: number;
+    readonly reason: string;
+    readonly wasClean: boolean;
+  }): void;
   /** A transport or protocol error. Followed by an `onClose` in practice. */
   onError(error: unknown): void;
 }

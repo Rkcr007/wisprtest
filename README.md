@@ -41,14 +41,14 @@
 
 A tester narrates what they are doing —
 
-> *"open orders"* … *"show me only the pending ones"* … *"I need a pending order for Acme
-> with three line items"* … *"approve it"*
+> _"open orders"_ … _"show me only the pending ones"_ … _"I need a pending order for Acme
+> with three line items"_ … _"approve it"_
 
 — and WisprTest resolves each phrase against the live DOM and dispatches a **trusted**
 event in milliseconds, generating any test data the flow needs along the way.
 
 **This is not** a chatbot, a test recorder, an autonomous agent, or an RPA tool. It does
-not *figure out* your app at runtime — it **remembers** it.
+not _figure out_ your app at runtime — it **remembers** it.
 
 ---
 
@@ -113,7 +113,7 @@ flowchart LR
 ```
 
 The crawler does the hard thinking up front and writes it into **Product Memory**. When
-the runtime *does* have to reason — a phrasing it has never heard — it writes the answer
+the runtime _does_ have to reason — a phrasing it has never heard — it writes the answer
 back as an alias, so the same words are an instant lookup next time. **That write-back
 loop is the product's compounding asset.**
 
@@ -124,7 +124,7 @@ loop is the product's compounding asset.**
 ### 1 · The reversibility taxonomy — safety
 
 Every action is classified, and the class decides whether the runtime may act on a
-*partial* speech hypothesis before you have finished the sentence.
+_partial_ speech hypothesis before you have finished the sentence.
 
 ```mermaid
 flowchart TD
@@ -139,12 +139,12 @@ flowchart TD
     SP -.on divergence.-> RB([↩ roll back])
 ```
 
-| Class | Meaning | Speculative? | Confirmation |
-|:-----:|---------|:------------:|--------------|
-| **R** — Reversible | focus, hover, scroll, expand, read-only nav | **Yes**, on a partial | No |
-| **C** — Committing | submit, delete, approve — any state mutation | **Never** | Yes — final + explicit *yes* |
-| **A** — Ambiguous | resolver confidence below threshold | Pre-stage only | Yes |
-| **S** — Seeding | test-data creation | **Never** | Yes — preview before any write |
+|       Class        | Meaning                                      |     Speculative?      | Confirmation                   |
+| :----------------: | -------------------------------------------- | :-------------------: | ------------------------------ |
+| **R** — Reversible | focus, hover, scroll, expand, read-only nav  | **Yes**, on a partial | No                             |
+| **C** — Committing | submit, delete, approve — any state mutation |       **Never**       | Yes — final + explicit _yes_   |
+| **A** — Ambiguous  | resolver confidence below threshold          |    Pre-stage only     | Yes                            |
+|  **S** — Seeding   | test-data creation                           |       **Never**       | Yes — preview before any write |
 
 > ⚠️ Speculating on a Class **C** action is the single worst bug this product can have. A
 > confident wrong click costs more trust than any latency win gains. A release-gate test
@@ -170,14 +170,14 @@ flowchart TD
 
 ### Performance budgets — enforced as tests, not aspirations
 
-| Metric | Budget |
-|--------|:------:|
-| Speech onset → reticle rendered (p95) | **< 400 ms** |
-| T0 resolution (p99) | **< 15 ms** |
-| Action dispatch after commit (p95) | **< 30 ms** |
-| Scope recompute after mutation burst (3000 nodes) | **< 8 ms** |
-| Indexer throughput | **> 8 routes/min** |
-| **False execution rate** | **< 0.1% — release gate** |
+| Metric                                            |          Budget           |
+| ------------------------------------------------- | :-----------------------: |
+| Speech onset → reticle rendered (p95)             |       **< 400 ms**        |
+| T0 resolution (p99)                               |        **< 15 ms**        |
+| Action dispatch after commit (p95)                |        **< 30 ms**        |
+| Scope recompute after mutation burst (3000 nodes) |        **< 8 ms**         |
+| Indexer throughput                                |    **> 8 routes/min**     |
+| **False execution rate**                          | **< 0.1% — release gate** |
 
 Latency regressions cost satisfaction; false executions cost the account. Benchmarks fail
 the build on regression.
@@ -245,18 +245,18 @@ wisprtest/
 
 ### Stack
 
-| Layer | Choice | Why |
-|-------|--------|-----|
-| Runtime | Chrome MV3 extension, TypeScript | Hot path must be in-process with the DOM — no network hop |
-| Indexer | Node + Playwright | Shares `packages/fingerprint` with the extension — one implementation |
-| Gateway | Fastify + TypeScript | Type sharing with the protocol package; low overhead |
-| Composer | FastAPI + Python | Constraint solving and distribution sampling are cleaner in Python |
-| Console | Next.js App Router, Tailwind, shadcn/ui, Zustand, TanStack Query | House standard |
-| Primary store | PostgreSQL 16 | Memory graph, schemas, ledger, sessions, audit — every row `tenant_id`-scoped |
-| Vector | Qdrant | Embedding search over scoped candidates + alias corpus |
-| Cache | Redis | Hot memory snapshots per `(tenant, app, version)` |
-| Observability | OpenTelemetry → Prometheus / Grafana / Loki | Mandatory per service |
-| Orchestration | Docker Compose | `make dev` brings up everything |
+| Layer         | Choice                                                           | Why                                                                           |
+| ------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Runtime       | Chrome MV3 extension, TypeScript                                 | Hot path must be in-process with the DOM — no network hop                     |
+| Indexer       | Node + Playwright                                                | Shares `packages/fingerprint` with the extension — one implementation         |
+| Gateway       | Fastify + TypeScript                                             | Type sharing with the protocol package; low overhead                          |
+| Composer      | FastAPI + Python                                                 | Constraint solving and distribution sampling are cleaner in Python            |
+| Console       | Next.js App Router, Tailwind, shadcn/ui, Zustand, TanStack Query | House standard                                                                |
+| Primary store | PostgreSQL 16                                                    | Memory graph, schemas, ledger, sessions, audit — every row `tenant_id`-scoped |
+| Vector        | Qdrant                                                           | Embedding search over scoped candidates + alias corpus                        |
+| Cache         | Redis                                                            | Hot memory snapshots per `(tenant, app, version)`                             |
+| Observability | OpenTelemetry → Prometheus / Grafana / Loki                      | Mandatory per service                                                         |
+| Orchestration | Docker Compose                                                   | `make dev` brings up everything                                               |
 
 ---
 
@@ -300,6 +300,7 @@ make db-up         # start Postgres / Redis / Qdrant
 make db-migrate    # apply Atlas migrations
 make db-reset      # drop, recreate, migrate, seed (destructive; Compose DB only)
 ```
+
 </details>
 
 ---
@@ -341,15 +342,15 @@ timeline
         Product : Sessions : Console : Hardening
 ```
 
-| # | Phase | Status |
-|:-:|-------|:------:|
-| 0–2 | Scaffold · Protocol · Fingerprint | ✅ |
-| 3–5 | DB + RLS · Gateway · Indexer | ✅ |
-| 6–7 | Extension shell + HUD · Runtime state engine | ✅ |
-| 8–10 | T0/T1 resolution · Voice · Speculation + CDP execution | ✅ |
-| 11–13 | T2 write-back · Sessions · Schema observation | ⬜ planned |
-| 14–17 | Composer · Seeding · Materializers · Drift | ⬜ planned |
-| 18–19 | Console · Production hardening | ⬜ planned |
+|   #   | Phase                                                  |   Status   |
+| :---: | ------------------------------------------------------ | :--------: |
+|  0–2  | Scaffold · Protocol · Fingerprint                      |     ✅     |
+|  3–5  | DB + RLS · Gateway · Indexer                           |     ✅     |
+|  6–7  | Extension shell + HUD · Runtime state engine           |     ✅     |
+| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |     ✅     |
+| 11–13 | T2 write-back · Sessions · Schema observation          | ⬜ planned |
+| 14–17 | Composer · Seeding · Materializers · Drift             | ⬜ planned |
+| 18–19 | Console · Production hardening                         | ⬜ planned |
 
 > `apps/composer` and `apps/console` are currently Phase-0 scaffolds (boot entrypoints
 > only); their feature phases (14, 18) are not yet built.
@@ -362,7 +363,7 @@ Non-negotiable and enforced in review. Full list in [`CLAUDE.md`](CLAUDE.md).
 
 1. **No placeholders.** No `TODO`, no mock returns — an honest refusal beats a stub.
 2. **The hot path never crosses the network.**
-3. **Contracts before code.** Zod schemas in `packages/protocol` first; types are *derived*.
+3. **Contracts before code.** Zod schemas in `packages/protocol` first; types are _derived_.
 4. **Fingerprint logic has exactly one implementation** — shared verbatim by extension and indexer.
 5. **Every mutation of the app under test is reversible or gated** (the taxonomy above).
 6. **Every service ships with logging, metrics, tracing, and a health check** — as a definition of done.
@@ -375,7 +376,7 @@ Non-negotiable and enforced in review. Full list in [`CLAUDE.md`](CLAUDE.md).
 <summary><b>Generic vs per-application</b> — the distinction that governs the whole codebase</summary>
 
 The crawler, fingerprinting, resolver, runtime engine, voice pipeline, executor, HUD,
-schema inference, constraint solver, and adapter *interfaces* are **generic** — written
+schema inference, constraint solver, and adapter _interfaces_ are **generic** — written
 once, work for every customer app. Element fingerprints, navigation graphs, entity
 schemas, value distributions, enum vocabularies, and the alias corpus are
 **per-application** — learned or configured, never hardcoded. If you ever write
@@ -394,12 +395,12 @@ blocker, not a nice-to-have.
 
 ## 📚 Documentation
 
-| Document | What's in it |
-|----------|--------------|
-| [`CLAUDE.md`](CLAUDE.md) | Product contract, engineering rules, taxonomy, budgets |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System map, boundaries, extension internals, data model, security |
-| [`docs/TEST-DATA-ENGINE.md`](docs/TEST-DATA-ENGINE.md) | Generic vs per-app data engine, adapters, composition |
-| [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) | The phased build plan, in order |
+| Document                                               | What's in it                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| [`CLAUDE.md`](CLAUDE.md)                               | Product contract, engineering rules, taxonomy, budgets            |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)         | System map, boundaries, extension internals, data model, security |
+| [`docs/TEST-DATA-ENGINE.md`](docs/TEST-DATA-ENGINE.md) | Generic vs per-app data engine, adapters, composition             |
+| [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md)             | The phased build plan, in order                                   |
 
 ---
 

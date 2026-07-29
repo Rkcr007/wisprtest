@@ -1,4 +1,9 @@
-import { CDP_MESSAGE, runCdpCommand, type CdpCommand, type SendCommand } from '../executor/index.js';
+import {
+  CDP_MESSAGE,
+  runCdpCommand,
+  type CdpCommand,
+  type SendCommand,
+} from '../executor/index.js';
 
 /**
  * The worker half of CDP dispatch.
@@ -21,7 +26,11 @@ import { CDP_MESSAGE, runCdpCommand, type CdpCommand, type SendCommand } from '.
 export interface DebuggerApi {
   attach(target: { tabId: number }, requiredVersion: string): Promise<void>;
   detach(target: { tabId: number }): Promise<void>;
-  sendCommand(target: { tabId: number }, method: string, params?: Record<string, unknown>): Promise<unknown>;
+  sendCommand(
+    target: { tabId: number },
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown>;
 }
 
 /** The message the content script sends per relayed command. */

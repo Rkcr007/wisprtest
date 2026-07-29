@@ -421,8 +421,12 @@ function HudApp({
       window,
       { mode: DEFAULT_VOICE_SETTINGS.mode, keys: DEFAULT_VOICE_SETTINGS.hotkeyKeys },
       {
-        onStart: () => port.postMessage({ kind: 'voice_start' }),
-        onStop: () => port.postMessage({ kind: 'voice_stop' }),
+        onStart: () => {
+          port.postMessage({ kind: 'voice_start' });
+        },
+        onStop: () => {
+          port.postMessage({ kind: 'voice_stop' });
+        },
       },
     );
     return () => {

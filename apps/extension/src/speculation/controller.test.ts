@@ -20,9 +20,22 @@ const RESULTS_KEY = 'orders.table.results';
 const ID = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 
 function resolved(elementKey: string, id: string, confidence = 0.98): ResolutionResult {
-  return { outcome: 'resolved', elementId: id, elementKey, confidence, tier: 'T0', latencyMs: 4, candidates: [] };
+  return {
+    outcome: 'resolved',
+    elementId: id,
+    elementKey,
+    confidence,
+    tier: 'T0',
+    latencyMs: 4,
+    candidates: [],
+  };
 }
-const NOT_FOUND: ResolutionResult = { outcome: 'not_found', tier: 'T1', latencyMs: 6, candidates: [] };
+const NOT_FOUND: ResolutionResult = {
+  outcome: 'not_found',
+  tier: 'T1',
+  latencyMs: 6,
+  candidates: [],
+};
 
 function fakeResolver(map: Record<string, ResolutionResult>): ResolverLike {
   return { resolve: (phrase) => Promise.resolve(map[phrase] ?? NOT_FOUND) };
@@ -57,7 +70,9 @@ function build(resolverMap: Record<string, ResolutionResult>, elements: Map<stri
     resolver: fakeResolver(resolverMap),
     executor,
     locator: fakeLocator(elements),
-    source: { current: () => ({ stateFingerprint: 'a'.repeat(64), candidates: [...elements.values()] }) },
+    source: {
+      current: () => ({ stateFingerprint: 'a'.repeat(64), candidates: [...elements.values()] }),
+    },
     window,
     now: () => 0,
     stabilityWindowMs: 150,

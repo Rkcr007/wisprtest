@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  classifyAction,
-  DEFAULT_VERB_CLASSES,
-  resolveClassifyConfig,
-} from './classify.js';
+import { classifyAction, DEFAULT_VERB_CLASSES, resolveClassifyConfig } from './classify.js';
 
 describe('classifyAction', () => {
   const above = 0.9;
@@ -15,7 +11,16 @@ describe('classifyAction', () => {
   });
 
   it('classes the reversible verbs as R above threshold', () => {
-    for (const verb of ['navigate', 'back', 'focus', 'scroll', 'check', 'type', 'filter', 'select'] as const) {
+    for (const verb of [
+      'navigate',
+      'back',
+      'focus',
+      'scroll',
+      'check',
+      'type',
+      'filter',
+      'select',
+    ] as const) {
       expect(classifyAction(verb, above)).toBe('R');
     }
   });

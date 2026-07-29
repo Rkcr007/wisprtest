@@ -97,7 +97,9 @@ export function makeScopedQuery(overrides: Partial<ScopedQuery> = {}): ScopedQue
   };
 }
 
-export function makeResolved(overrides: Partial<Extract<ResolutionResult, { outcome: 'resolved' }>> = {}): ResolutionResult {
+export function makeResolved(
+  overrides: Partial<Extract<ResolutionResult, { outcome: 'resolved' }>> = {},
+): ResolutionResult {
   return {
     outcome: 'resolved',
     elementId: overrides.elementId ?? ELEMENT_ID,

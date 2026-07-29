@@ -17,15 +17,8 @@
     // bundled into it.
     "noEmit": true
   },
-  "include": [
-    "src",
-    "test",
-    "vitest.config.ts",
-    "vitest.e2e.config.ts",
-    "vitest.bench.config.ts",
-    "vitest.resolver.config.ts",
-    "vitest.resolve-bench.config.ts",
-    "vitest.voice.config.ts",
-    "vitest.writeback-loop.config.ts"
-  ]
+  // Globbed rather than enumerated: this package has one vitest config per heavy suite, and an
+  // enumerated list silently leaves a new one outside the project — where `tsc` never sees it and
+  // eslint's type-aware rules fail to parse it at all.
+  "include": ["src", "test", "scripts", "*.config.ts"]
 }

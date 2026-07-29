@@ -91,7 +91,7 @@ function readResult(data: unknown): { transcript: string; isFinal: boolean } | n
     type?: unknown;
     is_final?: unknown;
     speech_final?: unknown;
-    channel?: { alternatives?: Array<{ transcript?: unknown }> };
+    channel?: { alternatives?: { transcript?: unknown }[] };
   };
   if (record.type !== 'Results') return null;
 
@@ -107,7 +107,11 @@ export function createDeepgramAsr(config: DeepgramConfig): StreamingAsr {
     config.socketFactory ??
     ((url, protocols) => new WebSocket(url, protocols) as unknown as SocketLike);
   const setIntervalFn = config.setIntervalFn ?? ((fn, ms) => setInterval(fn, ms));
-  const clearIntervalFn = config.clearIntervalFn ?? ((handle) => clearInterval(handle));
+  const clearIntervalFn =
+    config.clearIntervalFn ??
+    ((handle) => {
+      clearInterval(handle);
+    });
 
   let socket: SocketLike | null = null;
   let keepAlive: ReturnType<typeof setInterval> | null = null;

@@ -71,7 +71,11 @@ export interface ExecutorOptions {
 
 export interface ActionExecutor {
   /** Dispatch a validated action against a live element, emit its step, and report the result. */
-  dispatch(request: ActionRequest, element: Element, context: DispatchContext): Promise<ActionResult>;
+  dispatch(
+    request: ActionRequest,
+    element: Element,
+    context: DispatchContext,
+  ): Promise<ActionResult>;
 }
 
 const DEFAULT_INTER_KEY_MS = 24;

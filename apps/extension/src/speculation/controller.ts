@@ -242,7 +242,11 @@ export function createSpeculationController(
     options.onStep?.(step);
   }
 
-  function scopedQueryFor(parse: ParsedIntent, stateFingerprint: string, resolution: ResolutionResult): ScopedQuery {
+  function scopedQueryFor(
+    parse: ParsedIntent,
+    stateFingerprint: string,
+    resolution: ResolutionResult,
+  ): ScopedQuery {
     const keys = new Set<ElementKey>();
     for (const candidate of resolution.candidates) keys.add(candidate.elementKey);
     if (resolution.outcome === 'resolved') keys.add(resolution.elementKey);
@@ -255,7 +259,10 @@ export function createSpeculationController(
     };
   }
 
-  function buildPayload(parse: ParsedIntent, resolved: Extract<ResolutionResult, { outcome: 'resolved' }>): ActionPayload {
+  function buildPayload(
+    parse: ParsedIntent,
+    resolved: Extract<ResolutionResult, { outcome: 'resolved' }>,
+  ): ActionPayload {
     switch (parse.verb) {
       case 'navigate':
         return {
@@ -327,7 +334,11 @@ export function createSpeculationController(
       stateFingerprint: scopedQuery.stateFingerprint,
       issuedAt: wallClock().toISOString(),
     });
-    await options.executor.dispatch(request, element, dispatchContext(parse, resolution, scopedQuery, utterance));
+    await options.executor.dispatch(
+      request,
+      element,
+      dispatchContext(parse, resolution, scopedQuery, utterance),
+    );
   }
 
   function rollbackNow(): void {
@@ -392,7 +403,14 @@ export function createSpeculationController(
     if (current.rollback !== null) {
       const newKey = resolved?.elementKey ?? null;
       if (newKey !== current.executedKey) {
-        emitStep('rolled_back', { utterance, scopedQuery, resolution, resolved, actionClass, confidence });
+        emitStep('rolled_back', {
+          utterance,
+          scopedQuery,
+          resolution,
+          resolved,
+          actionClass,
+          confidence,
+        });
         rollbackNow();
       }
     }
@@ -408,11 +426,21 @@ export function createSpeculationController(
         confidence,
         awaitingConfirmation: false,
       });
-      if (isFinal) emitStep('staged', { utterance, scopedQuery, resolution, resolved: null, actionClass, confidence });
+      if (isFinal)
+        emitStep('staged', {
+          utterance,
+          scopedQuery,
+          resolution,
+          resolved: null,
+          actionClass,
+          confidence,
+        });
       return;
     }
 
-    const element = windowVerb ? windowElement() : options.locator.locate(state.stateFingerprint, state.candidates, resolved.elementKey);
+    const element = windowVerb
+      ? windowElement()
+      : options.locator.locate(state.stateFingerprint, state.candidates, resolved.elementKey);
     if (element === null) {
       // Resolved in memory but not present in the live DOM: stage, do not guess a click into space.
       publish({
@@ -424,7 +452,15 @@ export function createSpeculationController(
         confidence,
         awaitingConfirmation: false,
       });
-      if (isFinal) emitStep('staged', { utterance, scopedQuery, resolution, resolved, actionClass, confidence });
+      if (isFinal)
+        emitStep('staged', {
+          utterance,
+          scopedQuery,
+          resolution,
+          resolved,
+          actionClass,
+          confidence,
+        });
       return;
     }
 
@@ -487,7 +523,8 @@ export function createSpeculationController(
     utterance: string,
     isFinal: boolean,
   ): Promise<void> {
-    const alreadySpeculated = current.executedKey === resolved.elementKey && current.rollback !== null;
+    const alreadySpeculated =
+      current.executedKey === resolved.elementKey && current.rollback !== null;
 
     if (isFinal) {
       // Commit. If the exact target was already executed speculatively, keep it — the speculative
@@ -496,7 +533,17 @@ export function createSpeculationController(
         current.rollback = null;
         current.executedKey = null;
       } else {
-        await executeResolved(parse, resolved, element, resolution, scopedQuery, utterance, 'R', false, false);
+        await executeResolved(
+          parse,
+          resolved,
+          element,
+          resolution,
+          scopedQuery,
+          utterance,
+          'R',
+          false,
+          false,
+        );
       }
       publish({
         phase: 'executed',
@@ -514,7 +561,17 @@ export function createSpeculationController(
     if (!alreadySpeculated) {
       current.rollback = captureRollback(parse.verb, element, { window: win });
       current.executedKey = resolved.elementKey;
-      await executeResolved(parse, resolved, element, resolution, scopedQuery, utterance, 'R', true, false);
+      await executeResolved(
+        parse,
+        resolved,
+        element,
+        resolution,
+        scopedQuery,
+        utterance,
+        'R',
+        true,
+        false,
+      );
     }
     publish({
       phase: 'aiming',

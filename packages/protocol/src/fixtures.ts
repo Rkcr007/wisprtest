@@ -1135,7 +1135,10 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
         why: 'carries a raw accessible name field the redaction contract forbids',
         value: withField(ESCALATION_CANDIDATE, 'accessibleName', 'Priya Sharma'),
       },
-      { why: 'element key is not screen.component.element', value: withField(ESCALATION_CANDIDATE, 'elementKey', 'pending') },
+      {
+        why: 'element key is not screen.component.element',
+        value: withField(ESCALATION_CANDIDATE, 'elementKey', 'pending'),
+      },
     ],
   },
   EscalateRequest: {
@@ -1146,14 +1149,21 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
         why: 'no candidate set — a T2 escalation must never widen to the whole document',
         value: withField(ESCALATE_REQUEST, 'candidates', []),
       },
-      { why: 'missing the state fingerprint the write-back keys on', value: without(ESCALATE_REQUEST, 'stateFingerprint') },
+      {
+        why: 'missing the state fingerprint the write-back keys on',
+        value: without(ESCALATE_REQUEST, 'stateFingerprint'),
+      },
     ],
   },
   EscalateResponse: {
     schema: p.EscalateResponse,
     valid: [
       { elementId: UUID_A, confidence: 0.88, reasoning: 'best matches the pending-orders filter' },
-      { elementId: UUID_B, confidence: 0.34, reasoning: 'weak match; nearest is the approved filter' },
+      {
+        elementId: UUID_B,
+        confidence: 0.34,
+        reasoning: 'weak match; nearest is the approved filter',
+      },
     ],
     invalid: [
       {

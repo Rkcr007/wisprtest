@@ -10,7 +10,7 @@ class FakeSocket implements SocketLike {
   binaryType = 'blob';
   readyState = CONNECTING;
   closed = false;
-  readonly sent: Array<ArrayBufferView | ArrayBuffer | string> = [];
+  readonly sent: (ArrayBufferView | ArrayBuffer | string)[] = [];
   onopen: ((event: unknown) => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: ((event: { code: number; reason: string; wasClean: boolean }) => void) | null = null;

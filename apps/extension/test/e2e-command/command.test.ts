@@ -1,7 +1,11 @@
 import { chromium, type Browser, type CDPSession, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createDebuggerDispatcher, keyEventsForChar, type SendCommand } from '../../src/executor/index.js';
+import {
+  createDebuggerDispatcher,
+  keyEventsForChar,
+  type SendCommand,
+} from '../../src/executor/index.js';
 import { startServers, type StubServers } from '../fixture-page/server.js';
 
 /**

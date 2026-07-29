@@ -12,21 +12,28 @@ function fakeDebugger(overrides: Partial<DebuggerApi> = {}): DebuggerApi & {
   return {
     attaches,
     commands,
-    attach: overrides.attach ?? ((target) => {
-      attaches.push(target.tabId);
-      return Promise.resolve();
-    }),
+    attach:
+      overrides.attach ??
+      ((target) => {
+        attaches.push(target.tabId);
+        return Promise.resolve();
+      }),
     detach: overrides.detach ?? (() => Promise.resolve()),
-    sendCommand: overrides.sendCommand ?? ((target, method) => {
-      commands.push({ tabId: target.tabId, method });
-      return Promise.resolve();
-    }),
+    sendCommand:
+      overrides.sendCommand ??
+      ((target, method) => {
+        commands.push({ tabId: target.tabId, method });
+        return Promise.resolve();
+      }),
   };
 }
 
 const mouseMessage = {
   type: CDP_MESSAGE,
-  command: { kind: 'mouse', event: { type: 'mousePressed', x: 1, y: 2, button: 'left', clickCount: 1 } },
+  command: {
+    kind: 'mouse',
+    event: { type: 'mousePressed', x: 1, y: 2, button: 'left', clickCount: 1 },
+  },
 } as const;
 
 describe('createCdpDispatchService', () => {

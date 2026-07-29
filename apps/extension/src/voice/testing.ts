@@ -145,8 +145,7 @@ export function fixtureRegions(frames: Int16Array[]): {
   let speechFrameCount = 0;
   for (const frame of frames) {
     let sumSquares = 0;
-    for (let i = 0; i < frame.length; i += 1) {
-      const sample = frame[i] ?? 0;
+    for (const sample of frame) {
       sumSquares += sample * sample;
     }
     const rms = Math.sqrt(sumSquares / frame.length);

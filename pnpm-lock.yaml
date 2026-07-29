@@ -168,6 +168,9 @@ importers:
       fastify:
         specifier: 5.10.0
         version: 5.10.0
+      fingerprint:
+        specifier: workspace:*
+        version: link:../../packages/fingerprint
       ioredis:
         specifier: 5.11.1
         version: 5.11.1

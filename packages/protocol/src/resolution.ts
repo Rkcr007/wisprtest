@@ -156,3 +156,77 @@ export const ResolutionResult = contract(
     .describe('Outcome of resolving a scoped query, with the tier and latency it cost.'),
 );
 export type ResolutionResult = z.infer<typeof ResolutionResult>;
+
+/**
+ * A candidate as it crosses to the T2 model — the only shape allowed to carry a candidate's text
+ * off the device.
+ *
+ * `label` is the redacted accessible name: the model needs *something* legible to reason over, and
+ * CLAUDE.md § "PII rule" permits the scrubbed display form and nothing else. The raw accessible
+ * name has no field here, so a candidate whose name was not redacted cannot even be expressed —
+ * the contract makes the leak unrepresentable rather than merely discouraged. `elementId` is what
+ * the model returns to name its pick; `elementKey` is structure, a semantic hint like
+ * `orders.filter.pending` that measurably helps a small model disambiguate.
+ */
+export const EscalationCandidate = contract(
+  'EscalationCandidate',
+  z
+    .strictObject({
+      elementId: Uuid,
+      elementKey: ElementKey,
+      /** Redacted accessible name — the only candidate text permitted to reach a model provider. */
+      label: RedactedText,
+    })
+    .describe('One scoped candidate as presented to the T2 model, carrying only redacted text.'),
+);
+export type EscalationCandidate = z.infer<typeof EscalationCandidate>;
+
+/**
+ * The T2 escalation request: `POST /v1/resolve/escalate`.
+ *
+ * Sent only when T0 and T1 both fell below threshold (CLAUDE.md § "Resolution tiers"). It carries
+ * the scoped candidate set — never the whole document — so the model reasons over the dozens of
+ * elements currently reachable, which is what keeps the prompt small and the answer inside the
+ * 800 ms budget. `utterance` is the redacted phrase; like every candidate `label`, it is scrubbed
+ * before it leaves the extension.
+ */
+export const EscalateRequest = contract(
+  'EscalateRequest',
+  z
+    .strictObject({
+      /** The redacted phrase the tester spoke. Never the raw utterance. */
+      utterance: RedactedText.describe('Redacted phrase to resolve against the candidate set.'),
+      stateFingerprint: StateFingerprint,
+      candidates: z
+        .array(EscalationCandidate)
+        .min(1)
+        .describe('The scoped candidate set; the model may only pick from these.'),
+    })
+    .describe('A T2 escalation: a redacted phrase plus the scoped candidates to choose among.'),
+);
+export type EscalateRequest = z.infer<typeof EscalateRequest>;
+
+/**
+ * The T2 model's answer.
+ *
+ * Strict JSON: `elementId` names one of the request's candidates — the gateway rejects an id that
+ * is not in the set rather than trusting a hallucinated one — `confidence` places the pick on the
+ * same 0..1 scale every tier uses, and `reasoning` is the model's short justification. The
+ * reasoning is safe to keep: the model only ever saw redacted labels, so it cannot echo customer
+ * data it was never shown.
+ *
+ * There is no "no match" member on purpose. The model always returns its best candidate with a
+ * confidence; a low confidence is what routes the tester to disambiguation, so "I am unsure" and
+ * "it is this one, barely" are the same signal handled in one place.
+ */
+export const EscalateResponse = contract(
+  'EscalateResponse',
+  z
+    .strictObject({
+      elementId: Uuid.describe('The chosen candidate; must be one of the request candidates.'),
+      confidence: Confidence,
+      reasoning: NonEmptyString.describe("The model's short, PII-free justification for the pick."),
+    })
+    .describe("The T2 model's chosen candidate, its confidence, and why."),
+);
+export type EscalateResponse = z.infer<typeof EscalateResponse>;

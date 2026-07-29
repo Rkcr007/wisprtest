@@ -1,14 +1,18 @@
-import type { ExtensionToken } from 'protocol';
+import { AliasWriteback, EscalateRequest, type ExtensionToken } from 'protocol';
 
 import {
   INITIAL_UPDATE,
   parseRequest,
   type AttachFailure,
   type AttachState,
+  type HudEscalateResult,
   type HudSnapshot,
   type HudUpdate,
   type SnapshotState,
 } from '../messaging.js';
+import { createWritebackQueue, type WritebackQueue } from '../resolver/index.js';
+import type { AliasClient } from './alias-client.js';
+import type { EscalateClient } from './escalate-client.js';
 import type { MemoryClient } from './memory-client.js';
 import { isUsable, type TokenClient } from './token-client.js';
 import type { TokenStore } from './token-store.js';
@@ -70,6 +74,19 @@ export interface AttachControllerOptions {
    * pushed back over the same port.
    */
   readonly voice?: VoiceController;
+  /**
+   * The T2 escalation client. Optional so the attach lifecycle can be tested in isolation; without
+   * it an `escalate` request is answered `unavailable` and the content script disambiguates —
+   * which is also what a tab with no token gets, and is the correct degraded behaviour.
+   */
+  readonly escalation?: EscalateClient;
+  /**
+   * The alias write-back client. Optional for the same reason; without it the queue is not created
+   * and write-backs are dropped, so the extension resolves but stops learning.
+   */
+  readonly aliases?: AliasClient;
+  /** Flush cadence for the write-back queue. 10s per docs/BUILD-PLAN.md Phase 11. */
+  readonly writebackIntervalMs?: number;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -93,10 +110,25 @@ interface Session {
   state: AttachState;
   failure: AttachFailure | null;
   token: ExtensionToken | null;
+  /** The memory version this tab's aliases are learned against; set when the snapshot loads. */
+  memoryVersionId: string | null;
+  /** Holds learned aliases and flushes them in batches. Created with the snapshot. */
+  writebacks: WritebackQueue | null;
+  /**
+   * The token the final flush uses, frozen at detach.
+   *
+   * Detach clears `token` synchronously, but the flush it triggers is in flight for as long as the
+   * request takes. Without this the last batch of a session — the one holding everything learned
+   * since the previous tick — would find no credential and be thrown away.
+   */
+  flushToken: string | null;
 }
 
 /** Five minutes: long enough that a refresh cannot land after the token it replaces has died. */
 const DEFAULT_REFRESH_MARGIN_MS = 5 * 60_000;
+
+/** Ten seconds, per docs/BUILD-PLAN.md Phase 11. */
+const DEFAULT_WRITEBACK_INTERVAL_MS = 10_000;
 
 const ALARM_PREFIX = 'wispr:refresh:';
 
@@ -117,6 +149,9 @@ export function createAttachController(options: AttachControllerOptions): Attach
     alarms,
     memory,
     voice,
+    escalation,
+    aliases,
+    writebackIntervalMs = DEFAULT_WRITEBACK_INTERVAL_MS,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
     now = () => Date.now(),
     onError,
@@ -171,9 +206,13 @@ export function createAttachController(options: AttachControllerOptions): Attach
       if (current?.state !== 'attached') return;
 
       if (snapshot === null) {
+        closeWritebacks(current);
         postSnapshot(current, snapshotMessage('absent', applicationId, null));
         return;
       }
+      // The queue opens with the snapshot, because the memory version it writes against is what
+      // the snapshot just named. Before this point there is nothing an alias could be scoped to.
+      openWritebacks(current, snapshot.memoryVersion.id);
       postSnapshot(
         current,
         snapshotMessage('loaded', applicationId, snapshot.memoryVersion.id, snapshot),
@@ -184,6 +223,94 @@ export function createAttachController(options: AttachControllerOptions): Attach
         postSnapshot(current, snapshotMessage('failed', applicationId, null));
       }
       onError?.('snapshot.load_failed', error);
+    }
+  }
+
+  /**
+   * Give a tab a write-back queue for the memory version its snapshot just loaded.
+   *
+   * One queue per (tab, memory version): an alias learned against one version does not silently
+   * migrate to the next — that is a decision the next version's approval makes (Phase 17) — so a
+   * version change closes the old queue, flushing what it holds against the version it was learned
+   * on, and opens a new one.
+   */
+  function openWritebacks(session: Session, memoryVersionId: string): void {
+    if (aliases === undefined) return;
+    if (session.memoryVersionId === memoryVersionId && session.writebacks !== null) return;
+
+    const previous = session.writebacks;
+    if (previous !== null) void previous.close().catch(() => undefined);
+
+    session.memoryVersionId = memoryVersionId;
+    session.writebacks = createWritebackQueue({
+      intervalMs: writebackIntervalMs,
+      send: async (items) => {
+        // Read at send time, not at construction: a flush ten seconds later must use whatever
+        // token the refresh alarm has since put in place, not the one this queue opened with.
+        // `flushToken` covers the detach flush, which runs after `token` has been cleared.
+        const token = session.token?.token ?? session.flushToken ?? undefined;
+        if (token === undefined) {
+          // Detached mid-flush. Throwing keeps the batch queued rather than discarding learning
+          // that a re-attach could still persist.
+          throw new Error('no token for alias write-back');
+        }
+        await aliases.write(memoryVersionId, items, token);
+      },
+      onError: (error) => {
+        onError?.('alias.flush_failed', error);
+      },
+    });
+  }
+
+  /** Flush and drop a tab's queue — detach, disconnect, or a memory version going away. */
+  function closeWritebacks(session: Session): void {
+    const queue = session.writebacks;
+    if (queue === null) return;
+    session.writebacks = null;
+    session.memoryVersionId = null;
+    // Frozen before the caller clears the token out from under the flush.
+    session.flushToken = session.token?.token ?? session.flushToken;
+    // The "and on detach" flush. Fire-and-forget: detach must not wait on the control plane, and
+    // a failure is already reported through `onError`.
+    void queue.close().catch((error: unknown) => {
+      onError?.('alias.flush_failed', error);
+    });
+  }
+
+  /** Run one escalation for a tab and post the outcome back over its port. */
+  async function escalate(session: Session, requestId: string, body: unknown): Promise<void> {
+    const reply = (ok: boolean, response: unknown, reason: HudEscalateResult['reason']): void => {
+      try {
+        session.port.postMessage({ kind: 'escalate_result', requestId, ok, response, reason });
+      } catch (error: unknown) {
+        onError?.('escalate.post_failed', error);
+      }
+    };
+
+    const token = session.token?.token;
+    // No client or no session: the answer is that T2 is unavailable, and the content script shows
+    // the T1 candidates. Never an error — a tester who has not attached still gets two tiers.
+    if (escalation === undefined || token === undefined || session.state !== 'attached') {
+      reply(false, undefined, 'unavailable');
+      return;
+    }
+
+    const parsed = EscalateRequest.safeParse(body);
+    if (!parsed.success) {
+      // A malformed request from a content script is a bug on our side or a message from something
+      // else in the page. Either way it does not reach the gateway or spend a tenant's budget.
+      onError?.('escalate.invalid_request', parsed.error);
+      reply(false, undefined, 'unavailable');
+      return;
+    }
+
+    try {
+      const outcome = await escalation.escalate(parsed.data, token);
+      if (outcome.ok) reply(true, outcome.response, null);
+      else reply(false, undefined, outcome.reason);
+    } catch (error: unknown) {
+      onError?.('escalate.failed', error);
+      reply(false, undefined, 'unavailable');
     }
   }
 
@@ -279,6 +406,10 @@ export function createAttachController(options: AttachControllerOptions): Attach
     const session = sessions.get(tabId);
     if (session === undefined) return;
 
+    // Flush before the token goes: this is the phase's "and on detach", and it is the last chance
+    // to persist what this session learned. Closed first, while `session.token` is still set.
+    closeWritebacks(session);
+
     // Drop the held snapshot with the token that fetched it: a detached tab keeps no memory.
     if (session.token?.applicationId != null) memory?.invalidate(session.token.applicationId);
 
@@ -312,6 +443,9 @@ export function createAttachController(options: AttachControllerOptions): Attach
         state: 'detached',
         failure: null,
         token: null,
+        memoryVersionId: null,
+        writebacks: null,
+        flushToken: null,
       };
       sessions.set(tabId, session);
 
@@ -349,11 +483,29 @@ export function createAttachController(options: AttachControllerOptions): Attach
           case 'voice_stop':
             void voice?.stop(port);
             return;
+          case 'escalate':
+            void escalate(session, request.requestId, request.request);
+            return;
+          case 'alias_writeback': {
+            // Validated here, at the trust boundary: this arrives from a content script running in
+            // a page the extension does not control, and an unvalidated write-back would be a
+            // stranger's phrase persisted into a tenant's vocabulary.
+            const parsed = AliasWriteback.safeParse(request.writeback);
+            if (!parsed.success) {
+              onError?.('alias.invalid_writeback', parsed.error);
+              return;
+            }
+            session.writebacks?.enqueue(parsed.data);
+            return;
+          }
         }
       });
 
       port.onDisconnect.addListener(() => {
         voice?.release(port);
+        // The tab navigated or closed. Whatever it learned is still worth persisting — this is the
+        // same final flush detach performs, for the tester who just closed the tab instead.
+        closeWritebacks(session);
         sessions.delete(tabId);
         void alarms.clear(alarmNameFor(tabId));
       });

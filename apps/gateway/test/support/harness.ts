@@ -6,6 +6,7 @@ import { loadConfig, type GatewayConfig } from '../../src/config.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { buildServer } from '../../src/http/server.js';
 import { createLogger } from '../../src/logger.js';
+import type { ModelProvider } from '../../src/model/index.js';
 import { createRedis } from '../../src/redis/client.js';
 import { createMetrics } from '../../src/telemetry/metrics.js';
 import { startFakeIssuer, type FakeIssuer } from './oidc.js';
@@ -43,6 +44,13 @@ export interface HarnessOptions {
    * separate test restores a real cooldown to assert the protection is there.
    */
   readonly jwksCooldownMs?: number;
+  /**
+   * The T2 escalation model. A test injects a fake so no request reaches a real provider — the
+   * escalate suite drives it to assert redaction, timeout, repair and the write-back loop without
+   * a key or the network. Absent, `buildServer` constructs the real Anthropic provider, which is
+   * never called unless a test hits the escalate route.
+   */
+  readonly modelProvider?: ModelProvider;
 }
 
 export async function startHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -85,6 +93,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     redis,
     metrics: createMetrics(),
     jwks: createJwks(config, { cooldownMs: options.jwksCooldownMs ?? 0 }),
+    ...(options.modelProvider === undefined ? {} : { modelProvider: options.modelProvider }),
   });
 
   options.routes?.(app);

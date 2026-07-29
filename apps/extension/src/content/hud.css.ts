@@ -133,6 +133,15 @@ export const hudCss = `
 .wispr-hud__button:disabled { opacity: 0.5; cursor: default; }
 .wispr-hud__button--primary { border-color: var(--wispr-memory); color: var(--wispr-memory); }
 
+/* ── Disambiguation: the numbered choice, shown only while one is open ───────────────────── */
+
+.wispr-hud__disambiguation { display: flex; flex-direction: column; gap: var(--wispr-space-1); }
+.wispr-hud__disambiguation > div { display: flex; gap: var(--wispr-space-1); flex-wrap: wrap; }
+
+/* The spoken word carries the choice, so it leads. The memory token is the palette's "stored
+   knowledge", which is what answering this becomes: an alias the tester just taught the system. */
+.wispr-hud__ordinal { color: var(--wispr-memory); font-variant-caps: all-small-caps; }
+
 /* ── Band 2: intent ──────────────────────────────────────────────────────────────────────── */
 
 .wispr-hud__intent { display: flex; flex-direction: column; gap: var(--wispr-space-1); }

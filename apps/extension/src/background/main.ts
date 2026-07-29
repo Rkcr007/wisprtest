@@ -1,8 +1,10 @@
 import { consoleSink, createLogger } from '../log.js';
 import { HUD_PORT } from '../messaging.js';
 import type { OffscreenCommand } from '../voice/messages.js';
+import { createAliasClient } from './alias-client.js';
 import { createAttachController } from './attach.js';
 import { createCdpDispatchService } from './cdp-dispatch.js';
+import { createEscalateClient } from './escalate-client.js';
 import { createMemoryClient } from './memory-client.js';
 import { createTokenClient } from './token-client.js';
 import { createTokenStore } from './token-store.js';
@@ -62,7 +64,12 @@ const voice = createVoiceController({
   // short-lived one from the gateway (a later phase); until then this truthfully reports no token.
   mintToken: () => Promise.resolve(__WISPR_ASR_TOKEN__ === '' ? null : __WISPR_ASR_TOKEN__),
   onMetric: (name, valueMs) => {
-    logger.log('info', 'voice.metric', { metric: name, value_ms: valueMs, unit: 'ms' }, 'voice metric');
+    logger.log(
+      'info',
+      'voice.metric',
+      { metric: name, value_ms: valueMs, unit: 'ms' },
+      'voice metric',
+    );
   },
   onError: (event, error) => {
     logger.log('warn', event, { detail: describe(error) }, 'voice controller recovered');
@@ -73,6 +80,10 @@ const controller = createAttachController({
   tokens: createTokenClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   store: createTokenStore(chrome.storage.session),
   memory: createMemoryClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  // T2 and its write-back. Both live here rather than in the content script because both need the
+  // scoped token, and the token never crosses into the page.
+  escalation: createEscalateClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  aliases: createAliasClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   voice,
   alarms: {
     create: (name, info) => {

@@ -28,6 +28,22 @@ export interface ResolverConfig {
   /** Cosine lead the best T1 candidate must hold over the runner-up. */
   readonly t1Margin: number;
   /**
+   * Confidence a T2 pick must reach to be named — and, identically, to be written back.
+   *
+   * One number governs both because they are the same judgement: a pick the resolver would act on
+   * is a pick worth teaching, and a pick it would not act on must not be persisted as vocabulary
+   * that makes the same uncertain answer instant next time. Set above `t1Threshold` because a
+   * model's stated confidence is cheaper to produce than a cosine and deserves a higher bar.
+   */
+  readonly t2Threshold: number;
+  /**
+   * How many candidates a disambiguation list offers.
+   *
+   * Three, because the tester picks by *speaking* an ordinal — "one, two, or three" — and a spoken
+   * list longer than that is one the tester has to re-read rather than answer.
+   */
+  readonly disambiguationLimit: number;
+  /**
    * The bge retrieval instruction, prepended to the *query* only.
    *
    * bge-small-en-v1.5 was trained for asymmetric retrieval: the query carries this instruction and
@@ -46,6 +62,8 @@ export const DEFAULT_RESOLVER_CONFIG: ResolverConfig = {
   exactConfidence: 0.98,
   t1Threshold: 0.62,
   t1Margin: 0.04,
+  t2Threshold: 0.7,
+  disambiguationLimit: 3,
   queryInstruction: 'Represent this sentence for searching relevant passages: ',
 };
 

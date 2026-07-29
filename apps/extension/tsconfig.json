@@ -25,6 +25,7 @@
     "vitest.bench.config.ts",
     "vitest.resolver.config.ts",
     "vitest.resolve-bench.config.ts",
-    "vitest.voice.config.ts"
+    "vitest.voice.config.ts",
+    "vitest.writeback-loop.config.ts"
   ]
 }

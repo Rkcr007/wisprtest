@@ -46,6 +46,24 @@ const gatewayEnvSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().min(1),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000),
 
+  // ── T2 model provider ──────────────────────────────────────────────────────────────────────
+  /**
+   * API key for the T2 escalation model. Required: an escalate route with no key is a route that
+   * cannot answer, which CLAUDE.md rule #1 forbids shipping as a live endpoint. Never logged.
+   */
+  MODEL_API_KEY: z.string().min(1),
+  /** Base URL of the Anthropic Messages API. Overridable so a test can point at a local fake. */
+  MODEL_BASE_URL: z.url({ protocol: /^https?$/ }),
+  /** The small fast model tried first — Haiku class, per CLAUDE.md § "Resolution tiers". */
+  MODEL_PRIMARY: z.string().min(1),
+  /** The fallback model, used when the primary errors or times out. May equal the primary. */
+  MODEL_FALLBACK: z.string().min(1),
+  /**
+   * Hard ceiling on a T2 call, per the phase: on timeout the route returns a typed error so the
+   * extension falls back to disambiguation rather than hanging. Budgeted at 800 ms in CLAUDE.md.
+   */
+  MODEL_TIMEOUT_MS: z.coerce.number().int().min(1).max(5000),
+
   // ── Observability ──────────────────────────────────────────────────────────────────────────
   OTEL_SERVICE_NAME: z.string().min(1),
   /** Absent means export nothing: the right local default, and it is logged at boot. */

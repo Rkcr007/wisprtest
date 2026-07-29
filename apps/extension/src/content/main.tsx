@@ -2,7 +2,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { MemorySnapshot, type ResolutionResult } from 'protocol';
+import { EscalateResponse, MemorySnapshot, type ResolutionResult } from 'protocol';
 
 import {
   HUD_PORT,
@@ -18,7 +18,13 @@ import {
   createRelayDispatcher,
   type CdpCommand,
 } from '../executor/index.js';
-import { createBrowserEmbedder, createResolver, type Resolver } from '../resolver/index.js';
+import {
+  createBrowserEmbedder,
+  createResolver,
+  type Disambiguation,
+  type EscalationOutcome,
+  type Resolver,
+} from '../resolver/index.js';
 import { createRuntimeStateEngine, type RuntimeStateEngine } from '../runtime/index.js';
 import {
   buildIntentVocabulary,
@@ -35,7 +41,12 @@ import { Hud } from './Hud.js';
 import { mountHudHost } from './mount.js';
 
 /** A resolution the controller reads as "nothing matched" while the T1 model is still loading. */
-const NOT_FOUND: ResolutionResult = { outcome: 'not_found', tier: 'T1', latencyMs: 0, candidates: [] };
+const NOT_FOUND: ResolutionResult = {
+  outcome: 'not_found',
+  tier: 'T1',
+  latencyMs: 0,
+  candidates: [],
+};
 
 /**
  * Relay one CDP command to the service worker and await its acknowledgement.
@@ -46,11 +57,28 @@ const NOT_FOUND: ResolutionResult = { outcome: 'not_found', tier: 'T1', latencyM
  */
 async function sendCdp(command: CdpCommand): Promise<void> {
   const response: unknown = await chrome.runtime.sendMessage({ type: CDP_MESSAGE, command });
-  if (typeof response !== 'object' || response === null || (response as { ok?: unknown }).ok !== true) {
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    (response as { ok?: unknown }).ok !== true
+  ) {
     const error = (response as { error?: unknown } | null)?.error;
     throw new Error(typeof error === 'string' ? error : 'cdp dispatch failed');
   }
 }
+
+/**
+ * How long the content script waits for the worker's answer to an escalation.
+ *
+ * The gateway's 800 ms budget and the worker's own guard sit under this; it fires only when the
+ * service worker was terminated mid-escalation and no reply is ever coming. Without it the
+ * resolver would await a promise nobody will settle, and the utterance would hang instead of
+ * falling back to disambiguation.
+ */
+const ESCALATE_REPLY_TIMEOUT_MS = 3_000;
+
+/** The word a clicked ordinal is spoken as, so the click path enters the same parser speech does. */
+const ORDINAL_WORD: Record<number, string> = { 1: 'one', 2: 'two', 3: 'three' };
 
 /** Destination route for a navigation trigger, learned from the snapshot's nav graph. */
 function buildNavRoutes(snapshot: MemorySnapshot): (elementId: string) => string | null {
@@ -103,6 +131,14 @@ function HudApp({
   const [update, setUpdate] = useState<HudUpdate>(INITIAL_UPDATE);
   const [voice, setVoice] = useState<HudVoice>(INITIAL_VOICE);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
+  /**
+   * The same port, as a ref.
+   *
+   * The resolver is built once per (engine, snapshot) and holds its escalation transport for that
+   * lifetime; reading the port through a ref keeps a reconnect from rebuilding the resolver — and
+   * with it the embedding cache — for a change the transport can simply read next time it fires.
+   */
+  const portRef = useRef<chrome.runtime.Port | null>(null);
 
   /**
    * The engine, while attached, and the memory snapshot the worker pushed.
@@ -119,11 +155,69 @@ function HudApp({
   /** The speculation controller and the view it publishes for the reticle and intent bands. */
   const controllerRef = useRef<SpeculationController | null>(null);
   const [speculation, setSpeculation] = useState<SpeculationView>(IDLE_VIEW);
+  /** The open numbered choice, when no tier could name an element. Rendered by the HUD. */
+  const [disambiguation, setDisambiguation] = useState<Disambiguation | null>(null);
+  /**
+   * Escalations awaiting the worker's reply, by request id.
+   *
+   * A port is a stream, not a call: two escalations can be in flight when speech revises
+   * mid-utterance, so each carries an id and settles its own promise.
+   */
+  const escalations = useRef(new Map<string, (outcome: EscalationOutcome) => void>());
   // Transition tracking, so the voice snapshot below drives one onset/partial/final per change.
   const prevPhaseRef = useRef<HudVoice['phase']>('idle');
   const lastPartialRef = useRef(-1);
   const lastFinalRef = useRef(-1);
   const attached = update.attach === 'attached';
+
+  /**
+   * Send one escalation to the worker and await its reply.
+   *
+   * The content script cannot call the gateway itself: the scoped token lives in the worker and
+   * never crosses into the page (`messaging.ts`). Every failure — no port, a dead worker, a
+   * refused pick — resolves rather than rejects, because the resolver reads the outcome and falls
+   * back to the ranked T1 candidates. Nothing here can throw onto the hot path.
+   */
+  const escalate = useCallback(
+    (request: unknown): Promise<EscalationOutcome> =>
+      new Promise<EscalationOutcome>((settle) => {
+        const target = portRef.current;
+        if (target === null) {
+          settle({ ok: false, reason: 'unavailable' });
+          return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const timer = setTimeout(() => {
+          escalations.current.delete(requestId);
+          settle({ ok: false, reason: 'timeout' });
+        }, ESCALATE_REPLY_TIMEOUT_MS);
+
+        escalations.current.set(requestId, (outcome) => {
+          clearTimeout(timer);
+          settle(outcome);
+        });
+
+        try {
+          target.postMessage({ kind: 'escalate', requestId, request });
+        } catch {
+          // The worker was terminated between the ref read and the post.
+          clearTimeout(timer);
+          escalations.current.delete(requestId);
+          settle({ ok: false, reason: 'unavailable' });
+        }
+      }),
+    [],
+  );
+
+  /** Hand a learned alias to the worker's write-back queue. Fire and forget, by design. */
+  const sendAlias = useCallback((writeback: unknown) => {
+    try {
+      portRef.current?.postMessage({ kind: 'alias_writeback', writeback });
+    } catch {
+      // A write-back lost to a terminated worker costs one future T0 hit, not a resolution.
+    }
+  }, []);
 
   useEffect(() => {
     if (!attached) return undefined;
@@ -182,7 +276,15 @@ function HudApp({
           await embedder.dispose();
           return;
         }
-        lifecycle.built = createResolver({ snapshot, embedder, source });
+        lifecycle.built = createResolver({
+          snapshot,
+          embedder,
+          source,
+          // T2 and the write-back that makes it worth doing. Both go through the worker, which
+          // holds the token; this side never sees a credential.
+          escalate,
+          onAlias: sendAlias,
+        });
         resolver.current = lifecycle.built;
 
         // The runtime loop: parse → resolve → speculate/stage → commit → execute, all in-process.
@@ -190,7 +292,14 @@ function HudApp({
         const controller = createSpeculationController({
           parser: createIntentParser({ vocabulary: buildIntentVocabulary(snapshot) }),
           resolver: {
-            resolve: (phrase) => resolver.current?.resolve(phrase) ?? Promise.resolve(NOT_FOUND),
+            resolve: async (phrase) => {
+              const result = await (resolver.current?.resolve(phrase) ??
+                Promise.resolve(NOT_FOUND));
+              // Publish whatever choice the resolver is now asking for — a list when no tier could
+              // name an element, null the moment one did or the tester answered.
+              setDisambiguation(resolver.current?.pending() ?? null);
+              return result;
+            },
           },
           executor: createActionExecutor({ dispatcher: createRelayDispatcher(sendCdp), window }),
           locator: createBinderLocator(snapshot),
@@ -219,6 +328,7 @@ function HudApp({
 
   useEffect(() => {
     const connection = chrome.runtime.connect({ name: HUD_PORT });
+    portRef.current = connection;
     setPort(connection);
 
     connection.onMessage.addListener((message: unknown) => {
@@ -236,6 +346,26 @@ function HudApp({
         return;
       }
 
+      if (next.kind === 'escalate_result') {
+        const settle = escalations.current.get(next.requestId);
+        // No waiter means the escalation already timed out locally. Dropping the late reply is
+        // right: the utterance it belonged to has moved on.
+        if (settle === undefined) return;
+        escalations.current.delete(next.requestId);
+
+        if (!next.ok) {
+          settle({ ok: false, reason: next.reason ?? 'unavailable' });
+          return;
+        }
+        // Validated on arrival, like the snapshot: an unvalidated pick would reach the speculation
+        // controller, and a malformed confidence there is a wrong click waiting to happen.
+        const parsed = EscalateResponse.safeParse(next.response);
+        settle(
+          parsed.success ? { ok: true, response: parsed.data } : { ok: false, reason: 'not_found' },
+        );
+        return;
+      }
+
       // A snapshot push. Validated against the contract before it is held — an unvalidated one
       // would be handed to the resolver and fail deep in a resolution rather than here.
       if (next.state === 'loaded') {
@@ -247,7 +377,14 @@ function HudApp({
     });
 
     connection.onDisconnect.addListener(() => {
+      portRef.current = null;
       setPort(null);
+      // Settle every escalation still waiting: the worker that owed them the answer is gone, and
+      // an unsettled promise here would hang the utterance that is awaiting it.
+      for (const settle of escalations.current.values())
+        settle({ ok: false, reason: 'unavailable' });
+      escalations.current.clear();
+      setDisambiguation(null);
       // The worker was terminated or the extension reloaded. Showing the last known state would
       // claim an attachment that no longer exists.
       setUpdate(INITIAL_UPDATE);
@@ -259,6 +396,7 @@ function HudApp({
     connection.postMessage({ kind: 'hello', origin: window.location.origin });
 
     return () => {
+      portRef.current = null;
       connection.disconnect();
     };
   }, []);
@@ -313,7 +451,10 @@ function HudApp({
 
     if (voice.partial !== null && voice.partial.revision > lastPartialRef.current) {
       lastPartialRef.current = voice.partial.revision;
-      void controller.onPartial({ revision: voice.partial.revision, transcript: voice.partial.text });
+      void controller.onPartial({
+        revision: voice.partial.revision,
+        transcript: voice.partial.text,
+      });
     }
     if (voice.final !== null && voice.final.revision > lastFinalRef.current) {
       lastFinalRef.current = voice.final.revision;
@@ -327,6 +468,18 @@ function HudApp({
       voice={voice}
       speculation={speculation}
       onConfirm={() => controllerRef.current?.confirm()}
+      disambiguation={disambiguation}
+      // A click takes the same road as speech: it feeds the controller the ordinal as a final
+      // transcript, so the pick is parsed, resolved, classified and gated by exactly the code a
+      // spoken "two" runs through. One path, one set of guarantees.
+      onChoose={(ordinal) => {
+        const revision = Math.max(lastPartialRef.current, lastFinalRef.current) + 1;
+        lastFinalRef.current = revision;
+        void controllerRef.current?.onFinal({
+          revision,
+          transcript: ORDINAL_WORD[ordinal] ?? String(ordinal),
+        });
+      }}
       onAttach={() => {
         send('attach');
       }}

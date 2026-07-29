@@ -148,6 +148,7 @@ describe('the instrument names', () => {
     metrics.seedPlanLatencyMs.record(1);
     metrics.seedMaterializeTotal.add(1, {});
     metrics.tierTotal.add(1, {});
+    metrics.resolutionLatencyMs.record(1, {});
     metrics.falseExecutionTotal.add(1, {});
     metrics.httpRequestsTotal.add(1, {});
     metrics.httpRequestDurationMs.record(1, {});
@@ -160,6 +161,7 @@ describe('the instrument names', () => {
       'wispr_gateway_requests_total',
       'wispr_memory_snapshot_build_ms',
       'wispr_memory_snapshot_total',
+      'wispr_resolution_latency_ms',
       'wispr_seed_materialize_total',
       'wispr_seed_plan_latency_ms',
       'wispr_tier_total',

@@ -234,6 +234,29 @@ function fromGatewayError(error: GatewayError, traceId: string): WisprError {
         retryable: false,
         issues: readIssues(error.details.issues, error.message),
       };
+    case 'resolution_timeout':
+      // The first construction site for this code: Phase 11's T2 escalation is the first thing
+      // the gateway runs that has a latency budget it can blow. The extension reads `retryable`
+      // and the tier and falls back to disambiguation rather than waiting on a slow model.
+      return {
+        code: 'resolution_timeout',
+        message: error.message,
+        retryable: true,
+        tier: readTier(error.details.tier),
+        budgetMs: readNonNegativeNumber(error.details.budgetMs),
+        elapsedMs: readNonNegativeNumber(error.details.elapsedMs),
+      };
+    case 'resolution_not_found':
+      // T2 ran but could not return a usable pick — an unparseable answer, or a candidate id it
+      // invented. The honest report is that the phrase did not resolve; the extension then shows
+      // the ranked T1 candidates it already holds.
+      return {
+        code: 'resolution_not_found',
+        message: error.message,
+        retryable: false,
+        targetPhrase: readText(error.details.targetPhrase),
+        tier: readTier(error.details.tier),
+      };
     case 'memory_snapshot_unavailable': {
       const applicationId = readUuid(error.details.applicationId);
       // The contract's variant carries the application id; without a valid one the honest thing
@@ -265,6 +288,23 @@ function readRole(value: unknown): Role {
 
 function readNonNegativeInt(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function readNonNegativeNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+const TIERS = ['T0', 'T1', 'T2'] as const;
+type TierValue = (typeof TIERS)[number];
+
+/** A tier off an error's details, or `T2` — the only tier that constructs these errors so far. */
+function readTier(value: unknown): TierValue {
+  return TIERS.includes(value as TierValue) ? (value as TierValue) : 'T2';
+}
+
+/** A redacted display string off an error's details. Empty string when absent — never raw text. */
+function readText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -7,8 +7,10 @@ import type { GatewayConfig } from '../config.js';
 import { currentContext } from '../context/request-context.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { asWisprError, GatewayError, httpStatusFor, toWisprError } from '../errors.js';
+import { createAnthropicProvider, type ModelProvider } from '../model/index.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 import { registerMemoryRoutes } from '../routes/memory.js';
+import { registerResolveRoutes } from '../routes/resolve.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
 import { registerRateLimit } from './rate-limit.js';
@@ -32,6 +34,12 @@ export interface ServerOptions {
   readonly metrics: GatewayMetrics;
   /** Supplied by tests to skip OIDC discovery; built from config otherwise. */
   readonly jwks?: Jwks;
+  /**
+   * The T2 escalation model. Built from config as the real Anthropic provider when absent; a test
+   * injects a fake so `test:resolve` needs neither a key nor the network. Constructing the real
+   * one here makes no call — it only closes over the key and base URL until the route is hit.
+   */
+  readonly modelProvider?: ModelProvider;
 }
 
 export async function buildServer(options: ServerOptions): Promise<FastifyInstance> {
@@ -68,6 +76,13 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     database: options.database,
     redis: options.redis,
     metrics,
+  });
+  registerResolveRoutes(app, {
+    config,
+    metrics,
+    modelProvider:
+      options.modelProvider ??
+      createAnthropicProvider({ apiKey: config.MODEL_API_KEY, baseUrl: config.MODEL_BASE_URL }),
   });
 
   app.addHook('onResponse', (request, reply, done) => {

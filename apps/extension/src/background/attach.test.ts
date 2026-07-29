@@ -1,13 +1,16 @@
-import type { ExtensionToken } from 'protocol';
+import type { ExtensionToken, MemorySnapshot } from 'protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { HudUpdate } from '../messaging.js';
+import type { AliasClient } from './alias-client.js';
 import {
   alarmNameFor,
   createAttachController,
   type AlarmScheduler,
   type PortLike,
 } from './attach.js';
+import type { EscalateClient } from './escalate-client.js';
+import type { MemoryClient } from './memory-client.js';
 import { UnauthenticatedError } from './token-client.js';
 import type { TokenStore } from './token-store.js';
 
@@ -411,5 +414,198 @@ describe('refreshing', () => {
     await controller.onAlarm(alarmNameFor(99));
 
     expect(fetchToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('T2 escalation and the write-back queue', () => {
+  const MEMORY_VERSION = '33333333-3333-4333-8333-333333333333';
+  const ELEMENT = '44444444-4444-4444-8444-444444444444';
+  const STATE = 'a'.repeat(64);
+
+  /** A snapshot with nothing in it: the queue only needs the memory version it is scoped to. */
+  function snapshot(): MemorySnapshot {
+    return {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      applicationId: '22222222-2222-4222-8222-222222222222',
+      memoryVersion: {
+        id: MEMORY_VERSION,
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        applicationId: '22222222-2222-4222-8222-222222222222',
+        version: 1,
+        status: 'active',
+        createdAt: '2026-07-29T00:00:00.000Z',
+        approvedBy: null,
+        failureReason: null,
+      },
+      screens: [],
+      elements: [],
+      navEdges: [],
+      aliases: [],
+      generatedAt: '2026-07-29T00:00:00.000Z',
+    };
+  }
+
+  function memoryClient(): MemoryClient {
+    return {
+      load: () => Promise.resolve(snapshot()),
+      get: () => snapshot(),
+      invalidate: () => undefined,
+    };
+  }
+
+  const escalateRequest = {
+    utterance: 'sign off on this order',
+    stateFingerprint: STATE,
+    candidates: [{ elementId: ELEMENT, elementKey: 'orders.orders.approve', label: 'Approve' }],
+  };
+
+  const writeback = {
+    phrase: 'sign off on this order',
+    elementId: ELEMENT,
+    stateFingerprint: STATE,
+    source: 't2_writeback',
+  };
+
+  /** An attached tab with a snapshot loaded, which is what opens the write-back queue. */
+  async function attached(options: {
+    escalation?: EscalateClient;
+    aliases?: AliasClient;
+  }): Promise<ReturnType<typeof fakePort>> {
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: () => Promise.resolve(token()) },
+      store: memoryStore(),
+      alarms: alarms(),
+      memory: memoryClient(),
+      writebackIntervalMs: 60_000,
+      ...options,
+    });
+
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    // The snapshot load is deliberately off the attach path; let it land.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    return connection;
+  }
+
+  it('runs an escalation with the tab token and answers over the port', async () => {
+    const escalate = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        response: { elementId: ELEMENT, confidence: 0.9, reasoning: 'the approve control' },
+      }),
+    );
+    const connection = await attached({ escalation: { escalate } });
+
+    connection.emit({ kind: 'escalate', requestId: 'req-1', request: escalateRequest });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The token is attached here and never sent to the content script — the same rule the snapshot
+    // fetch follows, for the same reason.
+    expect(escalate).toHaveBeenCalledWith(escalateRequest, 'a.scoped.token');
+    const reply = connection.sent.at(-1) as unknown as {
+      kind: string;
+      requestId: string;
+      ok: boolean;
+    };
+    expect(reply.kind).toBe('escalate_result');
+    expect(reply.requestId).toBe('req-1');
+    expect(reply.ok).toBe(true);
+  });
+
+  it('answers unavailable when there is no session to escalate through', async () => {
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: () => Promise.resolve(token()) },
+      store: memoryStore(),
+      alarms: alarms(),
+      escalation: { escalate: vi.fn() },
+    });
+
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    connection.emit({ kind: 'escalate', requestId: 'req-1', request: escalateRequest });
+    await Promise.resolve();
+
+    // A detached tab still gets an answer: the content script falls back to its T1 candidates
+    // rather than waiting on a reply that is never coming.
+    const reply = connection.sent.at(-1) as unknown as { ok: boolean; reason: string };
+    expect(reply.ok).toBe(false);
+    expect(reply.reason).toBe('unavailable');
+  });
+
+  it('never sends a malformed escalation to the gateway', async () => {
+    const escalate = vi.fn();
+    const connection = await attached({ escalation: { escalate } });
+
+    connection.emit({ kind: 'escalate', requestId: 'req-1', request: { utterance: 42 } });
+    await Promise.resolve();
+
+    // This arrives from a page the extension does not control. A request that is not the contract's
+    // does not reach the model, and does not spend a tenant's budget.
+    expect(escalate).not.toHaveBeenCalled();
+  });
+
+  it('holds learned aliases and flushes them on detach', async () => {
+    const write = vi.fn(() => Promise.resolve({ accepted: 1, inserted: 1, updated: 0 }));
+    const connection = await attached({ aliases: { write } });
+
+    connection.emit({ kind: 'alias_writeback', writeback });
+    // Nothing goes out per resolution: the queue is what talks to the control plane.
+    expect(write).not.toHaveBeenCalled();
+
+    connection.emit({ kind: 'detach' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The phase's "and on detach". The batch is scoped to the memory version it was learned on,
+    // and it still carries the token, which detach has by then cleared off the session.
+    expect(write).toHaveBeenCalledWith(MEMORY_VERSION, [writeback], 'a.scoped.token');
+  });
+
+  it('flushes when the tab goes away without detaching', async () => {
+    const write = vi.fn(() => Promise.resolve({ accepted: 1, inserted: 1, updated: 0 }));
+    const connection = await attached({ aliases: { write } });
+
+    connection.emit({ kind: 'alias_writeback', writeback });
+    connection.disconnect();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A tester who closes the tab has taught the system just as much as one who clicks detach.
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a write-back that is not the contract shape', async () => {
+    const write = vi.fn(() => Promise.resolve({ accepted: 0, inserted: 0, updated: 0 }));
+    const onError = vi.fn();
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: () => Promise.resolve(token()) },
+      store: memoryStore(),
+      alarms: alarms(),
+      memory: memoryClient(),
+      aliases: { write },
+      writebackIntervalMs: 60_000,
+      onError,
+    });
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    connection.emit({ kind: 'alias_writeback', writeback: { phrase: '', elementId: 'nope' } });
+    connection.emit({ kind: 'detach' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A stranger's phrase must not end up in a tenant's vocabulary.
+    expect(onError).toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });

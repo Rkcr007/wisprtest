@@ -1,0 +1,27 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="WisprTest">
+  <title>WisprTest — voice resolves to a locked target</title>
+  <defs>
+    <linearGradient id="wisprFlow" x1="8" y1="32" x2="54" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB454"/>
+      <stop offset="1" stop-color="#52E0AC"/>
+    </linearGradient>
+  </defs>
+  <!-- the aiming reticle: four corner brackets (the real HUD primitive) -->
+  <g stroke="url(#wisprFlow)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 8 L8 8 L8 22"/>
+    <path d="M42 8 L56 8 L56 22"/>
+    <path d="M8 42 L8 56 L22 56"/>
+    <path d="M56 42 L56 56 L42 56"/>
+  </g>
+  <!-- voice waveform: speech entering on the amber (listening) side -->
+  <g fill="url(#wisprFlow)">
+    <rect x="16.75" y="27" width="2.5" height="10" rx="1.25"/>
+    <rect x="21.75" y="22" width="2.5" height="20" rx="1.25"/>
+    <rect x="26.75" y="18" width="2.5" height="28" rx="1.25"/>
+    <rect x="31.75" y="24" width="2.5" height="16" rx="1.25"/>
+    <rect x="36.75" y="28" width="2.5" height="8" rx="1.25"/>
+  </g>
+  <!-- the lock: resolved to one precise target on the mint (executed) side -->
+  <circle cx="47" cy="32" r="7" fill="none" stroke="#52E0AC" stroke-width="2" opacity="0.55"/>
+  <circle cx="47" cy="32" r="3.2" fill="#52E0AC"/>
+</svg>

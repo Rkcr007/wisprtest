@@ -1,0 +1,28 @@
+<svg width="252" height="64" viewBox="0 0 252 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="WisprTest — Remember, Execute">
+  <title>WisprTest</title>
+  <defs>
+    <linearGradient id="wisprFlow" x1="8" y1="32" x2="54" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB454"/>
+      <stop offset="1" stop-color="#52E0AC"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#wisprFlow)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 8 L8 8 L8 22"/>
+    <path d="M42 8 L56 8 L56 22"/>
+    <path d="M8 42 L8 56 L22 56"/>
+    <path d="M56 42 L56 56 L42 56"/>
+  </g>
+  <g fill="url(#wisprFlow)">
+    <rect x="16.75" y="27" width="2.5" height="10" rx="1.25"/>
+    <rect x="21.75" y="22" width="2.5" height="20" rx="1.25"/>
+    <rect x="26.75" y="18" width="2.5" height="28" rx="1.25"/>
+    <rect x="31.75" y="24" width="2.5" height="16" rx="1.25"/>
+    <rect x="36.75" y="28" width="2.5" height="8" rx="1.25"/>
+  </g>
+  <circle cx="47" cy="32" r="7" fill="none" stroke="#2FB88E" stroke-width="2" opacity="0.6"/>
+  <circle cx="47" cy="32" r="3.2" fill="#17B48C"/>
+  <text x="80" y="36" font-family="'Inter','Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" font-size="29" font-weight="700" letter-spacing="-0.6">
+    <tspan fill="#0C1526">Wispr</tspan><tspan fill="#17B48C">Test</tspan>
+  </text>
+  <text x="81" y="51" font-family="'Inter','Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" font-size="8" font-weight="600" letter-spacing="3" fill="#4B79D6" opacity="0.9">REMEMBER → EXECUTE</text>
+</svg>

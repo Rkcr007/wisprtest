@@ -255,6 +255,7 @@ wisprtest/
 | Primary store | PostgreSQL 16                                                    | Memory graph, schemas, ledger, sessions, audit — every row `tenant_id`-scoped |
 | Vector        | Qdrant                                                           | Embedding search over scoped candidates + alias corpus                        |
 | Cache         | Redis                                                            | Hot memory snapshots per `(tenant, app, version)`                             |
+| Object store  | MinIO (S3-compatible)                                            | Session evidence — screenshots and DOM snapshots, retrieved by signed URL     |
 | Observability | OpenTelemetry → Prometheus / Grafana / Loki                      | Mandatory per service                                                         |
 | Orchestration | Docker Compose                                                   | `make dev` brings up everything                                               |
 
@@ -266,7 +267,7 @@ wisprtest/
 
 - **Node ≥ 22** and **pnpm** (`corepack enable` picks up the pinned version)
 - **Python** with [**uv**](https://docs.astral.sh/uv/) (for `apps/composer`)
-- **Docker** + Docker Compose (Postgres 16, Redis 7, Qdrant)
+- **Docker** + Docker Compose (Postgres 16, Redis 7, Qdrant, MinIO)
 - [**Atlas**](https://atlasgo.io/) for database migrations
 - Google **Chrome** (the extension loads unpacked; e2e uses system Chromium)
 
@@ -275,7 +276,7 @@ wisprtest/
 ```bash
 pnpm install                # 1. install workspace dependencies
 cp .env.example .env        # 2. create your local env file, then fill it in
-make db-up                  # 3. bring up Postgres / Redis / Qdrant (waits for healthy)
+make db-up                  # 3. bring up Postgres / Redis / Qdrant / MinIO (waits for healthy)
 make db-reset               # 4. create the schema + load the test fixture
 make dev                    # 5. run every service in watch mode
 ```
@@ -296,7 +297,7 @@ make build         # regenerate contract/schema types, then build every package
 make test          # every workspace test suite
 make lint          # ESLint + Prettier + ruff
 make typecheck     # tsc --noEmit across TS, mypy --strict for composer
-make db-up         # start Postgres / Redis / Qdrant
+make db-up         # start Postgres / Redis / Qdrant / MinIO
 make db-migrate    # apply Atlas migrations
 make db-reset      # drop, recreate, migrate, seed (destructive; Compose DB only)
 ```

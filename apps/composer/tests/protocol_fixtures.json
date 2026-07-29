@@ -1868,6 +1868,37 @@
       "revertedAt": null
     }
   ],
+  "Session": [
+    {
+      "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "startedAt": "2026-07-24T17:05:12.000+02:00",
+      "endedAt": null
+    },
+    {
+      "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "startedAt": "2026-07-24T17:05:12.000+02:00",
+      "endedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "SessionCloseRequest": [
+    {
+      "status": "closed"
+    }
+  ],
+  "SessionOpenRequest": [
+    {
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538"
+    }
+  ],
   "SessionStep": [
     {
       "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
@@ -1962,9 +1993,301 @@
       "createdAt": "2026-07-25T09:30:00.000Z"
     }
   ],
+  "SessionStepBatch": [
+    {
+      "steps": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "ordinal": 4,
+          "utterance": "show me only the pending ones",
+          "intent": {
+            "verb": "filter",
+            "targetPhrase": "only the pending ones",
+            "constraints": [
+              {
+                "kind": "within",
+                "landmark": "region:orders"
+              }
+            ],
+            "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "candidateElementKeys": [
+              "orders.filter.pending",
+              "orders.filter.approved"
+            ]
+          },
+          "resolution": {
+            "outcome": "resolved",
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "elementKey": "orders.filter.pending",
+            "confidence": 0.97,
+            "tier": "T0",
+            "latencyMs": 4.2,
+            "candidates": [
+              {
+                "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "elementKey": "orders.filter.pending",
+                "label": "Pending",
+                "confidence": 0.97,
+                "signalScores": {
+                  "role": 0.2,
+                  "accessible_name": 0.25,
+                  "landmark_path": 0.15
+                }
+              }
+            ]
+          },
+          "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "tier": "T0",
+          "confidence": 0.97,
+          "actionClass": "R",
+          "latencyMs": 312,
+          "outcome": "executed",
+          "evidence": [
+            {
+              "kind": "screenshot",
+              "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+              "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "capturedAt": "2026-07-25T09:30:00.000Z"
+            }
+          ],
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "ordinal": 4,
+          "utterance": "show me only the pending ones",
+          "intent": {
+            "verb": "filter",
+            "targetPhrase": "only the pending ones",
+            "constraints": [
+              {
+                "kind": "within",
+                "landmark": "region:orders"
+              }
+            ],
+            "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "candidateElementKeys": [
+              "orders.filter.pending",
+              "orders.filter.approved"
+            ]
+          },
+          "resolution": {
+            "outcome": "resolved",
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "elementKey": "orders.filter.pending",
+            "confidence": 0.97,
+            "tier": "T0",
+            "latencyMs": 4.2,
+            "candidates": [
+              {
+                "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "elementKey": "orders.filter.pending",
+                "label": "Pending",
+                "confidence": 0.97,
+                "signalScores": {
+                  "role": 0.2,
+                  "accessible_name": 0.25,
+                  "landmark_path": 0.15
+                }
+              }
+            ]
+          },
+          "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "tier": "T0",
+          "confidence": 0.97,
+          "actionClass": "R",
+          "latencyMs": 312,
+          "outcome": "executed",
+          "evidence": [
+            {
+              "kind": "screenshot",
+              "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+              "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "capturedAt": "2026-07-25T09:30:00.000Z"
+            }
+          ],
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        },
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "ordinal": 5,
+          "utterance": "show me only the pending ones",
+          "intent": {
+            "verb": "filter",
+            "targetPhrase": "only the pending ones",
+            "constraints": [
+              {
+                "kind": "within",
+                "landmark": "region:orders"
+              }
+            ],
+            "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "candidateElementKeys": [
+              "orders.filter.pending",
+              "orders.filter.approved"
+            ]
+          },
+          "resolution": {
+            "outcome": "resolved",
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "elementKey": "orders.filter.pending",
+            "confidence": 0.97,
+            "tier": "T0",
+            "latencyMs": 4.2,
+            "candidates": [
+              {
+                "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "elementKey": "orders.filter.pending",
+                "label": "Pending",
+                "confidence": 0.97,
+                "signalScores": {
+                  "role": 0.2,
+                  "accessible_name": 0.25,
+                  "landmark_path": 0.15
+                }
+              }
+            ]
+          },
+          "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "tier": "T0",
+          "confidence": 0.97,
+          "actionClass": "R",
+          "latencyMs": 312,
+          "outcome": "executed",
+          "evidence": [
+            {
+              "kind": "screenshot",
+              "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+              "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "capturedAt": "2026-07-25T09:30:00.000Z"
+            }
+          ],
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ]
+    }
+  ],
+  "SessionStepIngestResult": [
+    {
+      "accepted": 6,
+      "inserted": 6,
+      "duplicates": 0
+    },
+    {
+      "accepted": 6,
+      "inserted": 0,
+      "duplicates": 6
+    }
+  ],
+  "SessionTimeline": [
+    {
+      "session": {
+        "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "startedAt": "2026-07-24T17:05:12.000+02:00",
+        "endedAt": "2026-07-25T09:30:00.000Z"
+      },
+      "steps": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "ordinal": 4,
+          "utterance": "show me only the pending ones",
+          "intent": {
+            "verb": "filter",
+            "targetPhrase": "only the pending ones",
+            "constraints": [
+              {
+                "kind": "within",
+                "landmark": "region:orders"
+              }
+            ],
+            "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "candidateElementKeys": [
+              "orders.filter.pending",
+              "orders.filter.approved"
+            ]
+          },
+          "resolution": {
+            "outcome": "resolved",
+            "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "elementKey": "orders.filter.pending",
+            "confidence": 0.97,
+            "tier": "T0",
+            "latencyMs": 4.2,
+            "candidates": [
+              {
+                "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "elementKey": "orders.filter.pending",
+                "label": "Pending",
+                "confidence": 0.97,
+                "signalScores": {
+                  "role": 0.2,
+                  "accessible_name": 0.25,
+                  "landmark_path": 0.15
+                }
+              }
+            ]
+          },
+          "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "tier": "T0",
+          "confidence": 0.97,
+          "actionClass": "R",
+          "latencyMs": 312,
+          "outcome": "executed",
+          "evidence": [
+            {
+              "kind": "screenshot",
+              "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+              "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "capturedAt": "2026-07-25T09:30:00.000Z"
+            }
+          ],
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "evidence": [
+        {
+          "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+          "url": "https://evidence.wisprtest.example/tenants/3f2504e0/step-4.png?sig=abc",
+          "expiresAt": "2026-07-25T09:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "session": {
+        "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "startedAt": "2026-07-24T17:05:12.000+02:00",
+        "endedAt": null
+      },
+      "steps": [],
+      "evidence": []
+    }
+  ],
   "Sha256Hex": [
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+  ],
+  "SignedEvidence": [
+    {
+      "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/step-4.png",
+      "url": "https://evidence.wisprtest.example/tenants/3f2504e0/step-4.png?sig=abc",
+      "expiresAt": "2026-07-25T09:30:00.000Z"
+    }
   ],
   "StateFingerprint": [
     "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
@@ -2105,6 +2428,13 @@
       "message": "The approve button did not accept the click.",
       "retryable": true,
       "elementKey": "orders.detail.approve"
+    },
+    {
+      "code": "session_closed",
+      "message": "That session was closed. Its timeline is final; open a new one to keep testing.",
+      "retryable": false,
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "endedAt": "2026-07-25T09:30:00.000Z"
     },
     {
       "code": "constraint_unsatisfiable",

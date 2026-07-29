@@ -6,9 +6,11 @@ import { createAttachController } from './attach.js';
 import { createCdpDispatchService } from './cdp-dispatch.js';
 import { createEscalateClient } from './escalate-client.js';
 import { createMemoryClient } from './memory-client.js';
+import { createSessionClient } from './session-client.js';
 import { createTokenClient } from './token-client.js';
 import { createTokenStore } from './token-store.js';
 import { createVoiceController, type OffscreenManager } from './voice-controller.js';
+import { createBufferStore } from '../session/index.js';
 
 /**
  * MV3 service worker entrypoint.
@@ -84,6 +86,17 @@ const controller = createAttachController({
   // scoped token, and the token never crosses into the page.
   escalation: createEscalateClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   aliases: createAliasClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  // Sessions: opened with the memory snapshot, buffered through a worker restart, closed on
+  // detach. The buffer is memory-backed and closed to content scripts, like the token store.
+  sessions: createSessionClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  bufferStore: createBufferStore(chrome.storage.session, (error) => {
+    logger.log(
+      'warn',
+      'session.storage_failed',
+      { detail: describe(error) },
+      'step buffer storage failed',
+    );
+  }),
   voice,
   alarms: {
     create: (name, info) => {

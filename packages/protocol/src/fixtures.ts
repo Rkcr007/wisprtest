@@ -201,6 +201,33 @@ const EVIDENCE_REF = {
   capturedAt: NOW,
 };
 
+const SESSION = {
+  id: UUID_B,
+  tenantId: UUID_A,
+  applicationId: UUID_C,
+  memoryVersionId: UUID_D,
+  userId: UUID_A,
+  startedAt: EARLIER,
+  endedAt: null,
+};
+
+const SESSION_STEP = {
+  id: UUID_A,
+  sessionId: UUID_B,
+  ordinal: 4,
+  utterance: 'show me only the pending ones',
+  intent: SCOPED_QUERY,
+  resolution: RESOLUTION_RESULT,
+  elementId: UUID_C,
+  tier: 'T0',
+  confidence: 0.97,
+  actionClass: 'R',
+  latencyMs: 312,
+  outcome: 'executed',
+  evidence: [EVIDENCE_REF],
+  createdAt: NOW,
+};
+
 const PROVENANCE = [
   {
     field: 'status',
@@ -1431,6 +1458,127 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
     ],
   },
 
+  Session: {
+    schema: p.Session,
+    valid: [SESSION, { ...SESSION, endedAt: NOW }],
+    invalid: [
+      {
+        why: 'a session with no memory version records a timeline nobody can replay',
+        value: without(SESSION, 'memoryVersionId'),
+      },
+      {
+        why: 'endedAt must be a timestamp or null, never a status word',
+        value: withField(SESSION, 'endedAt', 'closed'),
+      },
+    ],
+  },
+  SessionOpenRequest: {
+    schema: p.SessionOpenRequest,
+    valid: [{ applicationId: UUID_C, memoryVersionId: UUID_D }],
+    invalid: [
+      {
+        why: 'the tenant comes from the token; naming one here would let a caller pick it',
+        value: { applicationId: UUID_C, memoryVersionId: UUID_D, tenantId: UUID_A },
+      },
+      {
+        why: 'missing the memory version the session resolves against',
+        value: { applicationId: UUID_C },
+      },
+    ],
+  },
+  SessionCloseRequest: {
+    schema: p.SessionCloseRequest,
+    valid: [{ status: 'closed' }],
+    invalid: [
+      {
+        why: 'an empty body must not close a session by accident',
+        value: {},
+      },
+      {
+        why: 'the server stamps endedAt; a client clock must not be able to backdate evidence',
+        value: { status: 'closed', endedAt: NOW },
+      },
+      { why: 'reopening is not a transition that exists', value: { status: 'open' } },
+    ],
+  },
+  SessionStepBatch: {
+    schema: p.SessionStepBatch,
+    valid: [{ steps: [SESSION_STEP] }, { steps: [SESSION_STEP, { ...SESSION_STEP, ordinal: 5 }] }],
+    invalid: [
+      { why: 'an empty batch is a bug, not a no-op', value: { steps: [] } },
+      {
+        why: 'a step that is not a SessionStep',
+        value: { steps: [withField(SESSION_STEP, 'ordinal', -1)] },
+      },
+    ],
+  },
+  SessionStepIngestResult: {
+    schema: p.SessionStepIngestResult,
+    valid: [
+      { accepted: 6, inserted: 6, duplicates: 0 },
+      // An entirely duplicate flush: the previous attempt landed and the buffer was never told.
+      { accepted: 6, inserted: 0, duplicates: 6 },
+    ],
+    invalid: [
+      { why: 'counts are never negative', value: { accepted: 1, inserted: -1, duplicates: 2 } },
+      {
+        why: 'missing the duplicate count that makes a retry legible',
+        value: { accepted: 1, inserted: 1 },
+      },
+    ],
+  },
+  SignedEvidence: {
+    schema: p.SignedEvidence,
+    valid: [
+      {
+        storageKey: 'tenants/3f2504e0/sessions/9c5b94b1/step-4.png',
+        url: 'https://evidence.wisprtest.example/tenants/3f2504e0/step-4.png?sig=abc',
+        expiresAt: NOW,
+      },
+    ],
+    invalid: [
+      {
+        why: 'a signed URL that never expires is a permanent link to a customer screenshot',
+        value: {
+          storageKey: 'tenants/3f2504e0/sessions/9c5b94b1/step-4.png',
+          url: 'https://evidence.wisprtest.example/step-4.png',
+        },
+      },
+      {
+        why: 'not a URL',
+        value: { storageKey: 'k', url: 'step-4.png', expiresAt: NOW },
+      },
+    ],
+  },
+  SessionTimeline: {
+    schema: p.SessionTimeline,
+    valid: [
+      {
+        session: { ...SESSION, endedAt: NOW },
+        steps: [SESSION_STEP],
+        evidence: [
+          {
+            storageKey: EVIDENCE_REF.storageKey,
+            url: 'https://evidence.wisprtest.example/tenants/3f2504e0/step-4.png?sig=abc',
+            expiresAt: NOW,
+          },
+        ],
+      },
+      // An open session with nothing recorded yet is a timeline, not an error.
+      { session: SESSION, steps: [], evidence: [] },
+    ],
+    invalid: [
+      {
+        why: 'steps without the session they belong to',
+        value: { steps: [SESSION_STEP], evidence: [] },
+      },
+      {
+        why: 'evidence must be resolved references, not raw bytes',
+        value: { session: SESSION, steps: [], evidence: ['<html>…</html>'] },
+      },
+    ],
+  },
+
   /* ---------------------------------------------------------------------------------- data */
 
   FieldType: {
@@ -2138,6 +2286,13 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
         message: 'The approve button did not accept the click.',
         retryable: true,
         elementKey: 'orders.detail.approve',
+      },
+      {
+        code: 'session_closed',
+        message: 'That session was closed. Its timeline is final; open a new one to keep testing.',
+        retryable: false,
+        sessionId: UUID_B,
+        endedAt: NOW,
       },
       {
         code: 'constraint_unsatisfiable',

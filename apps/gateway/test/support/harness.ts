@@ -7,6 +7,7 @@ import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js'
 import { buildServer } from '../../src/http/server.js';
 import { createLogger } from '../../src/logger.js';
 import type { ModelProvider } from '../../src/model/index.js';
+import type { EvidenceStore } from '../../src/storage/evidence-store.js';
 import { createRedis } from '../../src/redis/client.js';
 import { createMetrics } from '../../src/telemetry/metrics.js';
 import { startFakeIssuer, type FakeIssuer } from './oidc.js';
@@ -51,6 +52,11 @@ export interface HarnessOptions {
    * never called unless a test hits the escalate route.
    */
   readonly modelProvider?: ModelProvider;
+  /**
+   * Where session evidence goes. A test injects an in-memory store so the sessions suite can
+   * assert a timeline resolves its keys without a bucket to clean up between runs.
+   */
+  readonly evidence?: EvidenceStore;
 }
 
 export async function startHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -94,6 +100,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     metrics: createMetrics(),
     jwks: createJwks(config, { cooldownMs: options.jwksCooldownMs ?? 0 }),
     ...(options.modelProvider === undefined ? {} : { modelProvider: options.modelProvider }),
+    ...(options.evidence === undefined ? {} : { evidence: options.evidence }),
   });
 
   options.routes?.(app);

@@ -9,13 +9,16 @@
     "db:codegen": "kysely-codegen --dialect postgres --out-file src/db/schema.generated.ts --camel-case --singularize",
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
-    "test": "vitest run && vitest run --config vitest.db.config.ts && vitest run --config vitest.memory.config.ts && vitest run --config vitest.resolve.config.ts",
+    "test": "vitest run && vitest run --config vitest.db.config.ts && vitest run --config vitest.memory.config.ts && vitest run --config vitest.resolve.config.ts && vitest run --config vitest.sessions.config.ts",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:memory": "vitest run --config vitest.memory.config.ts",
     "test:resolve": "vitest run --config vitest.resolve.config.ts",
+    "test:sessions": "vitest run --config vitest.sessions.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1096.0",
+    "@aws-sdk/s3-request-presigner": "3.1096.0",
     "@fastify/otel": "0.20.1",
     "@fastify/rate-limit": "11.1.0",
     "@opentelemetry/api": "1.9.0",

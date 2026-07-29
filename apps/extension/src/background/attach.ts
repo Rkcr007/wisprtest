@@ -1,4 +1,4 @@
-import { AliasWriteback, EscalateRequest, type ExtensionToken } from 'protocol';
+import { AliasWriteback, EscalateRequest, SessionStep, type ExtensionToken } from 'protocol';
 
 import {
   INITIAL_UPDATE,
@@ -11,6 +11,8 @@ import {
   type SnapshotState,
 } from '../messaging.js';
 import { createWritebackQueue, type WritebackQueue } from '../resolver/index.js';
+import { createSessionBuffer, type BufferStore, type SessionBuffer } from '../session/index.js';
+import type { SessionClient } from './session-client.js';
 import type { AliasClient } from './alias-client.js';
 import type { EscalateClient } from './escalate-client.js';
 import type { MemoryClient } from './memory-client.js';
@@ -87,6 +89,17 @@ export interface AttachControllerOptions {
   readonly aliases?: AliasClient;
   /** Flush cadence for the write-back queue. 10s per docs/BUILD-PLAN.md Phase 11. */
   readonly writebackIntervalMs?: number;
+  /**
+   * Opens, closes and ingests sessions. Optional so the attach lifecycle can be tested in
+   * isolation; without it steps are dropped and the extension resolves but records nothing.
+   */
+  readonly sessions?: SessionClient;
+  /**
+   * Where buffered steps survive a service-worker restart. Optional alongside `sessions`.
+   */
+  readonly bufferStore?: BufferStore;
+  /** Flush cadence for the session buffer. 5s per docs/BUILD-PLAN.md Phase 12. */
+  readonly stepIntervalMs?: number;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -114,6 +127,10 @@ interface Session {
   memoryVersionId: string | null;
   /** Holds learned aliases and flushes them in batches. Created with the snapshot. */
   writebacks: WritebackQueue | null;
+  /** The open session this tab's steps are recorded against, once one has been opened. */
+  sessionId: string | null;
+  /** Buffers steps and flushes them in batches. Created with the session. */
+  steps: SessionBuffer | null;
   /**
    * The token the final flush uses, frozen at detach.
    *
@@ -129,6 +146,9 @@ const DEFAULT_REFRESH_MARGIN_MS = 5 * 60_000;
 
 /** Ten seconds, per docs/BUILD-PLAN.md Phase 11. */
 const DEFAULT_WRITEBACK_INTERVAL_MS = 10_000;
+
+/** Five seconds, per docs/BUILD-PLAN.md Phase 12. */
+const DEFAULT_STEP_INTERVAL_MS = 5_000;
 
 const ALARM_PREFIX = 'wispr:refresh:';
 
@@ -151,7 +171,10 @@ export function createAttachController(options: AttachControllerOptions): Attach
     voice,
     escalation,
     aliases,
+    sessions: sessionClient,
+    bufferStore,
     writebackIntervalMs = DEFAULT_WRITEBACK_INTERVAL_MS,
+    stepIntervalMs = DEFAULT_STEP_INTERVAL_MS,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
     now = () => Date.now(),
     onError,
@@ -213,6 +236,9 @@ export function createAttachController(options: AttachControllerOptions): Attach
       // The queue opens with the snapshot, because the memory version it writes against is what
       // the snapshot just named. Before this point there is nothing an alias could be scoped to.
       openWritebacks(current, snapshot.memoryVersion.id);
+      // The session too: a timeline is only replayable against the memory version it resolved
+      // with, so there is nothing to open until that version is known.
+      await openSession(current, applicationId, snapshot.memoryVersion.id);
       postSnapshot(
         current,
         snapshotMessage('loaded', applicationId, snapshot.memoryVersion.id, snapshot),
@@ -260,6 +286,84 @@ export function createAttachController(options: AttachControllerOptions): Attach
         onError?.('alias.flush_failed', error);
       },
     });
+  }
+
+  /**
+   * Open a session for a tab, and give it a buffer.
+   *
+   * Off the attach path like the snapshot load: the HUD reaches `attached` on the token alone, and
+   * a control plane that is slow to open a session delays recording rather than the tester.
+   * Failure is reported and left there — the extension resolves and executes perfectly well
+   * without a timeline, and refusing to work because history could not be recorded would be the
+   * wrong trade.
+   */
+  async function openSession(
+    session: Session,
+    applicationId: string,
+    memoryVersionId: string,
+  ): Promise<void> {
+    if (sessionClient === undefined || bufferStore === undefined) return;
+    if (session.sessionId !== null) return;
+
+    const token = session.token?.token;
+    if (token === undefined) return;
+
+    try {
+      const opened = await sessionClient.open({
+        applicationId,
+        memoryVersionId,
+        bearerToken: token,
+      });
+      session.sessionId = opened.id;
+      session.steps = await createSessionBuffer({
+        sessionId: opened.id,
+        store: bufferStore,
+        intervalMs: stepIntervalMs,
+        send: async (sessionId, steps) => {
+          // Read at send time: a flush five seconds later must use whatever token the refresh
+          // alarm has since put in place. `flushToken` covers the detach flush, after `token` has
+          // been cleared.
+          const current = session.token?.token ?? session.flushToken ?? undefined;
+          if (current === undefined) throw new Error('no token for session step flush');
+          await sessionClient.sendSteps(sessionId, steps, current);
+        },
+        onError: (error) => {
+          onError?.('session.flush_failed', error);
+        },
+      });
+    } catch (error: unknown) {
+      onError?.('session.open_failed', error);
+    }
+  }
+
+  /**
+   * Flush a tab's steps and close its session — detach, or the tab going away.
+   *
+   * The buffer is closed before the session, so the last batch lands while the session is still
+   * open. Closing first would make the gateway refuse exactly the steps that matter most: the ones
+   * from the end of the sitting.
+   */
+  function closeSession(session: Session): void {
+    const buffer = session.steps;
+    const sessionId = session.sessionId;
+    session.steps = null;
+    session.sessionId = null;
+    if (buffer === null || sessionId === null) return;
+
+    session.flushToken = session.token?.token ?? session.flushToken;
+    const token = session.flushToken;
+
+    // Fire and forget: detach must not wait on the control plane. The order still holds, because
+    // the close is chained onto the flush rather than raced with it.
+    void buffer
+      .close()
+      .then(async () => {
+        if (sessionClient === undefined || token === null) return;
+        await sessionClient.close(sessionId, token);
+      })
+      .catch((error: unknown) => {
+        onError?.('session.close_failed', error);
+      });
   }
 
   /** Flush and drop a tab's queue — detach, disconnect, or a memory version going away. */
@@ -407,8 +511,10 @@ export function createAttachController(options: AttachControllerOptions): Attach
     if (session === undefined) return;
 
     // Flush before the token goes: this is the phase's "and on detach", and it is the last chance
-    // to persist what this session learned. Closed first, while `session.token` is still set.
+    // to persist what this session learned and what it recorded. Both are closed while
+    // `session.token` is still set.
     closeWritebacks(session);
+    closeSession(session);
 
     // Drop the held snapshot with the token that fetched it: a detached tab keeps no memory.
     if (session.token?.applicationId != null) memory?.invalidate(session.token.applicationId);
@@ -445,6 +551,8 @@ export function createAttachController(options: AttachControllerOptions): Attach
         token: null,
         memoryVersionId: null,
         writebacks: null,
+        sessionId: null,
+        steps: null,
         flushToken: null,
       };
       sessions.set(tabId, session);
@@ -498,14 +606,27 @@ export function createAttachController(options: AttachControllerOptions): Attach
             session.writebacks?.enqueue(parsed.data);
             return;
           }
+          case 'session_step': {
+            // Validated at the trust boundary, like a write-back: this arrives from a page the
+            // extension does not control, and an unvalidated step would be a stranger's text in a
+            // tenant's timeline.
+            const parsed = SessionStep.safeParse(request.step);
+            if (!parsed.success) {
+              onError?.('session.invalid_step', parsed.error);
+              return;
+            }
+            session.steps?.add(parsed.data);
+            return;
+          }
         }
       });
 
       port.onDisconnect.addListener(() => {
         voice?.release(port);
-        // The tab navigated or closed. Whatever it learned is still worth persisting — this is the
-        // same final flush detach performs, for the tester who just closed the tab instead.
+        // The tab navigated or closed. Whatever it learned and recorded is still worth persisting —
+        // the same final flush detach performs, for the tester who closed the tab instead.
         closeWritebacks(session);
+        closeSession(session);
         sessions.delete(tabId);
         void alarms.clear(alarmNameFor(tabId));
       });

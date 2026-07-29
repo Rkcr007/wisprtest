@@ -2,6 +2,7 @@ import { loadConfig } from './config.js';
 import { createTenantDatabase } from './db/pool.js';
 import { ConfigError, GatewayError } from './errors.js';
 import { buildServer } from './http/server.js';
+import { createS3EvidenceStore } from './storage/s3-evidence-store.js';
 import { Lifecycle, installSignalHandlers } from './lifecycle.js';
 import { createLogger } from './logger.js';
 import { createRedis } from './redis/client.js';
@@ -63,12 +64,26 @@ async function main(): Promise<void> {
   const database = createTenantDatabase(config);
   lifecycle.onShutdown('database', () => database.close());
 
+  // Session evidence needs a bucket to land in. Created at boot rather than lazily on the first
+  // capture, so a misconfigured endpoint or a wrong key is a loud line here instead of a failed
+  // upload in the middle of a tester's session. Boot continues on failure for the same reason it
+  // does for Redis: a gateway that refuses to start because storage is briefly unreachable is a
+  // crash loop, and the timeline route is what reports it.
+  const evidence = createS3EvidenceStore({ config });
+  await evidence.ensureBucket().catch((error: unknown) => {
+    logger.warn(
+      { event: 'evidence.bucket_unavailable', err: error },
+      'evidence storage is unreachable at boot; session evidence cannot be captured until it recovers',
+    );
+  });
+
   const app = await buildServer({
     config,
     logger,
     database,
     redis,
     metrics: createMetrics(),
+    evidence,
   });
   lifecycle.onShutdown('http-server', () => app.close());
 

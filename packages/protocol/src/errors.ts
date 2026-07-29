@@ -4,6 +4,7 @@ import { Constraint, MaterializerKind } from './data.js';
 import {
   Confidence,
   ElementKey,
+  IsoDateTime,
   LatencyMs,
   NonEmptyString,
   RedactedText,
@@ -51,6 +52,7 @@ export const WisprErrorCode = contract(
       'action_confirmation_required',
       'action_target_stale',
       'action_dispatch_failed',
+      'session_closed',
       'constraint_unsatisfiable',
       'schema_confidence_too_low',
       'reference_target_missing',
@@ -183,6 +185,21 @@ export const WisprError = contract(
         .meta({
           title: 'ErrorActionDispatchFailed',
           description: 'The executor could not deliver the event to the target element.',
+        }),
+      z
+        .strictObject({
+          code: z.literal('session_closed'),
+          message: NonEmptyString,
+          /** Never: closing is terminal, so the same request cannot succeed later. */
+          retryable: z.literal(false),
+          sessionId: Uuid,
+          /** When it closed, so a late flush can report what it lost and to which session. */
+          endedAt: IsoDateTime,
+        })
+        .meta({
+          title: 'ErrorSessionClosed',
+          description:
+            'A closed session was written to. Sessions are immutable once closed, enforced here.',
         }),
       z
         .strictObject({

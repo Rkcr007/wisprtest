@@ -210,6 +210,20 @@ function HudApp({
     [],
   );
 
+  /**
+   * Hand a recorded step to the worker's session buffer.
+   *
+   * Fire and forget: the action it describes has already run. A step lost to a terminated worker
+   * costs one row of history, never a command — which is why nothing here awaits or throws.
+   */
+  const sendStep = useCallback((step: unknown) => {
+    try {
+      portRef.current?.postMessage({ kind: 'session_step', step });
+    } catch {
+      // The worker was terminated between the ref read and the post.
+    }
+  }, []);
+
   /** Hand a learned alias to the worker's write-back queue. Fire and forget, by design. */
   const sendAlias = useCallback((writeback: unknown) => {
     try {
@@ -312,11 +326,16 @@ function HudApp({
               setDisambiguation(null);
             },
           },
-          executor: createActionExecutor({ dispatcher: createRelayDispatcher(sendCdp), window }),
+          executor: createActionExecutor({
+            dispatcher: createRelayDispatcher(sendCdp),
+            window,
+            onStep: sendStep,
+          }),
           locator: createBinderLocator(snapshot),
           source,
           window,
           navRouteFor: buildNavRoutes(snapshot),
+          onStep: sendStep,
         });
         lifecycle.controller = controller;
         controllerRef.current = controller;

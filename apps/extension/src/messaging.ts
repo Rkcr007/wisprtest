@@ -98,6 +98,15 @@ export const HudRequest = z.discriminatedUnion('kind', [
    * and flushes every 10s and on detach.
    */
   z.strictObject({ kind: z.literal('alias_writeback'), writeback: z.unknown() }),
+  /**
+   * One recorded step, on its way to the session buffer.
+   *
+   * Fire-and-forget like a write-back: the action it describes has already run, and nothing waits
+   * on it being persisted. The buffer in the worker batches these and flushes every 5s and on
+   * detach — and holds them in `chrome.storage.session`, so a worker restart mid-session does not
+   * lose the tester's history.
+   */
+  z.strictObject({ kind: z.literal('session_step'), step: z.unknown() }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 

@@ -53,7 +53,7 @@ lint:
 typecheck:
 	pnpm typecheck
 
-## db-up: start postgres, redis and qdrant, blocking until all are healthy
+## db-up: start postgres, redis, qdrant and minio, blocking until all are healthy
 db-up: .env
 	$(COMPOSE) up -d --wait
 

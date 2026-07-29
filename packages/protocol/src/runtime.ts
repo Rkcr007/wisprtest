@@ -393,6 +393,52 @@ export const SignedEvidence = contract(
 export type SignedEvidence = z.infer<typeof SignedEvidence>;
 
 /**
+ * Asking the gateway where to put one piece of evidence.
+ *
+ * The extension has already captured and redacted the bytes; what it needs is somewhere to put
+ * them. It sends the *hash* rather than the bytes, and gets back a key and a short-lived upload
+ * URL — so a screenshot never transits the gateway's request pipeline, and the control plane
+ * spends no bandwidth proxying a customer's pixels.
+ *
+ * `contentHash` is the extension's own SHA-256 of what it is about to upload. It becomes part of
+ * the storage key, which is what makes a retried capture land on the same object instead of
+ * accumulating copies, and it is what a later audit verifies the retrieved bytes against.
+ */
+export const EvidenceUploadRequest = contract(
+  'EvidenceUploadRequest',
+  z
+    .strictObject({
+      kind: z.enum(['screenshot', 'dom_snapshot']),
+      /** The step this evidence belongs to; part of the key, so a timeline is browsable by hand. */
+      stepOrdinal: Ordinal,
+      contentHash: Sha256Hex,
+      /** How the object will be served back. Fixed per kind, but stated rather than inferred. */
+      contentType: NonEmptyString,
+    })
+    .describe('A request for somewhere to upload one captured, already-redacted artifact.'),
+);
+export type EvidenceUploadRequest = z.infer<typeof EvidenceUploadRequest>;
+
+/**
+ * Where to put it, and for how long the offer stands.
+ *
+ * The URL is a pre-signed PUT: it authorises exactly one object, expires, and carries no
+ * credential the extension could reuse for anything else. `storageKey` is what the extension then
+ * records on the step — the database holds the reference, never the bytes.
+ */
+export const EvidenceUploadTicket = contract(
+  'EvidenceUploadTicket',
+  z
+    .strictObject({
+      storageKey: NonEmptyString,
+      uploadUrl: HttpUrl.describe('Pre-signed PUT URL for exactly this object.'),
+      expiresAt: IsoDateTime,
+    })
+    .describe('A short-lived, single-object upload authorisation.'),
+);
+export type EvidenceUploadTicket = z.infer<typeof EvidenceUploadTicket>;
+
+/**
  * A session and everything recorded in it.
  *
  * The steps are the stored rows, verbatim and ordered by `ordinal` — their `evidence` entries

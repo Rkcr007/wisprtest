@@ -12,6 +12,9 @@ import {
 } from '../messaging.js';
 import { createWritebackQueue, type WritebackQueue } from '../resolver/index.js';
 import { createSessionBuffer, type BufferStore, type SessionBuffer } from '../session/index.js';
+import { contentHash } from '../session/index.js';
+import type { CdpDispatchService } from './cdp-dispatch.js';
+import { decodeBase64, type EvidenceUploader } from './evidence-uploader.js';
 import type { SessionClient } from './session-client.js';
 import type { AliasClient } from './alias-client.js';
 import type { EscalateClient } from './escalate-client.js';
@@ -100,6 +103,13 @@ export interface AttachControllerOptions {
   readonly bufferStore?: BufferStore;
   /** Flush cadence for the session buffer. 5s per docs/BUILD-PLAN.md Phase 12. */
   readonly stepIntervalMs?: number;
+  /**
+   * Takes the screenshot, over the debugger attachment dispatch already holds. Optional: without
+   * it a capture yields the DOM snapshot alone, which is still evidence.
+   */
+  readonly screenshots?: Pick<CdpDispatchService, 'captureScreenshot'>;
+  /** Uploads captured artifacts and returns the references to record. Optional alongside it. */
+  readonly evidence?: EvidenceUploader;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -173,6 +183,8 @@ export function createAttachController(options: AttachControllerOptions): Attach
     aliases,
     sessions: sessionClient,
     bufferStore,
+    screenshots,
+    evidence,
     writebackIntervalMs = DEFAULT_WRITEBACK_INTERVAL_MS,
     stepIntervalMs = DEFAULT_STEP_INTERVAL_MS,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
@@ -418,6 +430,80 @@ export function createAttachController(options: AttachControllerOptions): Attach
     }
   }
 
+  /**
+   * Capture and store evidence for one step, and answer with what was recorded.
+   *
+   * Split the way the trust boundary is: the content script produced the redacted snapshot,
+   * because only it can read the DOM; the worker takes the screenshot and uploads both, because
+   * only it holds the debugger and the token.
+   *
+   * Every failure is an empty or shorter list, never an error. Evidence explains a step, it is not
+   * the step — and a capture that could not happen must not stop one being recorded.
+   */
+  async function captureEvidence(
+    session: Session,
+    tabId: number,
+    requestId: string,
+    input: {
+      readonly stepOrdinal: number;
+      readonly snapshotHtml: string;
+      readonly region: { x: number; y: number; width: number; height: number };
+    },
+  ): Promise<void> {
+    const refs: unknown[] = [];
+    const sessionId = session.sessionId;
+    const token = session.token?.token;
+
+    if (evidence !== undefined && sessionId !== null && token !== undefined) {
+      const capturedAt = new Date(now()).toISOString();
+
+      // The DOM snapshot: already redacted by the content script, which is the only side that ever
+      // sees the raw page.
+      const snapshot = new TextEncoder().encode(input.snapshotHtml);
+      if (snapshot.byteLength > 0) {
+        const ref = await evidence.upload(
+          sessionId,
+          {
+            kind: 'dom_snapshot',
+            stepOrdinal: input.stepOrdinal,
+            bytes: snapshot,
+            contentType: 'text/html',
+            contentHash: await contentHash(snapshot),
+            capturedAt,
+          },
+          token,
+        );
+        if (ref !== null) refs.push(ref);
+      }
+
+      // The screenshot, clipped to the target region. Attempted second so a debugger that will not
+      // attach costs only the pixels, not the snapshot beside them.
+      const shot = await screenshots?.captureScreenshot(tabId, input.region);
+      if (shot != null && shot !== '') {
+        const bytes = decodeBase64(shot);
+        const ref = await evidence.upload(
+          sessionId,
+          {
+            kind: 'screenshot',
+            stepOrdinal: input.stepOrdinal,
+            bytes,
+            contentType: 'image/png',
+            contentHash: await contentHash(bytes),
+            capturedAt,
+          },
+          token,
+        );
+        if (ref !== null) refs.push(ref);
+      }
+    }
+
+    try {
+      session.port.postMessage({ kind: 'evidence_result', requestId, refs });
+    } catch (error: unknown) {
+      onError?.('evidence.post_failed', error);
+    }
+  }
+
   function publish(tabId: number): void {
     const session = sessions.get(tabId);
     if (session === undefined) return;
@@ -618,6 +704,15 @@ export function createAttachController(options: AttachControllerOptions): Attach
             session.steps?.add(parsed.data);
             return;
           }
+          case 'capture_evidence':
+            void captureEvidence(session, tabId, request.requestId, {
+              stepOrdinal: request.stepOrdinal,
+              snapshotHtml: request.snapshotHtml,
+              region: request.region,
+            }).catch((error: unknown) => {
+              onError?.('evidence.capture_failed', error);
+            });
+            return;
         }
       });
 

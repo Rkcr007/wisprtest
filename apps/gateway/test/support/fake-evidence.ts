@@ -17,15 +17,27 @@ export interface FakeEvidenceStore extends EvidenceStore {
   readonly objects: Map<string, EvidenceUpload>;
   /** Every key a URL was signed for, in order — including repeats, so a test can catch them. */
   readonly signed: string[];
+  /** Every key an upload ticket was issued for. */
+  readonly uploads: string[];
 }
 
 export function createFakeEvidenceStore(ttlSeconds = 300): FakeEvidenceStore {
   const objects = new Map<string, EvidenceUpload>();
   const signed: string[] = [];
+  const uploads: string[] = [];
 
   return {
     objects,
     signed,
+    uploads,
+
+    signedUploadUrl(key: string, contentType: string): Promise<{ url: string; expiresAt: string }> {
+      uploads.push(key);
+      return Promise.resolve({
+        url: `https://evidence.test/${encodeURI(key)}?put=1&type=${encodeURIComponent(contentType)}`,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      });
+    },
 
     put(upload: EvidenceUpload): Promise<void> {
       objects.set(upload.key, upload);

@@ -41,7 +41,17 @@ export interface CdpMessage {
 
 export type CdpResponse = { ok: true } | { ok: false; error: string };
 
+/** A region of the page to photograph, in CSS pixels. */
+export interface ScreenshotClip {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface CdpDispatchService {
+  /** Capture one clipped PNG, base64-encoded. Null when the capture could not be made. */
+  captureScreenshot(tabId: number, clip: ScreenshotClip): Promise<string | null>;
   /** Handle a relayed command from `sender`, attaching if needed. */
   handle(message: unknown, tabId: number | undefined): Promise<CdpResponse>;
   /** Release the debugger session for a tab that has gone away. */
@@ -81,6 +91,34 @@ export function createCdpDispatchService(debuggerApi: DebuggerApi): CdpDispatchS
 
   return {
     isCdpMessage,
+
+    /**
+     * Capture the target region as a PNG, over the attachment dispatch already holds.
+     *
+     * `Page.captureScreenshot` with a `clip` rather than `chrome.tabs.captureVisibleTab`: the
+     * debugger is attached anyway for trusted input (Phase 10), so this needs no extra manifest
+     * permission, and it photographs the element's own rectangle instead of the whole viewport —
+     * less of a customer's screen leaves the browser for the same evidential value.
+     */
+    async captureScreenshot(tabId, clip): Promise<string | null> {
+      try {
+        await ensureAttached(tabId);
+        const result = await debuggerApi.sendCommand({ tabId }, 'Page.captureScreenshot', {
+          format: 'png',
+          // `captureBeyondViewport: false` keeps the capture to what the tester could actually
+          // see; scale 1 keeps it to what the page actually rendered.
+          clip: { ...clip, scale: 1 },
+          captureBeyondViewport: false,
+        });
+        const data = (result as { data?: unknown } | undefined)?.data;
+        return typeof data === 'string' ? data : null;
+      } catch {
+        // Evidence is best-effort by design: a step recorded without a screenshot is still a step,
+        // and failing the action because a capture failed would be the wrong trade.
+        attached.delete(tabId);
+        return null;
+      }
+    },
 
     async handle(message, tabId): Promise<CdpResponse> {
       if (!isCdpMessage(message)) return { ok: false, error: 'not a cdp message' };

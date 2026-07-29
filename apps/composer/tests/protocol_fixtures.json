@@ -969,6 +969,27 @@
       "capturedAt": "2026-07-25T09:30:00.000Z"
     }
   ],
+  "EvidenceUploadRequest": [
+    {
+      "kind": "screenshot",
+      "stepOrdinal": 4,
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "contentType": "image/png"
+    },
+    {
+      "kind": "dom_snapshot",
+      "stepOrdinal": 0,
+      "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "contentType": "text/html"
+    }
+  ],
+  "EvidenceUploadTicket": [
+    {
+      "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/4-screenshot-bbbbbbbbbbbbbbbb.png",
+      "uploadUrl": "https://evidence.wisprtest.example/tenants/3f2504e0/4.png?sig=put",
+      "expiresAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
   "ExtensionToken": [
     {
       "token": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.scoped.signature",

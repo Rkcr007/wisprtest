@@ -27,6 +27,14 @@ export interface EvidenceStore {
   /** Store one artifact. Idempotent on key: the same key with the same bytes is the same object. */
   put(upload: EvidenceUpload): Promise<void>;
   /**
+   * A short-lived URL for *uploading* one artifact, and nothing else.
+   *
+   * Pre-signed rather than proxied: a screenshot has no business transiting the gateway's request
+   * pipeline, and a URL that authorises exactly one key for a few minutes is a smaller grant than
+   * any credential the extension could otherwise be given.
+   */
+  signedUploadUrl(key: string, contentType: string): Promise<{ url: string; expiresAt: string }>;
+  /**
    * A short-lived URL for retrieving one artifact.
    *
    * Expiring, because the console renders these into a page and a page gets shared. Scoped to a

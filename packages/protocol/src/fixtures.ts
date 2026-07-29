@@ -1579,6 +1579,49 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
     ],
   },
 
+  EvidenceUploadRequest: {
+    schema: p.EvidenceUploadRequest,
+    valid: [
+      { kind: 'screenshot', stepOrdinal: 4, contentHash: HASH_B, contentType: 'image/png' },
+      { kind: 'dom_snapshot', stepOrdinal: 0, contentHash: HASH_A, contentType: 'text/html' },
+    ],
+    invalid: [
+      {
+        why: 'the bytes themselves never cross — only a hash and a place to put them',
+        value: {
+          kind: 'screenshot',
+          stepOrdinal: 4,
+          contentHash: HASH_B,
+          contentType: 'image/png',
+          body: 'iVBORw0KGgo=',
+        },
+      },
+      {
+        why: 'a hash that is not a SHA-256 cannot key an object or verify one',
+        value: { kind: 'screenshot', stepOrdinal: 4, contentHash: 'abc', contentType: 'image/png' },
+      },
+    ],
+  },
+  EvidenceUploadTicket: {
+    schema: p.EvidenceUploadTicket,
+    valid: [
+      {
+        storageKey: 'tenants/3f2504e0/sessions/9c5b94b1/4-screenshot-bbbbbbbbbbbbbbbb.png',
+        uploadUrl: 'https://evidence.wisprtest.example/tenants/3f2504e0/4.png?sig=put',
+        expiresAt: NOW,
+      },
+    ],
+    invalid: [
+      {
+        why: 'an upload URL that never expires is a standing write authorisation',
+        value: {
+          storageKey: 'tenants/3f2504e0/sessions/9c5b94b1/4-screenshot.png',
+          uploadUrl: 'https://evidence.wisprtest.example/4.png?sig=put',
+        },
+      },
+    ],
+  },
+
   /* ---------------------------------------------------------------------------------- data */
 
   FieldType: {

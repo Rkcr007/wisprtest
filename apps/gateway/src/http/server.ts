@@ -8,9 +8,12 @@ import { currentContext } from '../context/request-context.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { asWisprError, GatewayError, httpStatusFor, toWisprError } from '../errors.js';
 import { createAnthropicProvider, type ModelProvider } from '../model/index.js';
+import { createS3EvidenceStore } from '../storage/s3-evidence-store.js';
+import type { EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 import { registerMemoryRoutes } from '../routes/memory.js';
 import { registerResolveRoutes } from '../routes/resolve.js';
+import { registerSessionRoutes } from '../routes/sessions.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
 import { registerRateLimit } from './rate-limit.js';
@@ -40,6 +43,12 @@ export interface ServerOptions {
    * one here makes no call — it only closes over the key and base URL until the route is hit.
    */
   readonly modelProvider?: ModelProvider;
+  /**
+   * Where session evidence is stored. Built from config as the real S3-compatible store when
+   * absent; the sessions suite injects an in-memory one, so asserting that a timeline resolves its
+   * keys needs no bucket.
+   */
+  readonly evidence?: EvidenceStore;
 }
 
 export async function buildServer(options: ServerOptions): Promise<FastifyInstance> {
@@ -76,6 +85,11 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     database: options.database,
     redis: options.redis,
     metrics,
+  });
+  registerSessionRoutes(app, {
+    database: options.database,
+    metrics,
+    evidence: options.evidence ?? createS3EvidenceStore({ config }),
   });
   registerResolveRoutes(app, {
     config,

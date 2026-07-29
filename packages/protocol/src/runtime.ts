@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   Confidence,
   ElementKey,
+  HttpUrl,
   IsoDateTime,
   LatencyMs,
   NonEmptyString,
@@ -255,3 +256,160 @@ export const SessionStep = contract(
     .describe('One recorded step of a testing session, with its evidence and telemetry.'),
 );
 export type SessionStep = z.infer<typeof SessionStep>;
+
+/**
+ * A testing session: one tester, one application, one memory version, one sitting.
+ *
+ * `endedAt` is the whole state machine. A session is open while it is null and closed the moment
+ * it is not, and closed is terminal — no further steps, no reopening, enforced in the API rather
+ * than only in the console (docs/BUILD-PLAN.md Phase 12). There is deliberately no separate
+ * `status` field: two representations of one fact are two things that can disagree, and this one
+ * is evidence.
+ *
+ * The tenant and the user are not in the open request — they come from the scoped token, so a
+ * session cannot be opened against a tenant the caller was not granted.
+ */
+export const Session = contract(
+  'Session',
+  z
+    .strictObject({
+      id: Uuid,
+      tenantId: Uuid,
+      applicationId: Uuid,
+      /** The memory the session resolved against; a timeline is only replayable against it. */
+      memoryVersionId: Uuid,
+      userId: Uuid,
+      startedAt: IsoDateTime,
+      /** Null while the session is open. Set once, by the server's clock, and never again. */
+      endedAt: IsoDateTime.nullable(),
+    })
+    .describe('One testing session. Open while endedAt is null; closed is terminal.'),
+);
+export type Session = z.infer<typeof Session>;
+
+/**
+ * Opening a session.
+ *
+ * The memory version is named by the caller rather than resolved server-side: the extension has
+ * already loaded a snapshot and resolved against *that* version, and a session recorded against a
+ * different one would be a timeline nobody can replay.
+ */
+export const SessionOpenRequest = contract(
+  'SessionOpenRequest',
+  z
+    .strictObject({
+      applicationId: Uuid,
+      memoryVersionId: Uuid,
+    })
+    .describe('Open a session for one application at one memory version.'),
+);
+export type SessionOpenRequest = z.infer<typeof SessionOpenRequest>;
+
+/**
+ * Closing a session.
+ *
+ * The transition is named explicitly rather than implied by an empty PATCH body, so that a
+ * malformed or truncated request cannot close a session by accident — and so a later PATCH that
+ * changes something else is an additive field rather than a change of meaning.
+ *
+ * There is no `endedAt`: the server stamps it. A client clock that is wrong, or a flush that
+ * arrives late, must not be able to backdate evidence.
+ */
+export const SessionCloseRequest = contract(
+  'SessionCloseRequest',
+  z
+    .strictObject({
+      status: z.literal('closed'),
+    })
+    .describe('Close a session. Terminal: no further steps are accepted afterwards.'),
+);
+export type SessionCloseRequest = z.infer<typeof SessionCloseRequest>;
+
+/**
+ * A batch of steps for one session.
+ *
+ * Batched because the extension buffers and flushes every 5s and on detach rather than making a
+ * request per action — the control plane is not on the hot path. Ingest is idempotent on
+ * `(sessionId, ordinal)`, which is what makes a retry after a failed flush safe: the same batch
+ * sent twice is one timeline, not two.
+ *
+ * Every step also carries its own `sessionId`. The gateway rejects a batch whose steps disagree
+ * with the session in the path, so a buffer that survived a worker restart cannot spill one
+ * session's steps into another's timeline.
+ */
+export const SessionStepBatch = contract(
+  'SessionStepBatch',
+  z
+    .strictObject({
+      steps: z
+        .array(SessionStep)
+        .min(1)
+        .describe('At least one step; an empty batch is a bug, not a no-op.'),
+    })
+    .describe('Steps to append to one session, idempotent on (sessionId, ordinal).'),
+);
+export type SessionStepBatch = z.infer<typeof SessionStepBatch>;
+
+/**
+ * What the gateway reports after ingesting a batch.
+ *
+ * `inserted` and `duplicates` sum to `accepted`. The split is what makes a retry legible: a flush
+ * that is entirely duplicates means the previous attempt landed and the extension's buffer was
+ * simply not told, which is a normal outcome rather than an error.
+ */
+export const SessionStepIngestResult = contract(
+  'SessionStepIngestResult',
+  z
+    .strictObject({
+      accepted: z.int().min(0).describe('Total steps processed.'),
+      inserted: z.int().min(0).describe('Steps that were new to the timeline.'),
+      duplicates: z
+        .int()
+        .min(0)
+        .describe('Steps already present at that ordinal, and therefore ignored.'),
+    })
+    .describe('Outcome of ingesting a batch of session steps.'),
+);
+export type SessionStepIngestResult = z.infer<typeof SessionStepIngestResult>;
+
+/**
+ * A short-lived, tenant-scoped URL for one evidence artifact.
+ *
+ * Evidence bytes live in object storage and are never inlined into a response — a DOM snapshot is
+ * kilobytes and a timeline may reference hundreds. What crosses is a URL that expires, so the
+ * console can render a screenshot without ever holding an object-storage credential, and a link
+ * that leaks out of a bug report stops working.
+ */
+export const SignedEvidence = contract(
+  'SignedEvidence',
+  z
+    .strictObject({
+      storageKey: NonEmptyString,
+      url: HttpUrl.describe('Pre-signed retrieval URL, valid until expiresAt.'),
+      expiresAt: IsoDateTime,
+    })
+    .describe('A pre-signed, expiring URL for one stored evidence artifact.'),
+);
+export type SignedEvidence = z.infer<typeof SignedEvidence>;
+
+/**
+ * A session and everything recorded in it.
+ *
+ * The steps are the stored rows, verbatim and ordered by `ordinal` — their `evidence` entries
+ * carry storage keys and content hashes, exactly as persisted. `evidence` resolves each of those
+ * keys to a signed URL once, rather than rewriting the steps: the timeline a console renders and
+ * the timeline an audit reads are then the same bytes, and the hash still verifies against them.
+ */
+export const SessionTimeline = contract(
+  'SessionTimeline',
+  z
+    .strictObject({
+      session: Session,
+      steps: z.array(SessionStep).describe('Every recorded step, ordered by ordinal.'),
+      evidence: z
+        .array(SignedEvidence)
+        .describe('One entry per distinct storage key referenced by the steps.'),
+    })
+    .describe('A session with its ordered steps and retrievable evidence.'),
+);
+export type SessionTimeline = z.infer<typeof SessionTimeline>;

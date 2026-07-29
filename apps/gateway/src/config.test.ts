@@ -28,6 +28,12 @@ const validEnv = {
   MODEL_PRIMARY: 'claude-haiku-4-5-20251001',
   MODEL_FALLBACK: 'claude-haiku-4-5-20251001',
   MODEL_TIMEOUT_MS: '800',
+  EVIDENCE_ENDPOINT: 'http://localhost:9000',
+  EVIDENCE_BUCKET: 'wispr-evidence',
+  EVIDENCE_REGION: 'us-east-1',
+  EVIDENCE_ACCESS_KEY_ID: 'wispr-local-dev',
+  EVIDENCE_SECRET_ACCESS_KEY: 'wispr-local-dev-secret',
+  EVIDENCE_URL_TTL_SECONDS: '300',
   OTEL_SERVICE_NAME: 'wispr-gateway',
   SHUTDOWN_TIMEOUT_MS: '10000',
 } satisfies NodeJS.ProcessEnv;

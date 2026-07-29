@@ -64,6 +64,22 @@ const gatewayEnvSchema = z.object({
    */
   MODEL_TIMEOUT_MS: z.coerce.number().int().min(1).max(5000),
 
+  // ── Object storage — session evidence ──────────────────────────────────────────────────────
+  /** S3-compatible endpoint. MinIO locally; managed object storage in production. */
+  EVIDENCE_ENDPOINT: z.url({ protocol: /^https?$/ }),
+  EVIDENCE_BUCKET: z.string().min(1),
+  EVIDENCE_REGION: z.string().min(1),
+  /** Never logged, and never sent to the console — which retrieves through signed URLs instead. */
+  EVIDENCE_ACCESS_KEY_ID: z.string().min(1),
+  EVIDENCE_SECRET_ACCESS_KEY: z.string().min(1),
+  /**
+   * Lifetime of a retrieval URL.
+   *
+   * Capped at an hour: these links point at screenshots of a customer's application and end up
+   * pasted into bug reports. A long-lived one is a permanent unauthenticated view of that.
+   */
+  EVIDENCE_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600),
+
   // ── Observability ──────────────────────────────────────────────────────────────────────────
   OTEL_SERVICE_NAME: z.string().min(1),
   /** Absent means export nothing: the right local default, and it is logged at boot. */

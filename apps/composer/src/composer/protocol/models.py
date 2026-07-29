@@ -683,6 +683,18 @@ class SecretRef(BaseModel):
     ]
 
 
+class SessionCloseRequest(BaseModel):
+    """
+    Close a session. Terminal: no further steps are accepted afterwards.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    status: Literal["closed"]
+
+
 class Tier1(Enum):
     """
     Resolution tier that produced a result.
@@ -702,6 +714,61 @@ class ActionClass1(Enum):
     C = "C"
     A = "A"
     S = "S"
+
+
+class SessionStepIngestResult(BaseModel):
+    """
+    Outcome of ingesting a batch of session steps.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    accepted: Annotated[int, Field(description="Total steps processed.", ge=0, le=9007199254740991)]
+    inserted: Annotated[
+        int, Field(description="Steps that were new to the timeline.", ge=0, le=9007199254740991)
+    ]
+    duplicates: Annotated[
+        int,
+        Field(
+            description="Steps already present at that ordinal, and therefore ignored.",
+            ge=0,
+            le=9007199254740991,
+        ),
+    ]
+
+
+class SignedEvidence(BaseModel):
+    """
+    A pre-signed, expiring URL for one stored evidence artifact.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    storage_key: Annotated[
+        str,
+        Field(
+            alias="storageKey",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    url: Annotated[
+        AnyUrl,
+        Field(description="Pre-signed retrieval URL, valid until expiresAt.", title="HttpUrl"),
+    ]
+    expires_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="expiresAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
 
 
 class StateFingerprint(RootModel[str]):
@@ -981,6 +1048,38 @@ class ErrorActionDispatchFailed(BaseModel):
             description="Stable element identifier in the form screen.component.element.",
             pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
             title="ElementKey",
+        ),
+    ]
+
+
+class ErrorSessionClosed(BaseModel):
+    """
+    A closed session was written to. Sessions are immutable once closed, enforced here.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    code: Literal["session_closed"]
+    message: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    retryable: Literal[False]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    ended_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="endedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
         ),
     ]
 
@@ -1379,6 +1478,7 @@ class WisprError(
         | ErrorActionConfirmationRequired
         | ErrorActionTargetStale
         | ErrorActionDispatchFailed
+        | ErrorSessionClosed
         | ErrorConstraintUnsatisfiable
         | ErrorSchemaConfidenceTooLow
         | ErrorReferenceTargetMissing
@@ -1403,6 +1503,7 @@ class WisprError(
         | ErrorActionConfirmationRequired
         | ErrorActionTargetStale
         | ErrorActionDispatchFailed
+        | ErrorSessionClosed
         | ErrorConstraintUnsatisfiable
         | ErrorSchemaConfidenceTooLow
         | ErrorReferenceTargetMissing
@@ -1435,6 +1536,7 @@ class WisprErrorCode(StrEnum):
     ACTION_CONFIRMATION_REQUIRED = "action_confirmation_required"
     ACTION_TARGET_STALE = "action_target_stale"
     ACTION_DISPATCH_FAILED = "action_dispatch_failed"
+    SESSION_CLOSED = "session_closed"
     CONSTRAINT_UNSATISFIABLE = "constraint_unsatisfiable"
     SCHEMA_CONFIDENCE_TOO_LOW = "schema_confidence_too_low"
     REFERENCE_TARGET_MISSING = "reference_target_missing"
@@ -3794,6 +3896,61 @@ class SeedLedgerEntry(BaseModel):
     ]
 
 
+class Session(BaseModel):
+    """
+    One testing session. Open while endedAt is null; closed is terminal.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[UUID, Field(description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    user_id: Annotated[UUID, Field(alias="userId", description="UUID identifier.", title="Uuid")]
+    started_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="startedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+    ended_at: Annotated[
+        AwareDatetime | None,
+        Field(
+            alias="endedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+
+
+class SessionOpenRequest(BaseModel):
+    """
+    Open a session for one application at one memory version.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+
+
 class SessionStep(BaseModel):
     """
     One recorded step of a testing session, with its evidence and telemetry.
@@ -3857,6 +4014,40 @@ class SessionStep(BaseModel):
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
         ),
+    ]
+
+
+class SessionStepBatch(BaseModel):
+    """
+    Steps to append to one session, idempotent on (sessionId, ordinal).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    steps: Annotated[
+        list[SessionStep],
+        Field(description="At least one step; an empty batch is a bug, not a no-op.", min_length=1),
+    ]
+
+
+class SessionTimeline(BaseModel):
+    """
+    A session with its ordered steps and retrievable evidence.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    session: Session
+    steps: Annotated[
+        list[SessionStep], Field(description="Every recorded step, ordered by ordinal.")
+    ]
+    evidence: Annotated[
+        list[SignedEvidence],
+        Field(description="One entry per distinct storage key referenced by the steps."),
     ]
 
 

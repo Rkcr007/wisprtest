@@ -65,7 +65,47 @@ services:
       retries: 12
       start_period: 10s
 
+  # Object storage for session evidence — screenshots and DOM snapshots (docs/BUILD-PLAN.md
+  # Phase 12). The database holds only the reference and the content hash; the bytes live here,
+  # and are served to the console as short-lived signed URLs so no credential ever reaches it.
+  #
+  # MinIO is S3-compatible, so the gateway talks to it through the ordinary AWS SDK and moving to
+  # managed object storage in production (ARCHITECTURE § 9) is a change of endpoint and keys, not
+  # of code.
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${EVIDENCE_ACCESS_KEY_ID:?EVIDENCE_ACCESS_KEY_ID is required — copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${EVIDENCE_SECRET_ACCESS_KEY:?EVIDENCE_SECRET_ACCESS_KEY is required}
+    ports:
+      - '${EVIDENCE_PORT:?EVIDENCE_PORT is required}:9000'
+      - '${EVIDENCE_CONSOLE_PORT:?EVIDENCE_CONSOLE_PORT is required}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      # The minio image ships no curl, no wget and — unlike qdrant's — no grep either, so the
+      # status line is matched with bash's own pattern matching rather than piped to anything. The
+      # `$$` escapes the shell variable so compose does not try to interpolate it.
+      # HTTP/1.1 with a Host header, not 1.0: MinIO answers a hostless request with a 400, so the
+      # simpler probe qdrant uses would report a healthy server as permanently unhealthy.
+      # `/minio/health/live` answers before the bucket exists, which is what readiness means here:
+      # the gateway creates the bucket at boot.
+      test:
+        [
+          'CMD',
+          'bash',
+          '-c',
+          'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /minio/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && read -r line <&3 && [[ $$line == *"200 OK"* ]]',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
 volumes:
   postgres-data:
   redis-data:
   qdrant-data:
+  minio-data:

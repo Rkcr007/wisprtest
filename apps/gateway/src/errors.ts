@@ -130,6 +130,10 @@ export const HTTP_STATUS_BY_CODE = {
   action_target_stale: 409,
   action_dispatch_failed: 502,
 
+  // Sessions. A closed session is a conflict with the resource's state, not a malformed request:
+  // the same batch would have been accepted a moment earlier.
+  session_closed: 409,
+
   // Composition. An unsatisfiable constraint set is a well-formed request the system cannot
   // fulfil — 422 rather than 400, which would suggest the payload itself was malformed.
   constraint_unsatisfiable: 422,
@@ -246,6 +250,17 @@ function fromGatewayError(error: GatewayError, traceId: string): WisprError {
         budgetMs: readNonNegativeNumber(error.details.budgetMs),
         elapsedMs: readNonNegativeNumber(error.details.elapsedMs),
       };
+    case 'session_closed':
+      // The tester's session ended while a flush was in flight — a late buffer, a tab closed
+      // mid-batch. The extension cannot fix it by retrying, so the steps are reported lost against
+      // a named session rather than silently appended to a finished timeline.
+      return {
+        code: 'session_closed',
+        message: error.message,
+        retryable: false,
+        sessionId: readUuid(error.details.sessionId) ?? ZERO_UUID,
+        endedAt: readIsoDateTime(error.details.endedAt),
+      };
     case 'resolution_not_found':
       // T2 ran but could not return a usable pick — an unparseable answer, or a candidate id it
       // invented. The honest report is that the phrase did not resolve; the extension then shows
@@ -311,6 +326,22 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 function readUuid(value: unknown): string | null {
   return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
+}
+
+/**
+ * The all-zero UUID, for an error whose contract requires an id the thrower did not supply.
+ *
+ * Only reachable through a bug: every construction site passes the real id. It exists so the
+ * response still satisfies the contract rather than failing validation on the way out — an error
+ * that cannot be serialised is an error the client never sees at all.
+ */
+const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+
+/** An ISO timestamp off an error's details, or the epoch when one was not supplied. */
+function readIsoDateTime(value: unknown): string {
+  if (typeof value !== 'string') return new Date(0).toISOString();
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? new Date(0).toISOString() : new Date(parsed).toISOString();
 }
 
 interface WireValidationIssue {

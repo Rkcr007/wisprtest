@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createActionExecutor, type ActionExecutor } from '../executor/index.js';
 import { createFakeDispatcher } from '../executor/testing.js';
+import type { Disambiguation } from '../resolver/index.js';
 import { createSpeculationController, type ResolverLike } from './controller.js';
 import { createIntentParser } from './intent.js';
 import type { Locator } from './locate.js';
@@ -48,6 +49,10 @@ function fakeLocator(map: Map<string, Element>): Locator {
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 function build(resolverMap: Record<string, ResolutionResult>, elements: Map<string, Element>) {
+  return buildWith(fakeResolver(resolverMap), elements);
+}
+
+function buildWith(resolver: ResolverLike, elements: Map<string, Element>) {
   const requests: ActionRequest[] = [];
   const steps: SessionStep[] = [];
   const fake = createFakeDispatcher();
@@ -67,7 +72,7 @@ function build(resolverMap: Record<string, ResolutionResult>, elements: Map<stri
   const stabilityCallbacks: (() => void)[] = [];
   const controller = createSpeculationController({
     parser: createIntentParser({ vocabulary: { navTargets: new Set(), landmarks: new Set() } }),
-    resolver: fakeResolver(resolverMap),
+    resolver,
     executor,
     locator: fakeLocator(elements),
     source: {
@@ -206,5 +211,149 @@ describe('SpeculationController — class R speculation and rollback', () => {
     expect(h.requests).toHaveLength(0);
     expect(h.controller.view.value.phase).toBe('staged');
     expect(h.steps.at(-1)?.outcome).toBe('staged');
+  });
+});
+
+describe('answering a disambiguation keeps the intent that asked', () => {
+  /** A resolver that offers a choice for one phrase and resolves whatever ordinal is picked. */
+  function choosingResolver(pick: ResolutionResult): ResolverLike & {
+    chosen: number[];
+    cleared: number;
+  } {
+    const state = { chosen: [] as number[], cleared: 0 };
+    let open: Disambiguation | null = null;
+
+    return {
+      chosen: state.chosen,
+      get cleared() {
+        return state.cleared;
+      },
+      resolve: (phrase) => {
+        // Every phrase is ambiguous here: what is under test is what happens *after* a question is
+        // asked, not which phrases raise one.
+        open = {
+          phrase,
+          stateFingerprint: 'a'.repeat(64),
+          tier: 'T2',
+          choices: [
+            { ordinal: 1, candidate: candidateOf(RESULTS_KEY, ID(9)) },
+            { ordinal: 2, candidate: candidateOf(SEARCH_KEY, ID(2)) },
+          ],
+        };
+        return Promise.resolve({
+          outcome: 'ambiguous',
+          tier: 'T2',
+          latencyMs: 9,
+          candidates: [candidateOf(RESULTS_KEY, ID(9)), candidateOf(SEARCH_KEY, ID(2))],
+        });
+      },
+      pending: () => open,
+      choose: (ordinal) => {
+        state.chosen.push(ordinal);
+        open = null;
+        return pick;
+      },
+      clearPending: () => {
+        state.cleared += 1;
+        open = null;
+      },
+    };
+  }
+
+  function candidateOf(elementKey: string, elementId: string) {
+    return { elementId, elementKey, label: elementKey, confidence: 0.5, signalScores: {} };
+  }
+
+  let field: HTMLInputElement;
+  beforeEach(() => {
+    field = document.createElement('input');
+    document.body.append(field);
+  });
+
+  it('runs the original verb, not the one the word "two" would parse as', async () => {
+    // "focus" is class R and executes on sight; a bare "two" would parse as `click`, which is
+    // class C and would sit staged awaiting a confirmation. The verb is the assertion.
+    const resolver = choosingResolver(resolved(SEARCH_KEY, ID(2)));
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the box for the customer' });
+    expect(h.requests, 'an ambiguous phrase must not execute').toHaveLength(0);
+
+    // A new breath, then the answer.
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'two' });
+
+    expect(resolver.chosen).toEqual([2]);
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]?.payload.verb).toBe('focus');
+    expect(h.requests[0]?.elementKey).toBe(SEARCH_KEY);
+    expect(h.controller.view.value.phase).toBe('executed');
+  });
+
+  it('carries the value the tester was dictating through the pick', async () => {
+    const resolver = choosingResolver(resolved(SEARCH_KEY, ID(2)));
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({
+      revision: 1,
+      transcript: 'type acme in the box for the customer',
+    });
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'two' });
+
+    // Re-parsing "two" would have lost the text entirely, and typed nothing into the field the
+    // tester just pointed at.
+    const payload = h.requests[0]?.payload;
+    expect(payload?.verb).toBe('type');
+    expect(payload).toMatchObject({ text: 'acme' });
+  });
+
+  it('does not answer from a partial hypothesis', async () => {
+    const resolver = choosingResolver(resolved(SEARCH_KEY, ID(2)));
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the box for the customer' });
+
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 2, transcript: 'two' });
+
+    // A pick closes the list and teaches the system an alias. A partial that a revision could still
+    // take back must do neither.
+    expect(resolver.chosen).toEqual([]);
+    expect(h.requests).toHaveLength(0);
+  });
+
+  it('treats an utterance that merely contains an ordinal as a fresh command', async () => {
+    const resolver = choosingResolver(resolved(SEARCH_KEY, ID(2)));
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the box for the customer' });
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'approve order two' });
+
+    // Hijacking this would fire an action on whichever element happened to be second.
+    expect(resolver.chosen).toEqual([]);
+  });
+
+  it('drops the open choice when the tester cancels', async () => {
+    const resolver = choosingResolver(resolved(SEARCH_KEY, ID(2)));
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the box for the customer' });
+    h.controller.cancel();
+
+    expect(resolver.cleared).toBe(1);
+
+    // The question is gone, so "two" is just a phrase to resolve — not an answer to it.
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'two' });
+    expect(resolver.chosen).toEqual([]);
   });
 });

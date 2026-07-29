@@ -291,14 +291,25 @@ function HudApp({
         // The executor's trusted dispatch is relayed to the worker, which owns `chrome.debugger`.
         const controller = createSpeculationController({
           parser: createIntentParser({ vocabulary: buildIntentVocabulary(snapshot) }),
+          // Passed through with one addition: every call republishes whatever choice the resolver
+          // is now asking for — a list when no tier could name an element, null the moment one did
+          // or the tester answered — so the HUD's numbered band follows the resolver exactly.
           resolver: {
             resolve: async (phrase) => {
               const result = await (resolver.current?.resolve(phrase) ??
                 Promise.resolve(NOT_FOUND));
-              // Publish whatever choice the resolver is now asking for — a list when no tier could
-              // name an element, null the moment one did or the tester answered.
               setDisambiguation(resolver.current?.pending() ?? null);
               return result;
+            },
+            pending: () => resolver.current?.pending() ?? null,
+            choose: (ordinal) => {
+              const chosen = resolver.current?.choose(ordinal) ?? null;
+              setDisambiguation(resolver.current?.pending() ?? null);
+              return chosen;
+            },
+            clearPending: () => {
+              resolver.current?.clearPending();
+              setDisambiguation(null);
             },
           },
           executor: createActionExecutor({ dispatcher: createRelayDispatcher(sendCdp), window }),

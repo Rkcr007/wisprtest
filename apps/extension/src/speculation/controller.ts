@@ -12,6 +12,7 @@ import {
 
 import { createStore, type Observable } from '../runtime/observable.js';
 import type { ActionExecutor, DispatchContext } from '../executor/index.js';
+import { parseOrdinal, type Disambiguation } from '../resolver/index.js';
 import { classifyAction, resolveClassifyConfig, type ClassifyConfig } from './classify.js';
 import type { IntentParser, ParsedIntent } from './intent.js';
 import type { Locator } from './locate.js';
@@ -89,6 +90,17 @@ export interface ControllerSource {
 
 export interface ResolverLike {
   resolve(phrase: string): Promise<ResolutionResult>;
+  /**
+   * The numbered choice the resolver is asking the tester to make, if any.
+   *
+   * Optional, so a caller that only wants resolution — a benchmark, an older test — need not
+   * implement disambiguation at all. Without it the controller simply never answers ordinals.
+   */
+  pending?(): Disambiguation | null;
+  /** Answer the open choice by one-based ordinal. Records the correction as an alias. */
+  choose?(ordinal: number): ResolutionResult | null;
+  /** Abandon the open choice without answering it. */
+  clearPending?(): void;
 }
 
 export interface SpeculationControllerOptions {
@@ -202,6 +214,16 @@ export function createSpeculationController(
   }
 
   let current: Utterance = fresh(now());
+
+  /**
+   * The intent behind a question the tester has not answered yet.
+   *
+   * It lives outside `current` on purpose: the tester releases the talk key after the ambiguous
+   * command and presses it again to say "two", and that second press resets `current`. What must
+   * survive between the two is *what they were trying to do* — the verb, the constraints, the value
+   * they were typing — because the ordinal itself carries none of it.
+   */
+  let asked: { readonly parse: ParsedIntent; readonly utterance: string } | null = null;
 
   function rectOf(element: Element): SpeculationView['rect'] {
     const r = element.getBoundingClientRect();
@@ -376,6 +398,40 @@ export function createSpeculationController(
     if (isFinal) current.final = true;
 
     const state = options.source.current();
+
+    // ── An open disambiguation, answered by ordinal ──────────────────────────────────────────
+    const open = options.resolver.pending?.() ?? null;
+    if (open !== null) {
+      const ordinal = parseOrdinal(hypothesis.transcript, open.choices.length);
+      if (ordinal !== null) {
+        // A pick is deliberate: it closes the list and teaches the system an alias. Neither is
+        // done from a partial hypothesis that a revision could still take back.
+        if (!isFinal) return;
+
+        const chosen = options.resolver.choose?.(ordinal) ?? null;
+        if (chosen !== null) {
+          const answered = asked;
+          asked = null;
+          // The verb comes from the intent that *asked the question*, not from the word "two". A
+          // tester who said "approve the acme order" and then answered "two" still means approve —
+          // parsing the ordinal as a fresh command would silently downgrade it to a bare click and
+          // lose the value they were typing, the direction they were scrolling, or the assertion.
+          //
+          // A list that outlived the intent that raised it — the worker restarted, the resolver was
+          // rebuilt — still resolves, with whatever the ordinal itself parses as. Degraded, but the
+          // tester's pick is not thrown away.
+          await apply(
+            answered?.parse ?? options.parser.parse(hypothesis.transcript),
+            chosen,
+            state,
+            answered?.utterance ?? redact(hypothesis.transcript),
+            true,
+          );
+          return;
+        }
+      }
+    }
+
     const parse = options.parser.parse(hypothesis.transcript);
     const utterance = redact(hypothesis.transcript);
 
@@ -391,8 +447,29 @@ export function createSpeculationController(
       resolution = await options.resolver.resolve(parse.targetPhrase);
       // A newer hypothesis overtook this one while resolving: its result is the current truth.
       if (rev < current.revision) return;
+      // Remember the intent behind an unanswered question, and forget it the moment one resolves.
+      asked = options.resolver.pending?.() == null ? null : { parse, utterance };
     }
 
+    await apply(parse, resolution, state, utterance, isFinal);
+  }
+
+  /**
+   * Everything after a phrase has been turned into a resolution: classify, roll back a diverged
+   * speculation, then stage or execute according to the taxonomy.
+   *
+   * Split out of {@link process} because a disambiguation answered by ordinal arrives here with a
+   * resolution the resolver produced from the tester's pick and an intent parsed from an *earlier*
+   * utterance. One body, so a pick is classified and gated by exactly the rules speech is.
+   */
+  async function apply(
+    parse: ParsedIntent,
+    resolution: ResolutionResult,
+    state: { readonly stateFingerprint: string; readonly candidates: readonly Element[] },
+    utterance: string,
+    isFinal: boolean,
+  ): Promise<void> {
+    const windowVerb = parse.verb === 'scroll' || parse.verb === 'back';
     const resolved = resolution.outcome === 'resolved' ? resolution : null;
     const confidence = resolved ? resolved.confidence : (resolution.candidates[0]?.confidence ?? 0);
     const actionClass = classifyAction(parse.verb, confidence, classifyConfig);
@@ -662,10 +739,16 @@ export function createSpeculationController(
     },
 
     cancel(): void {
+      // Abandoning the utterance abandons the question it raised. `reset` deliberately does not do
+      // this — it also runs on speech onset, which is exactly when the tester is drawing breath to
+      // answer — so the open choice is dropped here and nowhere else.
+      asked = null;
+      options.resolver.clearPending?.();
       reset(now());
     },
 
     dispose(): void {
+      asked = null;
       current.cancelStability?.();
       store.close();
     },

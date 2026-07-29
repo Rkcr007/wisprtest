@@ -3,12 +3,7 @@ import type { ElementRecord, MemorySnapshot, ResolutionResult } from 'protocol';
 
 import { createCandidateBinder, type CandidateBinder } from './candidate-binder.js';
 import { type ResolverConfig, resolveResolverConfig } from './config.js';
-import {
-  buildDisambiguation,
-  chooseByOrdinal,
-  parseOrdinal,
-  type Disambiguation,
-} from './disambiguation.js';
+import { buildDisambiguation, chooseByOrdinal, type Disambiguation } from './disambiguation.js';
 import type { Embedder } from './embedder.js';
 import { buildAliasIndex, resolveT0, type AliasIndex } from './tier0.js';
 import { createTier1Resolver, type Tier1Resolver } from './tier1.js';
@@ -69,18 +64,18 @@ export interface ResolverOptions {
 }
 
 export interface Resolver {
-  /**
-   * The single entry point. Tries T0, then T1, then T2.
-   *
-   * While a disambiguation is open, an utterance that is *only* a spoken ordinal answers it
-   * instead — "two" picks the second candidate, records the correction, and resolves.
-   */
+  /** The single entry point. Tries T0, then T1, then T2. */
   resolve(utterance: string): Promise<ResolutionResult>;
   /** The open disambiguation, if the last resolution asked the tester to choose. */
   pending(): Disambiguation | null;
   /**
-   * Answer the open disambiguation by ordinal — the HUD's click path; speech goes through
-   * `resolve`. Writes the correction back as an alias. Null if no such choice is on offer.
+   * Answer the open disambiguation by one-based ordinal, and write the correction back as an alias.
+   * Null when no such choice is on offer.
+   *
+   * Reading the ordinal out of speech is deliberately *not* done here. The word "two" carries no
+   * verb, and the speculation controller is what remembers the intent that raised the question —
+   * so it owns the decision and calls this, and there is one place where a pick is recognised
+   * rather than two that can disagree.
    */
   choose(ordinal: number): ResolutionResult | null;
   /** Abandon the open disambiguation without choosing. */
@@ -158,18 +153,6 @@ export function createResolver(options: ResolverOptions): Resolver {
 
   return {
     async resolve(utterance): Promise<ResolutionResult> {
-      // An open list first: while the tester is being asked to choose, "two" is an answer, not a
-      // new command. `parseOrdinal` only accepts an utterance that is *nothing but* an ordinal,
-      // so "approve order two" still resolves normally.
-      const open = pending;
-      if (open !== null) {
-        const ordinal = parseOrdinal(utterance, open.choices.length);
-        if (ordinal !== null) {
-          const chosen = accept(open, ordinal);
-          if (chosen !== null) return chosen;
-        }
-      }
-
       const { stateFingerprint, candidates } = options.source.current();
       const startedAt = now();
 

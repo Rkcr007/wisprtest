@@ -359,6 +359,63 @@ const COMPOSITION_PLAN = {
   createdAt: NOW,
 };
 
+const EXISTING_RECORD = {
+  entity: 'Account',
+  externalRef: 'ACC-1001',
+  label: 'Acme Industrial',
+  fields: { id: 'ACC-1001', name: 'Acme Industrial', tier: 'enterprise' },
+};
+
+const CONSTRAINT_ALIAS = {
+  phrase: 'high value',
+  entity: 'Order',
+  constraints: [{ kind: 'comparison', field: 'amount', op: 'gt', value: 50000 }],
+  source: 't2_writeback',
+  confidence: 0.88,
+};
+
+const CONSTRAINT_CONFLICT = {
+  left: {
+    kind: 'constraint',
+    constraint: { kind: 'comparison', field: 'amount', op: 'gt', value: 50000 },
+  },
+  right: {
+    kind: 'constraint',
+    constraint: { kind: 'comparison', field: 'amount', op: 'lt', value: 1000 },
+  },
+  field: 'amount',
+  explanation: 'amount cannot be both over 50,000 and under 1,000',
+};
+
+const COMPOSITION_REQUEST = {
+  tenantId: UUID_A,
+  sessionId: UUID_B,
+  memoryVersionId: UUID_C,
+  utterance: 'I need a pending order for Acme Industrial with three line items',
+  schemas: [ENTITY_SCHEMA],
+  runtimeState: {
+    route: '/orders',
+    routePattern: '/orders',
+    modalStack: [],
+    focusedLandmark: 'region:orders',
+    visibleElementKeys: ['orders.orders.view'],
+    structuralHash: HASH_A,
+    stateFingerprint: HASH_C,
+    capturedAt: NOW,
+  },
+  existingRecords: [EXISTING_RECORD],
+  aliases: [CONSTRAINT_ALIAS],
+  now: NOW,
+  seed: 1841,
+};
+
+const COMPOSITION_RESPONSE = {
+  constraintSet: CONSTRAINT_SET,
+  outcome: { kind: 'planned', plan: COMPOSITION_PLAN, aliasWriteBacks: [] },
+  parseTier: 'T0',
+  durationMs: 412,
+};
+
 const INVERSE_OP = { kind: 'api', method: 'DELETE', path: '/api/v2/orders/4903' };
 
 const MATERIALIZED_RECORD = {
@@ -2106,6 +2163,148 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
           createdAt: NOW,
           revertedAt: null,
         },
+      },
+    ],
+  },
+
+  /* --------------------------------------------------------------------------- composition */
+
+  ExistingRecord: {
+    schema: p.ExistingRecord,
+    valid: [
+      EXISTING_RECORD,
+      // A record with no human-readable name. Its identifier is still a valid reference target.
+      { ...EXISTING_RECORD, label: null },
+    ],
+    invalid: [
+      {
+        why: 'a reference target with no identifier cannot be pointed at',
+        value: withField(EXISTING_RECORD, 'externalRef', ''),
+      },
+      { why: 'no entity to attribute the record to', value: without(EXISTING_RECORD, 'entity') },
+    ],
+  },
+
+  ConstraintAlias: {
+    schema: p.ConstraintAlias,
+    valid: [CONSTRAINT_ALIAS, { ...CONSTRAINT_ALIAS, source: 'manual', confidence: 1 }],
+    invalid: [
+      {
+        why: 'an alias that maps to no constraint explains nothing',
+        value: withField(CONSTRAINT_ALIAS, 'constraints', []),
+      },
+      {
+        why: 'write-back sources are a closed set',
+        value: withField(CONSTRAINT_ALIAS, 'source', 'guessed'),
+      },
+    ],
+  },
+
+  CompositionRequest: {
+    schema: p.CompositionRequest,
+    valid: [
+      COMPOSITION_REQUEST,
+      // Nothing to resolve a reference against, and no learned phrasings yet: a first request
+      // against a freshly indexed application looks exactly like this.
+      { ...COMPOSITION_REQUEST, existingRecords: [], aliases: [], seed: null },
+    ],
+    invalid: [
+      {
+        why: 'no schema to compose against',
+        value: withField(COMPOSITION_REQUEST, 'schemas', []),
+      },
+      {
+        why: 'nothing was said',
+        value: withField(COMPOSITION_REQUEST, 'utterance', ''),
+      },
+      {
+        why: 'evaluation time must be supplied, so a plan is reproducible',
+        value: without(COMPOSITION_REQUEST, 'now'),
+      },
+    ],
+  },
+
+  ConflictSide: {
+    schema: p.ConflictSide,
+    valid: [
+      {
+        kind: 'constraint',
+        constraint: { kind: 'comparison', field: 'amount', op: 'gt', value: 50000 },
+      },
+      { kind: 'schema', field: 'status', detail: 'accepts only Draft, Pending approval, Approved' },
+    ],
+    invalid: [
+      { why: 'unknown side kind', value: { kind: 'inference', field: 'status', detail: 'x' } },
+      {
+        why: 'a schema side that says nothing about the schema',
+        value: { kind: 'schema', field: 'status', detail: '' },
+      },
+    ],
+  },
+
+  ConstraintConflict: {
+    schema: p.ConstraintConflict,
+    valid: [CONSTRAINT_CONFLICT, { ...CONSTRAINT_CONFLICT, field: null }],
+    invalid: [
+      {
+        why: 'a conflict a tester cannot act on is not a report',
+        value: withField(CONSTRAINT_CONFLICT, 'explanation', ''),
+      },
+      { why: 'a conflict needs both sides', value: without(CONSTRAINT_CONFLICT, 'right') },
+    ],
+  },
+
+  CompositionOutcome: {
+    schema: p.CompositionOutcome,
+    valid: [
+      { kind: 'planned', plan: COMPOSITION_PLAN, aliasWriteBacks: [CONSTRAINT_ALIAS] },
+      // A parse that learned nothing new is the common case once an application is warm.
+      { kind: 'planned', plan: COMPOSITION_PLAN, aliasWriteBacks: [] },
+      { kind: 'conflict', constraintSet: CONSTRAINT_SET, conflict: CONSTRAINT_CONFLICT },
+      {
+        kind: 'refused',
+        constraintSet: CONSTRAINT_SET,
+        entity: 'Order',
+        missingFields: ['terms'],
+        reason: 'no distribution was learned for terms, so a value would be a guess',
+      },
+    ],
+    invalid: [
+      {
+        why: 'a refusal that does not say what is missing is not a refusal',
+        value: {
+          kind: 'refused',
+          constraintSet: CONSTRAINT_SET,
+          entity: 'Order',
+          missingFields: ['terms'],
+          reason: '',
+        },
+      },
+      {
+        why: 'unknown outcome kind',
+        value: { kind: 'deferred', plan: COMPOSITION_PLAN, aliasWriteBacks: [] },
+      },
+    ],
+  },
+
+  CompositionResponse: {
+    schema: p.CompositionResponse,
+    valid: [
+      COMPOSITION_RESPONSE,
+      {
+        ...COMPOSITION_RESPONSE,
+        parseTier: 'T2',
+        outcome: { kind: 'conflict', constraintSet: CONSTRAINT_SET, conflict: CONSTRAINT_CONFLICT },
+      },
+    ],
+    invalid: [
+      {
+        why: 'parse tiers are the closed set from the resolution contract',
+        value: withField(COMPOSITION_RESPONSE, 'parseTier', 'T3'),
+      },
+      {
+        why: 'a negative duration',
+        value: withField(COMPOSITION_RESPONSE, 'durationMs', -1),
       },
     ],
   },

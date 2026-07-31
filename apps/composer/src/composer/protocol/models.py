@@ -173,11 +173,23 @@ class Mode(StrEnum):
     REUSE_EXISTING = "reuse_existing"
 
 
+class ParseTier(StrEnum):
+    T0 = "T0"
+    T1 = "T1"
+    T2 = "T2"
+
+
 class Op(StrEnum):
     GT = "gt"
     LT = "lt"
     GTE = "gte"
     LTE = "lte"
+
+
+class Source1(StrEnum):
+    INDEXED = "indexed"
+    T2_WRITEBACK = "t2_writeback"
+    MANUAL = "manual"
 
 
 class CrawlSkipReason(StrEnum):
@@ -521,7 +533,7 @@ class Op1(StrEnum):
     GTE = "gte"
 
 
-class Source1(StrEnum):
+class Source2(StrEnum):
     INFERRED = "inferred"
     MANUAL = "manual"
 
@@ -1912,6 +1924,34 @@ class CompositionEdge(BaseModel):
     ]
 
 
+class ConflictSideSchema(BaseModel):
+    """
+    Something the learned schema forbids.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["schema"]
+    field: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    detail: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
 class ConstraintEquals(BaseModel):
     """
     Field takes an explicit value.
@@ -2021,6 +2061,48 @@ class ConstraintPredicate(BaseModel):
             min_length=1,
             title="NonEmptyString",
         ),
+    ]
+
+
+class ConstraintAlias(BaseModel):
+    """
+    A learned phrase-to-constraint mapping, so a phrasing parsed once is free after.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    phrase: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    constraints: Annotated[
+        list[
+            ConstraintEquals
+            | ConstraintReference
+            | ConstraintCardinality
+            | ConstraintComparison
+            | ConstraintPredicate
+        ],
+        Field(min_length=1),
+    ]
+    source: Source1
+    confidence: Annotated[
+        float,
+        Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
     ]
 
 
@@ -2800,6 +2882,43 @@ class EvidenceUploadTicket(BaseModel):
     ]
 
 
+class ExistingRecord(BaseModel):
+    """
+    An existing record in the application under test, for reference resolution.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    label: Annotated[
+        str | None,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    fields: dict[str, Any]
+
+
 class ExtensionToken(BaseModel):
     """
     A short-lived scoped token issued to the extension for one origin.
@@ -3546,7 +3665,7 @@ class PredicateDefinition(BaseModel):
         ),
     ]
     clauses: Annotated[list[PredicateClause], Field(min_length=1)]
-    source: Source1
+    source: Source2
     confidence: Annotated[
         float,
         Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
@@ -4227,6 +4346,36 @@ class CompositionNode(BaseModel):
     provenance: list[ProvenanceEntry]
 
 
+class CompositionRefused(BaseModel):
+    """
+    Schema confidence too low to compose; the missing fields are named.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["refused"]
+    constraint_set: Annotated[ConstraintSet, Field(alias="constraintSet")]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    missing_fields: Annotated[list[NonEmptyStringModel], Field(alias="missingFields")]
+    reason: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
 class CompositionPlan(BaseModel):
     """
     A dependency-ordered graph of records to create, with per-field provenance.
@@ -4267,6 +4416,61 @@ class CompositionPlan(BaseModel):
             alias="createdAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
+        ),
+    ]
+
+
+class ConflictSideConstraint(BaseModel):
+    """
+    Something the utterance asked for.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["constraint"]
+    constraint: Annotated[
+        ConstraintEquals
+        | ConstraintReference
+        | ConstraintCardinality
+        | ConstraintComparison
+        | ConstraintPredicate,
+        Field(description="One parsed requirement from a seeding utterance."),
+    ]
+
+
+class ConstraintConflict(BaseModel):
+    """
+    Two requirements that cannot both be satisfied, and why.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    left: Annotated[
+        ConflictSideConstraint | ConflictSideSchema,
+        Field(description="One half of an unsatisfiable pair."),
+    ]
+    right: Annotated[
+        ConflictSideConstraint | ConflictSideSchema,
+        Field(description="One half of an unsatisfiable pair."),
+    ]
+    field: Annotated[
+        str | None,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    explanation: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
         ),
     ]
 
@@ -4586,6 +4790,54 @@ class NavEdge(BaseModel):
     ]
 
 
+class CompositionPlanned(BaseModel):
+    """
+    A dependency-ordered plan, awaiting human approval. Nothing was created.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["planned"]
+    plan: CompositionPlan
+    alias_write_backs: Annotated[list[ConstraintAlias], Field(alias="aliasWriteBacks")]
+
+
+class CompositionConflicted(BaseModel):
+    """
+    The utterance asked for two things that cannot both be true.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["conflict"]
+    constraint_set: Annotated[ConstraintSet, Field(alias="constraintSet")]
+    conflict: ConstraintConflict
+
+
+class CompositionResponse(BaseModel):
+    """
+    The composer's reply: how the utterance was read, and what it concluded.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    constraint_set: Annotated[ConstraintSet, Field(alias="constraintSet")]
+    outcome: Annotated[
+        CompositionPlanned | CompositionConflicted | CompositionRefused,
+        Field(
+            description="The composer's answer: a plan, a conflict, or a refusal that names what is missing."
+        ),
+    ]
+    parse_tier: Annotated[ParseTier, Field(alias="parseTier")]
+    duration_ms: Annotated[float, Field(alias="durationMs", ge=0.0)]
+
+
 class EntitySchema(BaseModel):
     """
     A learned entity: its fields, how to create one, and what is known about it.
@@ -4663,3 +4915,40 @@ class MemorySnapshot(BaseModel):
             title="IsoDateTime",
         ),
     ]
+
+
+class CompositionRequest(BaseModel):
+    """
+    One utterance, the schemas it may draw on, and the state it was spoken in.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    utterance: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    schemas: Annotated[list[EntitySchema], Field(min_length=1)]
+    runtime_state: Annotated[RuntimeState, Field(alias="runtimeState")]
+    existing_records: Annotated[list[ExistingRecord], Field(alias="existingRecords")]
+    aliases: list[ConstraintAlias]
+    now: Annotated[
+        AwareDatetime,
+        Field(description="ISO 8601 timestamp with an explicit UTC offset.", title="IsoDateTime"),
+    ]
+    seed: Annotated[int | None, Field(ge=-9007199254740991, le=9007199254740991)]

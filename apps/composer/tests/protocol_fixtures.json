@@ -256,6 +256,250 @@
       "provenance": []
     }
   ],
+  "CompositionOutcome": [
+    {
+      "kind": "planned",
+      "plan": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "rootNodeId": "order-1",
+        "nodes": [
+          {
+            "nodeId": "order-1",
+            "entity": "Order",
+            "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+            "mode": "create",
+            "existingExternalRef": null,
+            "fields": {
+              "status": "Pending approval",
+              "amount": 46200,
+              "account": "ACC-118"
+            },
+            "provenance": [
+              {
+                "field": "status",
+                "value": "Pending approval",
+                "source": "requested",
+                "explanation": "matched the enum value spoken as \"pending\"",
+                "confidence": 0.96
+              },
+              {
+                "field": "amount",
+                "value": 46200,
+                "source": "derived",
+                "explanation": "sum of the three line item amounts",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "fromNodeId": "order-1",
+            "toNodeId": "account-1",
+            "viaField": "account"
+          }
+        ],
+        "materializationOrder": [
+          "account-1",
+          "order-1"
+        ],
+        "constraintSet": {
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "equals",
+              "field": "status",
+              "value": "Pending approval"
+            },
+            {
+              "kind": "reference",
+              "field": "account",
+              "phrase": "Acme Industrial"
+            },
+            {
+              "kind": "cardinality",
+              "field": "line_items",
+              "count": 3
+            }
+          ],
+          "confidence": 0.96,
+          "unparsedFragments": []
+        },
+        "createdAt": "2026-07-25T09:30:00.000Z"
+      },
+      "aliasWriteBacks": [
+        {
+          "phrase": "high value",
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "comparison",
+              "field": "amount",
+              "op": "gt",
+              "value": 50000
+            }
+          ],
+          "source": "t2_writeback",
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "kind": "planned",
+      "plan": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "rootNodeId": "order-1",
+        "nodes": [
+          {
+            "nodeId": "order-1",
+            "entity": "Order",
+            "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+            "mode": "create",
+            "existingExternalRef": null,
+            "fields": {
+              "status": "Pending approval",
+              "amount": 46200,
+              "account": "ACC-118"
+            },
+            "provenance": [
+              {
+                "field": "status",
+                "value": "Pending approval",
+                "source": "requested",
+                "explanation": "matched the enum value spoken as \"pending\"",
+                "confidence": 0.96
+              },
+              {
+                "field": "amount",
+                "value": 46200,
+                "source": "derived",
+                "explanation": "sum of the three line item amounts",
+                "confidence": 1
+              }
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "fromNodeId": "order-1",
+            "toNodeId": "account-1",
+            "viaField": "account"
+          }
+        ],
+        "materializationOrder": [
+          "account-1",
+          "order-1"
+        ],
+        "constraintSet": {
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "equals",
+              "field": "status",
+              "value": "Pending approval"
+            },
+            {
+              "kind": "reference",
+              "field": "account",
+              "phrase": "Acme Industrial"
+            },
+            {
+              "kind": "cardinality",
+              "field": "line_items",
+              "count": 3
+            }
+          ],
+          "confidence": 0.96,
+          "unparsedFragments": []
+        },
+        "createdAt": "2026-07-25T09:30:00.000Z"
+      },
+      "aliasWriteBacks": []
+    },
+    {
+      "kind": "conflict",
+      "constraintSet": {
+        "entity": "Order",
+        "constraints": [
+          {
+            "kind": "equals",
+            "field": "status",
+            "value": "Pending approval"
+          },
+          {
+            "kind": "reference",
+            "field": "account",
+            "phrase": "Acme Industrial"
+          },
+          {
+            "kind": "cardinality",
+            "field": "line_items",
+            "count": 3
+          }
+        ],
+        "confidence": 0.96,
+        "unparsedFragments": []
+      },
+      "conflict": {
+        "left": {
+          "kind": "constraint",
+          "constraint": {
+            "kind": "comparison",
+            "field": "amount",
+            "op": "gt",
+            "value": 50000
+          }
+        },
+        "right": {
+          "kind": "constraint",
+          "constraint": {
+            "kind": "comparison",
+            "field": "amount",
+            "op": "lt",
+            "value": 1000
+          }
+        },
+        "field": "amount",
+        "explanation": "amount cannot be both over 50,000 and under 1,000"
+      }
+    },
+    {
+      "kind": "refused",
+      "constraintSet": {
+        "entity": "Order",
+        "constraints": [
+          {
+            "kind": "equals",
+            "field": "status",
+            "value": "Pending approval"
+          },
+          {
+            "kind": "reference",
+            "field": "account",
+            "phrase": "Acme Industrial"
+          },
+          {
+            "kind": "cardinality",
+            "field": "line_items",
+            "count": 3
+          }
+        ],
+        "confidence": 0.96,
+        "unparsedFragments": []
+      },
+      "entity": "Order",
+      "missingFields": [
+        "terms"
+      ],
+      "reason": "no distribution was learned for terms, so a value would be a guess"
+    }
+  ],
   "CompositionPlan": [
     {
       "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
@@ -329,10 +573,472 @@
       "createdAt": "2026-07-25T09:30:00.000Z"
     }
   ],
+  "CompositionRequest": [
+    {
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "utterance": "I need a pending order for Acme Industrial with three line items",
+      "schemas": [
+        {
+          "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "entityName": "Order",
+          "fields": [
+            {
+              "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "name": "amount",
+              "type": "currency",
+              "required": true,
+              "derivedRule": {
+                "rule": {
+                  "kind": "sum",
+                  "overField": "line_items",
+                  "ofField": "amount"
+                },
+                "confidence": 1,
+                "sampleSize": 128
+              },
+              "enumValues": null,
+              "distribution": {
+                "shape": {
+                  "kind": "numeric",
+                  "min": 800,
+                  "max": 240000,
+                  "mean": 32000,
+                  "stddev": 18400,
+                  "fit": "lognormal"
+                },
+                "sampleSize": 128,
+                "distinctCount": 121
+              },
+              "referencesEntity": null,
+              "valueConstraints": {
+                "min": 0,
+                "max": null,
+                "minLength": null,
+                "maxLength": 16,
+                "pattern": null
+              },
+              "controlElementKey": "orders.create.amount",
+              "unique": false
+            }
+          ],
+          "materializers": [
+            {
+              "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "spec": {
+                "kind": "api",
+                "method": "POST",
+                "path": "/api/v2/orders",
+                "payloadTemplate": {
+                  "accountId": null,
+                  "lines": [],
+                  "poNumber": null
+                },
+                "auth": "session",
+                "readBackPath": "/api/v2/orders/{id}"
+              },
+              "priority": 1,
+              "verifiedAt": "2026-07-25T09:30:00.000Z",
+              "verificationTtlHours": 168
+            }
+          ],
+          "predicates": [
+            {
+              "name": "overdue",
+              "entity": "Invoice",
+              "clauses": [
+                {
+                  "field": "due_date",
+                  "op": "lt",
+                  "operand": {
+                    "kind": "now",
+                    "offsetDays": 0
+                  }
+                },
+                {
+                  "field": "status",
+                  "op": "neq",
+                  "operand": {
+                    "kind": "literal",
+                    "value": "Paid"
+                  }
+                }
+              ],
+              "source": "inferred",
+              "confidence": 0.87,
+              "sampleSize": 128
+            }
+          ],
+          "observedCount": 128,
+          "confidence": 0.93,
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "runtimeState": {
+        "route": "/orders",
+        "routePattern": "/orders",
+        "modalStack": [],
+        "focusedLandmark": "region:orders",
+        "visibleElementKeys": [
+          "orders.orders.view"
+        ],
+        "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "capturedAt": "2026-07-25T09:30:00.000Z"
+      },
+      "existingRecords": [
+        {
+          "entity": "Account",
+          "externalRef": "ACC-1001",
+          "label": "Acme Industrial",
+          "fields": {
+            "id": "ACC-1001",
+            "name": "Acme Industrial",
+            "tier": "enterprise"
+          }
+        }
+      ],
+      "aliases": [
+        {
+          "phrase": "high value",
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "comparison",
+              "field": "amount",
+              "op": "gt",
+              "value": 50000
+            }
+          ],
+          "source": "t2_writeback",
+          "confidence": 0.88
+        }
+      ],
+      "now": "2026-07-25T09:30:00.000Z",
+      "seed": 1841
+    },
+    {
+      "tenantId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "utterance": "I need a pending order for Acme Industrial with three line items",
+      "schemas": [
+        {
+          "id": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "entityName": "Order",
+          "fields": [
+            {
+              "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "name": "amount",
+              "type": "currency",
+              "required": true,
+              "derivedRule": {
+                "rule": {
+                  "kind": "sum",
+                  "overField": "line_items",
+                  "ofField": "amount"
+                },
+                "confidence": 1,
+                "sampleSize": 128
+              },
+              "enumValues": null,
+              "distribution": {
+                "shape": {
+                  "kind": "numeric",
+                  "min": 800,
+                  "max": 240000,
+                  "mean": 32000,
+                  "stddev": 18400,
+                  "fit": "lognormal"
+                },
+                "sampleSize": 128,
+                "distinctCount": 121
+              },
+              "referencesEntity": null,
+              "valueConstraints": {
+                "min": 0,
+                "max": null,
+                "minLength": null,
+                "maxLength": 16,
+                "pattern": null
+              },
+              "controlElementKey": "orders.create.amount",
+              "unique": false
+            }
+          ],
+          "materializers": [
+            {
+              "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "spec": {
+                "kind": "api",
+                "method": "POST",
+                "path": "/api/v2/orders",
+                "payloadTemplate": {
+                  "accountId": null,
+                  "lines": [],
+                  "poNumber": null
+                },
+                "auth": "session",
+                "readBackPath": "/api/v2/orders/{id}"
+              },
+              "priority": 1,
+              "verifiedAt": "2026-07-25T09:30:00.000Z",
+              "verificationTtlHours": 168
+            }
+          ],
+          "predicates": [
+            {
+              "name": "overdue",
+              "entity": "Invoice",
+              "clauses": [
+                {
+                  "field": "due_date",
+                  "op": "lt",
+                  "operand": {
+                    "kind": "now",
+                    "offsetDays": 0
+                  }
+                },
+                {
+                  "field": "status",
+                  "op": "neq",
+                  "operand": {
+                    "kind": "literal",
+                    "value": "Paid"
+                  }
+                }
+              ],
+              "source": "inferred",
+              "confidence": 0.87,
+              "sampleSize": 128
+            }
+          ],
+          "observedCount": 128,
+          "confidence": 0.93,
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        }
+      ],
+      "runtimeState": {
+        "route": "/orders",
+        "routePattern": "/orders",
+        "modalStack": [],
+        "focusedLandmark": "region:orders",
+        "visibleElementKeys": [
+          "orders.orders.view"
+        ],
+        "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "capturedAt": "2026-07-25T09:30:00.000Z"
+      },
+      "existingRecords": [],
+      "aliases": [],
+      "now": "2026-07-25T09:30:00.000Z",
+      "seed": null
+    }
+  ],
+  "CompositionResponse": [
+    {
+      "constraintSet": {
+        "entity": "Order",
+        "constraints": [
+          {
+            "kind": "equals",
+            "field": "status",
+            "value": "Pending approval"
+          },
+          {
+            "kind": "reference",
+            "field": "account",
+            "phrase": "Acme Industrial"
+          },
+          {
+            "kind": "cardinality",
+            "field": "line_items",
+            "count": 3
+          }
+        ],
+        "confidence": 0.96,
+        "unparsedFragments": []
+      },
+      "outcome": {
+        "kind": "planned",
+        "plan": {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+          "rootNodeId": "order-1",
+          "nodes": [
+            {
+              "nodeId": "order-1",
+              "entity": "Order",
+              "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "mode": "create",
+              "existingExternalRef": null,
+              "fields": {
+                "status": "Pending approval",
+                "amount": 46200,
+                "account": "ACC-118"
+              },
+              "provenance": [
+                {
+                  "field": "status",
+                  "value": "Pending approval",
+                  "source": "requested",
+                  "explanation": "matched the enum value spoken as \"pending\"",
+                  "confidence": 0.96
+                },
+                {
+                  "field": "amount",
+                  "value": 46200,
+                  "source": "derived",
+                  "explanation": "sum of the three line item amounts",
+                  "confidence": 1
+                }
+              ]
+            }
+          ],
+          "edges": [
+            {
+              "fromNodeId": "order-1",
+              "toNodeId": "account-1",
+              "viaField": "account"
+            }
+          ],
+          "materializationOrder": [
+            "account-1",
+            "order-1"
+          ],
+          "constraintSet": {
+            "entity": "Order",
+            "constraints": [
+              {
+                "kind": "equals",
+                "field": "status",
+                "value": "Pending approval"
+              },
+              {
+                "kind": "reference",
+                "field": "account",
+                "phrase": "Acme Industrial"
+              },
+              {
+                "kind": "cardinality",
+                "field": "line_items",
+                "count": 3
+              }
+            ],
+            "confidence": 0.96,
+            "unparsedFragments": []
+          },
+          "createdAt": "2026-07-25T09:30:00.000Z"
+        },
+        "aliasWriteBacks": []
+      },
+      "parseTier": "T0",
+      "durationMs": 412
+    },
+    {
+      "constraintSet": {
+        "entity": "Order",
+        "constraints": [
+          {
+            "kind": "equals",
+            "field": "status",
+            "value": "Pending approval"
+          },
+          {
+            "kind": "reference",
+            "field": "account",
+            "phrase": "Acme Industrial"
+          },
+          {
+            "kind": "cardinality",
+            "field": "line_items",
+            "count": 3
+          }
+        ],
+        "confidence": 0.96,
+        "unparsedFragments": []
+      },
+      "outcome": {
+        "kind": "conflict",
+        "constraintSet": {
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "equals",
+              "field": "status",
+              "value": "Pending approval"
+            },
+            {
+              "kind": "reference",
+              "field": "account",
+              "phrase": "Acme Industrial"
+            },
+            {
+              "kind": "cardinality",
+              "field": "line_items",
+              "count": 3
+            }
+          ],
+          "confidence": 0.96,
+          "unparsedFragments": []
+        },
+        "conflict": {
+          "left": {
+            "kind": "constraint",
+            "constraint": {
+              "kind": "comparison",
+              "field": "amount",
+              "op": "gt",
+              "value": 50000
+            }
+          },
+          "right": {
+            "kind": "constraint",
+            "constraint": {
+              "kind": "comparison",
+              "field": "amount",
+              "op": "lt",
+              "value": 1000
+            }
+          },
+          "field": "amount",
+          "explanation": "amount cannot be both over 50,000 and under 1,000"
+        }
+      },
+      "parseTier": "T2",
+      "durationMs": 412
+    }
+  ],
   "Confidence": [
     0,
     0.5,
     1
+  ],
+  "ConflictSide": [
+    {
+      "kind": "constraint",
+      "constraint": {
+        "kind": "comparison",
+        "field": "amount",
+        "op": "gt",
+        "value": 50000
+      }
+    },
+    {
+      "kind": "schema",
+      "field": "status",
+      "detail": "accepts only Draft, Pending approval, Approved"
+    }
   ],
   "Constraint": [
     {
@@ -359,6 +1065,82 @@
     {
       "kind": "predicate",
       "name": "overdue"
+    }
+  ],
+  "ConstraintAlias": [
+    {
+      "phrase": "high value",
+      "entity": "Order",
+      "constraints": [
+        {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "gt",
+          "value": 50000
+        }
+      ],
+      "source": "t2_writeback",
+      "confidence": 0.88
+    },
+    {
+      "phrase": "high value",
+      "entity": "Order",
+      "constraints": [
+        {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "gt",
+          "value": 50000
+        }
+      ],
+      "source": "manual",
+      "confidence": 1
+    }
+  ],
+  "ConstraintConflict": [
+    {
+      "left": {
+        "kind": "constraint",
+        "constraint": {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "gt",
+          "value": 50000
+        }
+      },
+      "right": {
+        "kind": "constraint",
+        "constraint": {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "lt",
+          "value": 1000
+        }
+      },
+      "field": "amount",
+      "explanation": "amount cannot be both over 50,000 and under 1,000"
+    },
+    {
+      "left": {
+        "kind": "constraint",
+        "constraint": {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "gt",
+          "value": 50000
+        }
+      },
+      "right": {
+        "kind": "constraint",
+        "constraint": {
+          "kind": "comparison",
+          "field": "amount",
+          "op": "lt",
+          "value": 1000
+        }
+      },
+      "field": null,
+      "explanation": "amount cannot be both over 50,000 and under 1,000"
     }
   ],
   "ConstraintSet": [
@@ -988,6 +1770,28 @@
       "storageKey": "tenants/3f2504e0/sessions/9c5b94b1/4-screenshot-bbbbbbbbbbbbbbbb.png",
       "uploadUrl": "https://evidence.wisprtest.example/tenants/3f2504e0/4.png?sig=put",
       "expiresAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "ExistingRecord": [
+    {
+      "entity": "Account",
+      "externalRef": "ACC-1001",
+      "label": "Acme Industrial",
+      "fields": {
+        "id": "ACC-1001",
+        "name": "Acme Industrial",
+        "tier": "enterprise"
+      }
+    },
+    {
+      "entity": "Account",
+      "externalRef": "ACC-1001",
+      "label": null,
+      "fields": {
+        "id": "ACC-1001",
+        "name": "Acme Industrial",
+        "tier": "enterprise"
+      }
     }
   ],
   "ExtensionToken": [

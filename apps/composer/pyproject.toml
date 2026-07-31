@@ -4,7 +4,15 @@ version = "0.0.0"
 description = "WisprTest composer — schema inference, constraint solving, composition planning."
 requires-python = ">=3.13"
 dependencies = [
+    # The official SDK, not raw HTTP. The gateway hand-rolls its Anthropic client over `fetch`
+    # because that is what a Node service with no other HTTP dependency wants; a Python service
+    # takes the SDK, which brings typed errors, retries and the structured-output helpers.
+    "anthropic>=0.116.0",
     "fastapi>=0.121.0",
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30.0",
+    "opentelemetry-instrumentation-fastapi>=0.51b0",
+    "opentelemetry-sdk>=1.30.0",
     "pydantic>=2.12.0",
     "structlog>=25.5.0",
     "uvicorn[standard]>=0.40.0",
@@ -17,6 +25,9 @@ dev = [
     # `pnpm --filter protocol gen:python`, never inside the service.
     "datamodel-code-generator>=0.71.0",
     "httpx2>=2.9.1",
+    # Property-based tests: the phase requires that generated records always satisfy their
+    # constraint set and always validate against their schema, over inputs nobody hand-picked.
+    "hypothesis>=6.140.0",
     "mypy>=1.19.0",
     "pytest>=9.0.0",
     "ruff>=0.15.0",

@@ -8,6 +8,8 @@ import { launchBrowser } from '../../src/crawl/browser.js';
 import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob, type JobRunnerDependencies } from '../../src/job-runner.js';
+import type { EntitySchemaDraft } from '../../src/observers/consolidate.js';
+import { persistSchemas } from '../../src/observers/repository.js';
 import { createRedis } from '../../src/redis/client.js';
 import { createMetrics } from '../../src/telemetry/metrics.js';
 import { startFixtureApp, type FixtureApp } from '../fixture-app/server.js';
@@ -366,6 +368,127 @@ describe('the contract', () => {
       }
     }
   });
+});
+
+describe('re-observing an entity that is already in memory', () => {
+  it('never trades what it learned for what this pass happened to see', async () => {
+    // A resumed crawl adopts its predecessor's memory version, so it re-walks *fewer* routes —
+    // the ones already in the checkpoint are skipped outright. It therefore consolidates a
+    // thinner picture of the same entity. What it must not do is write that thinner picture over
+    // the richer one: a distribution replaced by null, or a required field made optional,
+    // because this pass never loaded the page that said otherwise.
+    const rich: EntitySchemaDraft = {
+      entityName: 'Invoice',
+      observedCount: 50,
+      confidence: 0.9,
+      fields: [
+        {
+          name: 'reference',
+          type: 'string',
+          required: true,
+          derivedRule: null,
+          enumValues: null,
+          distribution: {
+            shape: {
+              kind: 'string_pattern',
+              prefix: 'INV-',
+              minLength: 8,
+              maxLength: 8,
+              charset: 'numeric',
+            },
+            sampleSize: 50,
+            distinctCount: 50,
+          },
+          referencesEntity: null,
+          valueConstraints: {
+            min: null,
+            max: null,
+            minLength: null,
+            maxLength: 8,
+            pattern: 'INV-[0-9]{4}',
+          },
+          controlElementKey: 'invoices-new.create-invoice.reference',
+          unique: true,
+        },
+      ],
+      materializers: [
+        {
+          spec: { kind: 'ui', form: 'invoices-new.create-invoice', route: '/invoices/new' },
+          priority: 2,
+          verifiedAt: null,
+          verificationTtlHours: 168,
+        },
+      ],
+    };
+
+    const richReference = rich.fields[0];
+    if (richReference === undefined) throw new Error('unreachable');
+
+    // The same entity as a pass that never reached the create form or the list endpoint sees it.
+    const thin: EntitySchemaDraft = {
+      ...rich,
+      observedCount: 0,
+      confidence: 0.2,
+      fields: [
+        {
+          ...richReference,
+          required: false,
+          distribution: null,
+          controlElementKey: null,
+          unique: false,
+          valueConstraints: {
+            min: null,
+            max: null,
+            minLength: null,
+            maxLength: null,
+            pattern: null,
+          },
+        },
+      ],
+      materializers: [],
+    };
+
+    const scoped = await createFixture(app.url);
+    try {
+      const version = await scoped.client.query<{ id: string }>(
+        `INSERT INTO memory_versions (tenant_id, application_id, version, status)
+         VALUES ($1, $2, 1, 'building') RETURNING id`,
+        [scoped.tenantId, scoped.applicationId],
+      );
+      const memoryVersionId = version.rows[0]?.id;
+      if (memoryVersionId === undefined) throw new Error('no memory version');
+
+      const persist = async (schema: EntitySchemaDraft): Promise<void> => {
+        await persistSchemas(
+          (work) => database.withTenant(scoped.tenantId, work),
+          { tenantId: scoped.tenantId, memoryVersionId },
+          [schema],
+        );
+      };
+
+      await persist(rich);
+      await persist(thin);
+
+      const [invoice] = await readSchemas(scoped.client, memoryVersionId);
+      if (invoice === undefined) throw new Error('the Invoice schema was not written');
+
+      const reference = invoice.fields.find((field) => field.name === 'reference');
+      expect(reference?.required).toBe(true);
+      expect(reference?.distribution).not.toBeNull();
+      expect(reference?.controlElementKey).toBe('invoices-new.create-invoice.reference');
+      expect(reference?.unique).toBe(true);
+      expect(FieldValueConstraints.parse(reference?.valueConstraints).pattern).toBe('INV-[0-9]{4}');
+
+      // Evidence only climbs: the version's knowledge is the union of both passes.
+      expect(invoice.observedCount).toBe(50);
+      expect(invoice.confidence).toBe(0.9);
+
+      // And the materializer the thin pass never saw is still the way to create one.
+      expect(invoice.materializers.map((materializer) => materializer.kind)).toEqual(['ui']);
+    } finally {
+      await scoped.drop();
+    }
+  }, 60_000);
 });
 
 describe('PII', () => {

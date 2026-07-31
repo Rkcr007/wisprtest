@@ -107,13 +107,34 @@ export function entityNameFromPath(path: string): string | null {
  * are recognised as the same reference.
  */
 export function normalizeFieldName(name: string): string {
-  const flattened = name
+  return stripIdSuffix(name)
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '');
+}
 
-  if (flattened.length > 2 && flattened.endsWith('id')) return flattened.slice(0, -2);
-  return flattened;
+/**
+ * Drop a trailing identifier suffix — but only where `id` is a *word*.
+ *
+ * The suffix has to be separated from what it qualifies, by an underscore, a hyphen, or a
+ * camel-case boundary. Testing for the two trailing letters instead turns `paid` into `pa`,
+ * `valid` into `val` and `bid` into `b`, which is not merely ugly: two fields that normalise to
+ * the same nonsense are merged into one, and a schema that lost a field composes records the
+ * application rejects.
+ *
+ * A field called exactly `id` keeps its name. It is the identifier, not a reference to one.
+ */
+function stripIdSuffix(name: string): string {
+  const trimmed = name.trim();
+
+  const separated = /^(.*[^\s_-])[_-]id$/i.exec(trimmed);
+  if (separated?.[1] !== undefined) return separated[1];
+
+  // `accountId`, `accountID` — a case change is the boundary.
+  const camel = /^(.*[a-z0-9])(?:Id|ID)$/.exec(trimmed);
+  if (camel?.[1] !== undefined) return camel[1];
+
+  return trimmed;
 }
 
 /** Shapes a machine-generated identifier takes: a number, a UUID, or a prefixed code. */

@@ -242,27 +242,72 @@ function applyStatistics(drafts: Map<string, FieldDraft>, statistics: FieldStati
  * Two invariants that are checked in Postgres and are easier to hold here than to debug there:
  * a `reference` field names its target and nothing else does, and `enumValues` is populated for
  * `enum` fields and null for every other type.
+ *
+ * Exported because the same reconciliation is needed wherever two versions of a field spec are
+ * combined — notably when a resumed crawl merges what it observed with what its previous attempt
+ * already wrote.
  */
-function finalize(draft: FieldDraft): FieldSpecDraft {
-  const isReference = draft.referencesEntity !== null;
-  const type: FieldType = isReference ? 'reference' : draft.type;
-  const isEnum = !isReference && type === 'enum' && draft.enumValues !== null;
+export function enforceFieldInvariants(field: FieldSpecDraft): FieldSpecDraft {
+  const isReference = field.referencesEntity !== null;
+  const type: FieldType = isReference ? 'reference' : field.type;
+  const isEnum = !isReference && type === 'enum' && field.enumValues !== null;
 
   return {
-    name: draft.name,
+    ...field,
     type,
-    required: draft.required,
-    derivedRule: draft.derivedRule,
-    enumValues: isEnum ? draft.enumValues : null,
+    enumValues: isEnum ? field.enumValues : null,
     // A reference's "distribution" would be the identifiers of real rows. The solver resolves
     // references against records rather than sampling them, so keeping it would be a list of
     // somebody's primary keys with nothing reading it.
-    distribution: isReference ? null : draft.distribution,
+    distribution: isReference ? null : field.distribution,
+  };
+}
+
+function finalize(draft: FieldDraft): FieldSpecDraft {
+  return enforceFieldInvariants({
+    name: draft.name,
+    type: draft.type,
+    required: draft.required,
+    derivedRule: draft.derivedRule,
+    enumValues: draft.enumValues,
+    distribution: draft.distribution,
     referencesEntity: draft.referencesEntity,
     valueConstraints: draft.valueConstraints,
     controlElementKey: draft.controlElementKey,
     unique: draft.unique,
-  };
+  });
+}
+
+/**
+ * Combine two observations of the same field, keeping whichever carries evidence.
+ *
+ * Used when a crawl writes over a field spec that is already there. Every column follows the
+ * same principle — an observation that saw something beats one that saw nothing — because the
+ * alternative is that the *second* look at an application decides what is known about it, and a
+ * resumed crawl looks at less than the run it is continuing.
+ */
+export function mergeFieldSpecs(
+  existing: FieldSpecDraft,
+  observed: FieldSpecDraft,
+): FieldSpecDraft {
+  const constraintsObserved = Object.values(observed.valueConstraints).some(
+    (limit) => limit !== null,
+  );
+
+  return enforceFieldInvariants({
+    name: observed.name,
+    type: moreSpecific(existing.type, observed.type),
+    // Requiredness is a union, exactly as it is across two forms: a field mandatory on any
+    // create path is mandatory, and a run that never saw the form cannot make it optional.
+    required: existing.required || observed.required,
+    derivedRule: observed.derivedRule ?? existing.derivedRule,
+    enumValues: observed.enumValues ?? existing.enumValues,
+    distribution: observed.distribution ?? existing.distribution,
+    referencesEntity: observed.referencesEntity ?? existing.referencesEntity,
+    valueConstraints: constraintsObserved ? observed.valueConstraints : existing.valueConstraints,
+    controlElementKey: observed.controlElementKey ?? existing.controlElementKey,
+    unique: existing.unique || observed.unique,
+  });
 }
 
 /**

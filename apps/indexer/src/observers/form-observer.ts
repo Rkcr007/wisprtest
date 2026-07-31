@@ -171,13 +171,31 @@ function formComponent(region: CollectedFormRegion): string {
 
   // An unnamed form still sits somewhere. Falling back to what it posts to keeps the id stable
   // across crawls, which a positional index would not.
-  if (region.action !== '') {
-    const segment = slugify(
-      new URL(region.action).pathname.split('/').filter(Boolean).at(-1) ?? '',
-    );
+  const action = actionPathOf(region.action);
+  if (action !== null) {
+    const segment = slugify(action.split('/').filter(Boolean).at(-1) ?? '');
     if (segment !== '') return segment;
   }
   return componentSegment([]);
+}
+
+/**
+ * The path a form submits to, or null when it does not submit anywhere addressable.
+ *
+ * `form.action` is normally an absolute URL resolved by the DOM, but not always: a form with
+ * `action="javascript:…"` or a `<form>` in a document with an exotic base can hand back
+ * something `URL` refuses. That is a property of the application under test, not an error in the
+ * crawl — and an uncaught throw here would propagate out of the route handler and fail the whole
+ * job over one unparseable attribute.
+ */
+function actionPathOf(action: string): string | null {
+  if (action === '') return null;
+  try {
+    const { pathname, protocol } = new URL(action);
+    return protocol === 'http:' || protocol === 'https:' ? pathname : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface FormObservationOptions {
@@ -209,16 +227,7 @@ export function observeForms(options: FormObservationOptions): ObservedForm[] {
     }
     if (fields.length === 0) continue;
 
-    const actionPath =
-      region.action === ''
-        ? null
-        : (() => {
-            try {
-              return new URL(region.action).pathname;
-            } catch {
-              return null;
-            }
-          })();
+    const actionPath = actionPathOf(region.action);
 
     // The action names the entity when there is one — `/orders/new` posts to `/orders`, and the
     // collection it posts to is what the record will belong to. The route is the fallback.

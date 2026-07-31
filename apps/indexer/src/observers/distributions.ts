@@ -111,7 +111,13 @@ function numericShape(values: readonly number[]): DistributionShape {
   };
 }
 
-/** Relative frequencies, rounded, with the largest bucket absorbing the rounding error. */
+/**
+ * Relative frequencies, rounded independently.
+ *
+ * They therefore need not sum to exactly 1. That is fine for what reads them — a weighted draw
+ * normalises by the total it is given — and forcing the sum would mean silently adjusting one
+ * bucket away from what was observed.
+ */
 function categoricalShape(values: readonly string[]): DistributionShape {
   const counts = new Map<string, number>();
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);

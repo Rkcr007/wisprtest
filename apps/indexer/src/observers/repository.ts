@@ -1,5 +1,23 @@
+import { sql } from 'kysely';
+import { DerivedRule, FieldDistribution, FieldType, FieldValueConstraints } from 'protocol';
+import { z } from 'zod';
+
 import type { ScopedDatabase } from '../db/pool.js';
-import type { EntitySchemaDraft, FieldSpecDraft, MaterializerDraft } from './consolidate.js';
+import {
+  mergeFieldSpecs,
+  type EntitySchemaDraft,
+  type FieldSpecDraft,
+  type MaterializerDraft,
+} from './consolidate.js';
+
+/** The "no limits observed" value, used when a stored `value_constraints` will not parse. */
+const EMPTY_CONSTRAINTS: FieldValueConstraints = {
+  min: null,
+  max: null,
+  minLength: null,
+  maxLength: null,
+  pattern: null,
+};
 
 /**
  * Writing learned schemas to `entity_schemas` / `field_specs` / `materializers`.
@@ -44,7 +62,13 @@ export interface PersistedSchemaCounts {
   readonly materializers: number;
 }
 
-/** Insert or refresh one entity schema, returning its id. */
+/**
+ * Insert or refresh one entity schema, returning its id.
+ *
+ * `observed_count` and `confidence` only ever climb. A resumed crawl inherits its predecessor's
+ * screens and therefore re-walks fewer routes, so it genuinely observes less — and the version's
+ * knowledge is the union of both attempts, not whatever the last one happened to see.
+ */
 async function upsertEntitySchema(
   db: ScopedDatabase,
   options: PersistOptions,
@@ -60,15 +84,72 @@ async function upsertEntitySchema(
       confidence: draft.confidence,
     })
     .onConflict((conflict) =>
-      conflict.columns(['memoryVersionId', 'entityName']).doUpdateSet({
-        observedCount: draft.observedCount,
-        confidence: draft.confidence,
-      }),
+      conflict.columns(['memoryVersionId', 'entityName']).doUpdateSet((eb) => ({
+        observedCount: sql<number>`greatest(${eb.ref('excluded.observedCount')}, ${eb.ref('entitySchemas.observedCount')})`,
+        confidence: sql<number>`greatest(${eb.ref('excluded.confidence')}, ${eb.ref('entitySchemas.confidence')})`,
+      })),
     )
     .returning('id')
     .executeTakeFirstOrThrow();
 
   return row.id;
+}
+
+/**
+ * The field specs already written for an entity, keyed by name.
+ *
+ * Parsed through the contract rather than cast: a row that does not validate is treated as
+ * absent, so a schema written by an older build can never crash a crawl — it is simply
+ * re-learned. Returning `null` for an unparseable column loses nothing that the observation
+ * about to be merged in does not supply.
+ */
+async function loadFieldSpecs(
+  db: ScopedDatabase,
+  entitySchemaId: string,
+): Promise<Map<string, FieldSpecDraft>> {
+  const rows = await db
+    .selectFrom('fieldSpecs')
+    .select([
+      'name',
+      'type',
+      'required',
+      'derivedRule',
+      'enumValues',
+      'distribution',
+      'referencesEntity',
+      'valueConstraints',
+      'controlElementKey',
+      'isUnique',
+    ])
+    .where('entitySchemaId', '=', entitySchemaId)
+    .execute();
+
+  const existing = new Map<string, FieldSpecDraft>();
+
+  for (const row of rows) {
+    const type = FieldType.safeParse(row.type);
+    if (!type.success) continue;
+
+    const derivedRule = DerivedRule.safeParse(row.derivedRule);
+    const distribution = FieldDistribution.safeParse(row.distribution);
+    const enumValues = z.array(z.string()).safeParse(row.enumValues);
+    const valueConstraints = FieldValueConstraints.safeParse(row.valueConstraints);
+
+    existing.set(row.name, {
+      name: row.name,
+      type: type.data,
+      required: row.required,
+      derivedRule: derivedRule.success ? derivedRule.data : null,
+      enumValues: enumValues.success ? enumValues.data : null,
+      distribution: distribution.success ? distribution.data : null,
+      referencesEntity: row.referencesEntity,
+      valueConstraints: valueConstraints.success ? valueConstraints.data : EMPTY_CONSTRAINTS,
+      controlElementKey: row.controlElementKey,
+      unique: row.isUnique,
+    });
+  }
+
+  return existing;
 }
 
 /**
@@ -82,9 +163,20 @@ async function upsertFieldSpecs(
   db: ScopedDatabase,
   options: PersistOptions,
   entitySchemaId: string,
-  fields: readonly FieldSpecDraft[],
+  observed: readonly FieldSpecDraft[],
 ): Promise<number> {
-  if (fields.length === 0) return 0;
+  if (observed.length === 0) return 0;
+
+  // Read before write. The alternative — letting the insert's `excluded` row win column by
+  // column — means the *last* crawl to touch a field decides what is known about it, and a
+  // resumed crawl re-walks fewer routes than the attempt it is continuing. It would overwrite a
+  // learned distribution with null, and a required field with an optional one, purely because it
+  // never loaded the page that said otherwise.
+  const existing = await loadFieldSpecs(db, entitySchemaId);
+  const fields = observed.map((field) => {
+    const previous = existing.get(field.name);
+    return previous === undefined ? field : mergeFieldSpecs(previous, field);
+  });
 
   const rows = await db
     .insertInto('fieldSpecs')

@@ -359,24 +359,50 @@ async function visitRoute(options: VisitOptions): Promise<VisitOutcome> {
   };
   const collected = await collectPage(page, collectOptions);
 
+  // Minted before the already-indexed check because forms are observed either way, and a form's
+  // controls are named by the keys of the elements that edit them. Minting is pure computation
+  // over what was already collected — no navigation, no database.
+  const { elements, elementKeys } = describeElements(collected, routePattern);
+
+  /**
+   * Hand this route's forms to the observer, while the page is still on it.
+   *
+   * Runs even when the screen was already in memory. A resumed crawl re-walks routes a previous
+   * attempt indexed, and a run that declined to re-read their forms would consolidate a *smaller*
+   * schema than the one it is continuing — losing the requiredness, the validation limits and the
+   * UI materializer that only a form can supply.
+   *
+   * The markers it reads belong to the document that is loaded right now, and edge observation is
+   * about to replace that document repeatedly, so this cannot be deferred.
+   */
+  const observePageForms = async (): Promise<void> => {
+    if (handlers.formsObserved === undefined) return;
+    await handlers.formsObserved({
+      routePattern,
+      elementKeys,
+      regions: await collectFormRegions(page, collectOptions),
+    });
+  };
+
   const existing = options.indexedFingerprints.get(collected.stateFingerprint);
   if (existing !== undefined) {
     // The same reachable state under a different URL — `/orders/1841` and `/orders/1842` are one
     // screen. Its links still matter, because they may reach states nothing else links to.
     await handlers.routeSkipped(path, 'already_indexed');
+    await observePageForms();
     return {
       kind: 'visited',
       screenId: existing,
       stateFingerprint: collected.stateFingerprint,
       routePattern,
       collected,
+      // Empty on purpose, so edge observation does not re-click a screen whose edges are already
+      // recorded. Form observation above took the keys it needed directly.
       elementKeys: [],
       elementCount: 0,
       indexed: false,
     };
   }
-
-  const { elements, elementKeys } = describeElements(collected, routePattern);
 
   const screenId = await handlers.screenIndexed({
     url: collected.url,
@@ -387,16 +413,7 @@ async function visitRoute(options: VisitOptions): Promise<VisitOutcome> {
     elements,
   });
 
-  // After the screen is persisted and before anything navigates: the markers this reads are
-  // properties of the document that is currently loaded, and edge observation is about to
-  // replace it repeatedly.
-  if (handlers.formsObserved !== undefined) {
-    await handlers.formsObserved({
-      routePattern,
-      elementKeys,
-      regions: await collectFormRegions(page, collectOptions),
-    });
-  }
+  await observePageForms();
 
   return {
     kind: 'visited',

@@ -14,6 +14,16 @@ import {
 import type { CollectedElement, CollectedPage, CollectOptions } from '../collected.js';
 
 /**
+ * Form extraction rides along on the same bundle.
+ *
+ * Re-exported here rather than bundled separately because the injected IIFE has one entry point
+ * and one global; a second bundle would mean a second copy of `packages/fingerprint` in every
+ * page. The crawler calls it after {@link collect} has stamped the markers, which is what lets a
+ * control be matched back to the element key it was given.
+ */
+export { collectForms } from './forms.js';
+
+/**
  * The collector, which runs inside the page under test.
  *
  * This file is bundled by esbuild and injected into every crawled document (see

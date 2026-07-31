@@ -193,7 +193,9 @@ describe('crawling the fixture application', () => {
     // presses a prohibited control fails here, which is the assertion this whole fixture exists
     // to support.
     expect(app.state.mutations).toEqual([]);
-    expect(app.state.orders).toHaveLength(4);
+    // Fifty in the ledger; the table renders the four most recent, which is why the row controls
+    // above still come to four.
+    expect(app.state.orders).toHaveLength(50);
 
     // ── Progress was streamed for the console to read ───────────────────────────────────────
     const events = await progressEvents(fixture.tenantId, job.jobId);

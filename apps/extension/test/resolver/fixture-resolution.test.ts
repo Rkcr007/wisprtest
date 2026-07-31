@@ -10,7 +10,7 @@ import type { ResolutionResult } from 'protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ElementKeyMinter } from '../../../indexer/src/crawl/element-key.js';
-import type { Order } from '../../../indexer/test/fixture-app/data.js';
+import { FixtureState, type Order } from '../../../indexer/test/fixture-app/data.js';
 import * as views from '../../../indexer/test/fixture-app/views.js';
 import type { Embedder } from '../../src/resolver/embedder.js';
 import { createResolver, type Resolver } from '../../src/resolver/index.js';
@@ -33,11 +33,14 @@ import { loadNodeEmbedder } from './embedder-node.js';
  * what lets the duplicate-control ambiguities resolve the way they would in Chrome.
  */
 
-const ORDERS: readonly Order[] = [
-  { id: 1841, customer: 'Acme Industrial', amount: 4210.5, status: 'pending', lines: 3 },
-  { id: 1842, customer: 'Bluefin Logistics', amount: 199.0, status: 'approved', lines: 1 },
-  { id: 1843, customer: 'Carrow & Sons', amount: 88_400.25, status: 'shipped', lines: 12 },
-];
+/**
+ * The fixture's own records, not a copy of them.
+ *
+ * A hand-written list here would be a second definition of what the application holds, and it
+ * would go quietly stale the next time the fixture gains a field — which is exactly what these
+ * tests exist to notice about the *real* thing.
+ */
+const ORDERS: readonly Order[] = new FixtureState().orders;
 
 let embedder: Embedder;
 
@@ -165,8 +168,8 @@ describe('resolving natural phrasings against the fixture app', () => {
       'show-pending-only',
     );
 
-    // Three identical "Delete" buttons and three "View" links are genuine ambiguities: the
-    // resolver offers them for disambiguation rather than guessing which row.
+    // The identical "Delete" buttons and "View" links, one per rendered row, are genuine
+    // ambiguities: the resolver offers them for disambiguation rather than guessing which row.
     const del = await orders.resolver.resolve('delete');
     expect(del.outcome).toBe('ambiguous');
     if (del.outcome !== 'ambiguous') throw new Error('unreachable');

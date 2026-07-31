@@ -229,6 +229,120 @@ export async function readMemory(
   };
 }
 
+/** One learned entity, with everything hanging off it, as the observers wrote it. */
+export interface LearnedEntity {
+  readonly id: string;
+  readonly entityName: string;
+  readonly observedCount: number;
+  readonly confidence: number;
+  readonly fields: readonly LearnedField[];
+  readonly materializers: readonly LearnedMaterializer[];
+}
+
+export interface LearnedField {
+  readonly name: string;
+  readonly type: string;
+  readonly required: boolean;
+  readonly derivedRule: unknown;
+  readonly enumValues: unknown;
+  readonly distribution: unknown;
+  readonly referencesEntity: string | null;
+  readonly valueConstraints: unknown;
+  readonly controlElementKey: string | null;
+  readonly unique: boolean;
+}
+
+export interface LearnedMaterializer {
+  readonly kind: string;
+  readonly spec: unknown;
+  readonly priority: number;
+  readonly verifiedAt: Date | null;
+}
+
+/**
+ * Read back every entity schema written against a memory version.
+ *
+ * Raw rows rather than parsed contract objects, on purpose: the observers' suite asserts that
+ * what reached Postgres validates against `packages/protocol`, and it cannot do that if the
+ * reader has already validated it on the way out.
+ */
+export async function readSchemas(
+  client: Client,
+  memoryVersionId: string,
+): Promise<LearnedEntity[]> {
+  const entities = await client.query<{
+    id: string;
+    entity_name: string;
+    observed_count: number;
+    confidence: string;
+  }>(
+    `SELECT id, entity_name, observed_count, confidence
+       FROM entity_schemas WHERE memory_version_id = $1 ORDER BY entity_name`,
+    [memoryVersionId],
+  );
+
+  const fields = await client.query<{
+    entity_schema_id: string;
+    name: string;
+    type: string;
+    required: boolean;
+    derived_rule: unknown;
+    enum_values: unknown;
+    distribution: unknown;
+    references_entity: string | null;
+    value_constraints: unknown;
+    control_element_key: string | null;
+    is_unique: boolean;
+  }>(
+    `SELECT f.* FROM field_specs f
+       JOIN entity_schemas e ON e.id = f.entity_schema_id
+      WHERE e.memory_version_id = $1 ORDER BY f.name`,
+    [memoryVersionId],
+  );
+
+  const materializers = await client.query<{
+    entity_schema_id: string;
+    kind: string;
+    spec: unknown;
+    priority: number;
+    verified_at: Date | null;
+  }>(
+    `SELECT m.* FROM materializers m
+       JOIN entity_schemas e ON e.id = m.entity_schema_id
+      WHERE e.memory_version_id = $1 ORDER BY m.priority`,
+    [memoryVersionId],
+  );
+
+  return entities.rows.map((entity) => ({
+    id: entity.id,
+    entityName: entity.entity_name,
+    observedCount: entity.observed_count,
+    confidence: Number(entity.confidence),
+    fields: fields.rows
+      .filter((field) => field.entity_schema_id === entity.id)
+      .map((field) => ({
+        name: field.name,
+        type: field.type,
+        required: field.required,
+        derivedRule: field.derived_rule,
+        enumValues: field.enum_values,
+        distribution: field.distribution,
+        referencesEntity: field.references_entity,
+        valueConstraints: field.value_constraints,
+        controlElementKey: field.control_element_key,
+        unique: field.is_unique,
+      })),
+    materializers: materializers.rows
+      .filter((materializer) => materializer.entity_schema_id === entity.id)
+      .map((materializer) => ({
+        kind: materializer.kind,
+        spec: materializer.spec,
+        priority: materializer.priority,
+        verifiedAt: materializer.verified_at,
+      })),
+  }));
+}
+
 /** Poll until `predicate` holds, or fail with a message naming what was being waited for. */
 export async function waitFor(
   what: string,

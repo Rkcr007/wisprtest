@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  EvidenceUploadRequest,
   SessionCloseRequest,
   SessionOpenRequest,
   SessionStepBatch,
@@ -16,7 +17,7 @@ import {
   openSession,
 } from '../db/session-repository.js';
 import { GatewayError } from '../errors.js';
-import { keyBelongsToTenant, type EvidenceStore } from '../storage/evidence-store.js';
+import { evidenceKey, keyBelongsToTenant, type EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 
 /**
@@ -223,6 +224,59 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
       }
 
       return await reply.code(200).send(result);
+    },
+  );
+
+  app.post<{ Params: SessionParams }>(
+    '/v1/sessions/:id/evidence',
+    { config: { permission: 'session:write' } },
+    async (request, reply) => {
+      const { tenantId } = principalOf(request);
+      const sessionId = request.params.id;
+
+      const parsed = EvidenceUploadRequest.safeParse(request.body);
+      if (!parsed.success) {
+        throw new GatewayError('validation_failed', 'invalid evidence upload request', {
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join('.') || 'root',
+            message: issue.message,
+          })),
+        });
+      }
+
+      // A ticket is only issued for a session that could still receive the step it belongs to.
+      // Evidence for a closed session would be an object nothing references — paid for, stored,
+      // and unreachable from any timeline.
+      const session = await database.withTenant('session-evidence', (db) =>
+        findSession(db, sessionId),
+      );
+      if (session === null) {
+        throw invalid('unknown session', 'id', 'unknown session for this tenant');
+      }
+      if (session.endedAt !== null) {
+        throw new GatewayError('session_closed', 'that session is closed', {
+          sessionId: session.id,
+          endedAt: session.endedAt,
+        });
+      }
+
+      // The key is derived here, never accepted from the caller: a client-supplied key is a
+      // client-chosen path, and the tenant prefix is the only thing keeping one tenant's evidence
+      // out of another's.
+      const key = evidenceKey({
+        tenantId,
+        sessionId,
+        stepOrdinal: parsed.data.stepOrdinal,
+        kind: parsed.data.kind,
+        contentHash: parsed.data.contentHash,
+      });
+
+      const { url, expiresAt } = await evidence.signedUploadUrl(key, parsed.data.contentType);
+
+      return await reply
+        .code(200)
+        .header('cache-control', 'private, no-store')
+        .send({ storageKey: key, uploadUrl: url, expiresAt });
     },
   );
 

@@ -1,6 +1,7 @@
 import {
   ActionResult,
   type ActionRequest,
+  type EvidenceRef,
   type ResolutionResult,
   type ScopedQuery,
   SessionStep,
@@ -67,6 +68,21 @@ export interface ExecutorOptions {
   readonly idGen?: () => string;
   /** Where the emitted {@link SessionStep} goes — the session buffer wires this in Phase 12. */
   readonly onStep?: (step: SessionStep) => void;
+  /**
+   * Capture evidence for a step about to be recorded, if this is one of the moments that warrant
+   * it (a check, or a failure — see `session/evidence.ts`).
+   *
+   * Awaited, and deliberately *after* dispatch latency has been measured: the action is already
+   * done and its p95 < 30 ms budget already recorded, so the wait costs a slightly later timeline
+   * row rather than a slower command. It only ever runs on checks and failures, which is why
+   * awaiting it here is affordable at all.
+   */
+  readonly captureEvidence?: (input: {
+    readonly element: Element;
+    readonly verb: string;
+    readonly outcome: ActionResult['outcome'];
+    readonly ordinal: number;
+  }) => Promise<readonly EvidenceRef[]>;
 }
 
 export interface ActionExecutor {
@@ -209,13 +225,29 @@ export function createActionExecutor(options: ExecutorOptions): ActionExecutor {
       const finishedAt = now();
       const completedAt = wallClock().toISOString();
 
+      // Evidence, on a check or a failure. Best effort: a capture that could not be made leaves an
+      // empty list, and the step is recorded regardless.
+      let evidence: readonly EvidenceRef[] = [];
+      if (options.captureEvidence !== undefined) {
+        try {
+          evidence = await options.captureEvidence({
+            element,
+            verb: request.payload.verb,
+            outcome,
+            ordinal: context.ordinal,
+          });
+        } catch {
+          evidence = [];
+        }
+      }
+
       const result = ActionResult.parse({
         actionRequestId: request.id,
         outcome,
         // Dispatch latency, measured from commit — the budget is p95 < 30 ms (CLAUDE.md).
         latencyMs: finishedAt - startedAt,
         reason,
-        evidence: [],
+        evidence,
         completedAt,
       });
 
@@ -234,7 +266,7 @@ export function createActionExecutor(options: ExecutorOptions): ActionExecutor {
           // End to end: speech onset → completion, the number the session timeline shows.
           latencyMs: finishedAt - context.onsetAt,
           outcome,
-          evidence: [],
+          evidence,
           createdAt: completedAt,
         }),
       );

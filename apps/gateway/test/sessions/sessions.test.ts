@@ -1,4 +1,10 @@
-import { Session, SessionStepIngestResult, SessionTimeline, type SessionStep } from 'protocol';
+import {
+  EvidenceUploadTicket,
+  Session,
+  SessionStepIngestResult,
+  SessionTimeline,
+  type SessionStep,
+} from 'protocol';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { evidenceKey } from '../../src/storage/evidence-store.js';
@@ -38,6 +44,7 @@ afterAll(async () => {
 beforeEach(() => {
   evidence.objects.clear();
   evidence.signed.length = 0;
+  evidence.uploads.length = 0;
 });
 
 async function authed(email: string) {
@@ -322,6 +329,88 @@ describe('immutability once closed', () => {
       expect(ingest.statusCode).toBe(409);
       expect(steps).toHaveLength(0);
     }
+  });
+});
+
+describe('evidence upload tickets', () => {
+  async function ticket(sessionId: string, body: unknown) {
+    return harness.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/evidence`,
+      headers: await authed(SEED.testerEmail),
+      payload: JSON.stringify(body),
+    });
+  }
+
+  const request = {
+    kind: 'screenshot',
+    stepOrdinal: 3,
+    contentHash: HASH,
+    contentType: 'image/png',
+  };
+
+  it('hands back a key the gateway derived and a URL that expires', async () => {
+    const sessionId = await openSessionId();
+
+    const response = await ticket(sessionId, request);
+
+    expect(response.statusCode).toBe(200);
+    const parsed = EvidenceUploadTicket.parse(response.json());
+    // Derived here, never accepted from the caller: a client-chosen key is a client-chosen path,
+    // and the tenant prefix is what keeps one tenant's evidence out of another's.
+    expect(parsed.storageKey.startsWith(`tenants/${SEED.tenantId}/sessions/${sessionId}/`)).toBe(
+      true,
+    );
+    expect(parsed.storageKey).toContain('screenshot');
+    expect(Date.parse(parsed.expiresAt)).toBeGreaterThan(Date.now());
+    expect(evidence.uploads).toEqual([parsed.storageKey]);
+  });
+
+  it('gives the same key for the same bytes, so a retried capture is one object', async () => {
+    const sessionId = await openSessionId();
+
+    const first = EvidenceUploadTicket.parse((await ticket(sessionId, request)).json());
+    const second = EvidenceUploadTicket.parse((await ticket(sessionId, request)).json());
+
+    expect(second.storageKey).toBe(first.storageKey);
+  });
+
+  it('refuses a ticket for a closed session', async () => {
+    const sessionId = await openSessionId();
+    await close(sessionId);
+
+    const response = await ticket(sessionId, request);
+
+    // Evidence for a closed session is an object nothing can reference — paid for, stored, and
+    // unreachable from any timeline.
+    expect(response.statusCode).toBe(409);
+    expect(response.json<{ code: string }>().code).toBe('session_closed');
+    expect(evidence.uploads).toEqual([]);
+  });
+
+  it('never accepts the bytes themselves', async () => {
+    const sessionId = await openSessionId();
+
+    const response = await ticket(sessionId, { ...request, body: 'iVBORw0KGgo=' });
+
+    // A screenshot has no business transiting the gateway's request pipeline.
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('rejects a hash that could not key or verify an object', async () => {
+    const sessionId = await openSessionId();
+    expect((await ticket(sessionId, { ...request, contentHash: 'abc' })).statusCode).toBe(400);
+  });
+
+  it('is invisible to another tenant', async () => {
+    const sessionId = await openSessionId();
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/evidence`,
+      headers: await authed(NEIGHBOUR.ownerEmail),
+      payload: JSON.stringify(request),
+    });
+    expect(response.statusCode).toBe(400);
   });
 });
 

@@ -6,6 +6,7 @@ import { createAttachController } from './attach.js';
 import { createCdpDispatchService } from './cdp-dispatch.js';
 import { createEscalateClient } from './escalate-client.js';
 import { createMemoryClient } from './memory-client.js';
+import { createEvidenceUploader } from './evidence-uploader.js';
 import { createSessionClient } from './session-client.js';
 import { createTokenClient } from './token-client.js';
 import { createTokenStore } from './token-store.js';
@@ -78,6 +79,16 @@ const voice = createVoiceController({
   },
 });
 
+/**
+ * The worker half of CDP dispatch. The content-script executor cannot reach `chrome.debugger`, so
+ * it relays each `Input.dispatch*` command here to be run against its own tab as trusted input.
+ */
+const cdp = createCdpDispatchService({
+  attach: (target, version) => chrome.debugger.attach(target, version),
+  detach: (target) => chrome.debugger.detach(target),
+  sendCommand: (target, method, params) => chrome.debugger.sendCommand(target, method, params),
+});
+
 const controller = createAttachController({
   tokens: createTokenClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   store: createTokenStore(chrome.storage.session),
@@ -97,6 +108,15 @@ const controller = createAttachController({
       'step buffer storage failed',
     );
   }),
+  // Evidence: the screenshot comes over the same debugger attachment dispatch uses, and the bytes
+  // go straight to object storage through a pre-signed URL the gateway hands out.
+  screenshots: cdp,
+  evidence: createEvidenceUploader({
+    gatewayOrigin: __WISPR_GATEWAY_ORIGIN__,
+    onError: (error) => {
+      logger.log('warn', 'evidence.failed', { detail: describe(error) }, 'evidence capture failed');
+    },
+  }),
   voice,
   alarms: {
     create: (name, info) => {
@@ -112,16 +132,6 @@ const controller = createAttachController({
     // failed fetch can carry a request body, and a request body can carry a token.
     logger.log('warn', event, { detail: describe(error) }, 'extension worker recovered');
   },
-});
-
-/**
- * The worker half of CDP dispatch. The content-script executor cannot reach `chrome.debugger`, so
- * it relays each `Input.dispatch*` command here to be run against its own tab as trusted input.
- */
-const cdp = createCdpDispatchService({
-  attach: (target, version) => chrome.debugger.attach(target, version),
-  detach: (target) => chrome.debugger.detach(target),
-  sendCommand: (target, method, params) => chrome.debugger.sendCommand(target, method, params),
 });
 
 chrome.runtime.onConnect.addListener((port) => {

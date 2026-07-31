@@ -1,4 +1,4 @@
-import type { SessionStep } from 'protocol';
+import type { EvidenceRef, SessionStep } from 'protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createActionExecutor, type DispatchContext } from './executor.js';
@@ -188,5 +188,88 @@ describe('ActionExecutor — end to end latency and failure', () => {
     expect(result.outcome).toBe('failed');
     expect(result.reason).toContain('debugger detached');
     expect(steps[0]?.outcome).toBe('failed');
+  });
+});
+
+describe('evidence capture', () => {
+  /** A minimal executor harness with a recording capture hook. */
+  function withCapture(refs: EvidenceRef[] = []) {
+    const captured: { verb: string; outcome: string; ordinal: number }[] = [];
+    const steps: SessionStep[] = [];
+    const fake = createFakeDispatcher();
+    const executor = createActionExecutor({
+      dispatcher: fake.dispatcher,
+      window,
+      now: () => 0,
+      sleep: () => Promise.resolve(),
+      onStep: (step) => steps.push(step),
+      captureEvidence: (input) => {
+        captured.push({ verb: input.verb, outcome: input.outcome, ordinal: input.ordinal });
+        return Promise.resolve(refs);
+      },
+    });
+    return { executor, captured, steps, fake };
+  }
+
+  const REF: EvidenceRef = {
+    kind: 'screenshot',
+    storageKey: 'tenants/1111/sessions/9c5b/0-screenshot-abc.png',
+    contentHash: 'a'.repeat(64),
+    capturedAt: '2026-07-29T09:30:00.000Z',
+  };
+
+  it('records the references it was given on the step and the result', async () => {
+    const h = withCapture([REF]);
+    const button = document.createElement('button');
+    document.body.append(button);
+
+    const result = await h.executor.dispatch(
+      makeActionRequest({ payload: { verb: 'check', assertion: 'the order is approved' } }),
+      button,
+      context(),
+    );
+
+    // The gap this closes: steps used to carry `evidence: []` unconditionally, so nothing the
+    // capture path produced ever reached a timeline.
+    expect(result.evidence).toEqual([REF]);
+    expect(h.steps.at(-1)?.evidence).toEqual([REF]);
+  });
+
+  it('offers the capture hook the verb and outcome it needs to decide', async () => {
+    const h = withCapture();
+    const button = document.createElement('button');
+    document.body.append(button);
+
+    await h.executor.dispatch(makeActionRequest({ payload: { verb: 'click' } }), button, context());
+
+    // The executor does not decide *whether* to capture — `shouldCapture` does, on the other side
+    // of the hook — but it must hand over enough for that decision to be made.
+    expect(h.captured).toEqual([{ verb: 'click', outcome: 'executed', ordinal: 0 }]);
+  });
+
+  it('still records the step when capture throws', async () => {
+    const steps: SessionStep[] = [];
+    const fake = createFakeDispatcher();
+    const executor = createActionExecutor({
+      dispatcher: fake.dispatcher,
+      window,
+      now: () => 0,
+      sleep: () => Promise.resolve(),
+      onStep: (step) => steps.push(step),
+      captureEvidence: () => Promise.reject(new Error('worker gone')),
+    });
+    const button = document.createElement('button');
+    document.body.append(button);
+
+    const result = await executor.dispatch(
+      makeActionRequest({ payload: { verb: 'click' } }),
+      button,
+      context(),
+    );
+
+    // Evidence explains a step; it is not the step.
+    expect(result.outcome).toBe('executed');
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.evidence).toEqual([]);
   });
 });

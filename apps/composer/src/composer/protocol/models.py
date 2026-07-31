@@ -609,7 +609,7 @@ class RoutePath(RootModel[str]):
     ]
 
 
-class Kind1(StrEnum):
+class Kind2(StrEnum):
     FIELD_ADDED = "field_added"
     FIELD_REMOVED = "field_removed"
     FIELD_TYPE_CHANGED = "field_type_changed"
@@ -635,7 +635,7 @@ class SchemaChange(BaseModel):
             title="NonEmptyString",
         ),
     ]
-    kind: Kind1
+    kind: Kind2
     field: Annotated[
         str | None,
         Field(
@@ -2718,6 +2718,82 @@ class EvidenceRef(BaseModel):
         AwareDatetime,
         Field(
             alias="capturedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+
+
+class EvidenceUploadRequest(BaseModel):
+    """
+    A request for somewhere to upload one captured, already-redacted artifact.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Kind
+    step_ordinal: Annotated[
+        int,
+        Field(
+            alias="stepOrdinal",
+            description="Zero-based position.",
+            ge=0,
+            le=9007199254740991,
+            title="Ordinal",
+        ),
+    ]
+    content_hash: Annotated[
+        str,
+        Field(
+            alias="contentHash",
+            description="Lowercase hexadecimal SHA-256 digest.",
+            pattern="^[0-9a-f]{64}$",
+            title="Sha256Hex",
+        ),
+    ]
+    content_type: Annotated[
+        str,
+        Field(
+            alias="contentType",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class EvidenceUploadTicket(BaseModel):
+    """
+    A short-lived, single-object upload authorisation.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    storage_key: Annotated[
+        str,
+        Field(
+            alias="storageKey",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    upload_url: Annotated[
+        AnyUrl,
+        Field(
+            alias="uploadUrl",
+            description="Pre-signed PUT URL for exactly this object.",
+            title="HttpUrl",
+        ),
+    ]
+    expires_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="expiresAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
         ),

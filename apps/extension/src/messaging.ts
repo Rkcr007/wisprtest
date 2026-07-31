@@ -107,6 +107,30 @@ export const HudRequest = z.discriminatedUnion('kind', [
    * lose the tester's history.
    */
   z.strictObject({ kind: z.literal('session_step'), step: z.unknown() }),
+  /**
+   * Capture evidence for a step that is about to be recorded.
+   *
+   * The content script sends what only it can produce — the redacted DOM snapshot, and the region
+   * of the page to photograph — and the worker does what only it can: take the screenshot over the
+   * debugger it already holds, and upload both with the scoped token. The reply carries the
+   * references to record.
+   *
+   * Correlated by `requestId`, and awaited: a step's evidence has to be on the step when it is
+   * buffered, because a timeline is append-only and there is no second chance to attach it.
+   */
+  z.strictObject({
+    kind: z.literal('capture_evidence'),
+    requestId: z.string().min(1),
+    stepOrdinal: z.number().int().nonnegative(),
+    /** Already redacted by the content script. The worker never sees raw page text. */
+    snapshotHtml: z.string(),
+    region: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }),
+  }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 
@@ -220,8 +244,24 @@ export const HudEscalateResult = z.strictObject({
 });
 export type HudEscalateResult = z.infer<typeof HudEscalateResult>;
 
+/**
+ * Service worker → content script: what was captured, and where it was stored.
+ *
+ * `refs` is an array because a capture produces up to two artifacts and either may fail on its
+ * own — a screenshot the debugger could not take does not cost the DOM snapshot beside it. An
+ * empty array is a normal answer, and the step is recorded without evidence.
+ */
+export const HudEvidenceResult = z.strictObject({
+  kind: z.literal('evidence_result'),
+  requestId: z.string().min(1),
+  /** `EvidenceRef`s, validated by the receiver against the contract. */
+  refs: z.array(z.unknown()),
+});
+export type HudEvidenceResult = z.infer<typeof HudEvidenceResult>;
+
 /** Everything the worker may push to the content script. */
-export type WorkerMessage = HudUpdate | HudSnapshot | HudVoice | HudEscalateResult;
+export type WorkerMessage =
+  HudUpdate | HudSnapshot | HudVoice | HudEscalateResult | HudEvidenceResult;
 
 /** Parse any worker → content message, or null if it is not one of ours. */
 export function parseWorkerMessage(message: unknown): WorkerMessage | null {
@@ -237,6 +277,10 @@ export function parseWorkerMessage(message: unknown): WorkerMessage | null {
   }
   if (kind === 'escalate_result') {
     const parsed = HudEscalateResult.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  if (kind === 'evidence_result') {
+    const parsed = HudEvidenceResult.safeParse(message);
     return parsed.success ? parsed.data : null;
   }
   return parseUpdate(message);

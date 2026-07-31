@@ -73,6 +73,25 @@ export function createS3EvidenceStore(options: S3EvidenceStoreOptions): Evidence
       );
     },
 
+    async signedUploadUrl(
+      key: string,
+      contentType: string,
+    ): Promise<{ url: string; expiresAt: string }> {
+      const ttlSeconds = config.EVIDENCE_URL_TTL_SECONDS;
+      const url = await getSignedUrl(
+        client,
+        // The content type is signed in, so the ticket cannot be reused to upload something else
+        // under a key that claims to be a screenshot.
+        new PutObjectCommand({
+          Bucket: config.EVIDENCE_BUCKET,
+          Key: key,
+          ContentType: contentType,
+        }),
+        { expiresIn: ttlSeconds },
+      );
+      return { url, expiresAt: new Date(now() + ttlSeconds * 1000).toISOString() };
+    },
+
     async signedUrl(key: string): Promise<{ url: string; expiresAt: string }> {
       const ttlSeconds = config.EVIDENCE_URL_TTL_SECONDS;
       const url = await getSignedUrl(

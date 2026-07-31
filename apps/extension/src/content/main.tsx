@@ -2,7 +2,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { EscalateResponse, MemorySnapshot, type ResolutionResult } from 'protocol';
+import { EscalateResponse, EvidenceRef, MemorySnapshot, type ResolutionResult } from 'protocol';
 
 import {
   HUD_PORT,
@@ -26,6 +26,12 @@ import {
   type Resolver,
 } from '../resolver/index.js';
 import { createRuntimeStateEngine, type RuntimeStateEngine } from '../runtime/index.js';
+import {
+  captureRegion,
+  containingLandmark,
+  serializeRedacted,
+  shouldCapture,
+} from '../session/index.js';
 import {
   buildIntentVocabulary,
   createBinderLocator,
@@ -79,6 +85,15 @@ const ESCALATE_REPLY_TIMEOUT_MS = 3_000;
 
 /** The word a clicked ordinal is spoken as, so the click path enters the same parser speech does. */
 const ORDINAL_WORD: Record<number, string> = { 1: 'one', 2: 'two', 3: 'three' };
+
+/**
+ * How long a capture waits for the worker.
+ *
+ * Longer than an escalation's, because this one crosses the network twice — a ticket, then the
+ * upload — and it delays only a timeline row rather than a command. It exists so a terminated
+ * worker cannot leave the executor awaiting a promise nobody will settle.
+ */
+const CAPTURE_REPLY_TIMEOUT_MS = 8_000;
 
 /** Destination route for a navigation trigger, learned from the snapshot's nav graph. */
 function buildNavRoutes(snapshot: MemorySnapshot): (elementId: string) => string | null {
@@ -164,6 +179,8 @@ function HudApp({
    * mid-utterance, so each carries an id and settles its own promise.
    */
   const escalations = useRef(new Map<string, (outcome: EscalationOutcome) => void>());
+  /** Evidence captures awaiting the worker's reply, by request id. */
+  const captures = useRef(new Map<string, (refs: readonly EvidenceRef[]) => void>());
   // Transition tracking, so the voice snapshot below drives one onset/partial/final per change.
   const prevPhaseRef = useRef<HudVoice['phase']>('idle');
   const lastPartialRef = useRef(-1);
@@ -207,6 +224,67 @@ function HudApp({
           settle({ ok: false, reason: 'unavailable' });
         }
       }),
+    [],
+  );
+
+  /**
+   * Capture evidence for a step that is about to be recorded.
+   *
+   * The split follows the trust boundary. This side serialises the containing landmark and
+   * **redacts it here**, because this is the only side that can read the DOM and therefore the
+   * only side that must guarantee no raw page text ever leaves it. The worker takes the screenshot
+   * over its debugger attachment and uploads both with the scoped token.
+   *
+   * Resolves to an empty list on any failure — no port, a dead worker, a refused ticket. Evidence
+   * explains a step; it is not the step.
+   */
+  const captureEvidence = useCallback(
+    (input: {
+      element: Element;
+      verb: string;
+      outcome: string;
+      ordinal: number;
+    }): Promise<readonly EvidenceRef[]> => {
+      // Checks and failures only. A screenshot per click would upload a great deal of a customer's
+      // screen for a question nobody asks.
+      if (!shouldCapture({ verb: input.verb, outcome: input.outcome })) {
+        return Promise.resolve([]);
+      }
+
+      const target = portRef.current;
+      if (target === null) return Promise.resolve([]);
+
+      return new Promise<readonly EvidenceRef[]>((settle) => {
+        const requestId = crypto.randomUUID();
+        const timer = setTimeout(() => {
+          captures.current.delete(requestId);
+          settle([]);
+        }, CAPTURE_REPLY_TIMEOUT_MS);
+
+        captures.current.set(requestId, (refs) => {
+          clearTimeout(timer);
+          settle(refs);
+        });
+
+        try {
+          target.postMessage({
+            kind: 'capture_evidence',
+            requestId,
+            stepOrdinal: input.ordinal,
+            // Redacted before it crosses. The worker never sees raw page text.
+            snapshotHtml: serializeRedacted(containingLandmark(input.element)),
+            region: captureRegion(input.element, {
+              width: window.innerWidth,
+              height: window.innerHeight,
+            }),
+          });
+        } catch {
+          clearTimeout(timer);
+          captures.current.delete(requestId);
+          settle([]);
+        }
+      });
+    },
     [],
   );
 
@@ -330,6 +408,7 @@ function HudApp({
             dispatcher: createRelayDispatcher(sendCdp),
             window,
             onStep: sendStep,
+            captureEvidence,
           }),
           locator: createBinderLocator(snapshot),
           source,
@@ -373,6 +452,21 @@ function HudApp({
 
       if (next.kind === 'voice') {
         setVoice(next);
+        return;
+      }
+
+      if (next.kind === 'evidence_result') {
+        const settle = captures.current.get(next.requestId);
+        if (settle === undefined) return;
+        captures.current.delete(next.requestId);
+        // Validated on arrival: a malformed ref would be written into a timeline and fail the
+        // gateway's own validation on the next flush, far from here.
+        const refs: EvidenceRef[] = [];
+        for (const candidate of next.refs) {
+          const parsed = EvidenceRef.safeParse(candidate);
+          if (parsed.success) refs.push(parsed.data);
+        }
+        settle(refs);
         return;
       }
 

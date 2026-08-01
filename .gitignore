@@ -35,3 +35,9 @@ __pycache__/
 
 # Bundled T1 embedding model — fetched by `pnpm --filter extension fetch:model`, not committed.
 apps/extension/assets/models/
+
+# Claude Code local state. `worktrees/` holds the parallel-track checkouts described in
+# CLAUDE.md § "Parallel tracks": each is a full copy of this repository living inside it, and
+# committing one would nest the repository in itself. `settings.local.json` is per-developer.
+.claude/worktrees/
+.claude/settings.local.json

@@ -1,0 +1,35 @@
+name: stack
+description: Bring up postgres, redis, qdrant and minio, then migrate and seed the database.
+
+# The same Compose file and the same Make targets developers use locally. Integration tests that
+# run against a different stack from the one they were written on are integration tests in name
+# only, so there is deliberately no CI-specific override file here.
+
+runs:
+  using: composite
+  steps:
+    # Every service validates its config at boot and fails loudly on a missing variable
+    # (CLAUDE.md rule #10), so the stack cannot come up without this. `.env.example` carries
+    # working local defaults; the only secret it names is MODEL_API_KEY, and no suite in CI calls
+    # a real model provider.
+    - name: materialise .env
+      shell: bash
+      run: cp .env.example .env
+
+    - name: start postgres, redis, qdrant and minio
+      shell: bash
+      # `make db-up` is `docker compose up -d --wait`, which blocks until every healthcheck in
+      # docker-compose.yml passes. No sleep, no polling loop, no flake.
+      run: make db-up
+
+    - name: install atlas
+      shell: bash
+      run: |
+        curl -sSf https://atlasgo.sh | sh -s -- --community --yes
+        atlas version
+
+    - name: migrate and seed
+      shell: bash
+      run: |
+        make db-migrate
+        make db-seed

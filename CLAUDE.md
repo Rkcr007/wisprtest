@@ -179,11 +179,57 @@ At the start of every session:
 2. Read `packages/protocol/src/**` — that is the contract you must honour.
 3. State which phase you are on and what the definition of done is.
 4. For any change over ~200 lines, produce a plan and wait for approval before writing code.
-5. Work one phase at a time. Do not start the next phase in the same session.
+5. Work one track at a time — see § "Parallel tracks" below.
 6. Finish by running the phase's `Done when` command and reporting the real output.
 
 Do not refactor files outside the current phase's scope. If you believe a change is
 needed elsewhere, say so and ask.
+
+---
+
+## Parallel tracks
+
+Phases 0–14 were built one per session, sequentially. That rule existed for two good
+reasons and they still hold: a session that spans several phases accumulates context
+until it turns conservative and repetitive, and a wide blast radius makes a bad result
+expensive to roll back. What it cost was throughput, and past Phase 14 the remaining
+work no longer forms a single chain.
+
+So the unit of work is now a **track**, not a phase. A track is one owner, one module,
+one branch, one PR.
+
+**The rules that make this safe:**
+
+1. **One owner per module.** Two tracks never edit the same directory in the same cycle.
+   A track's brief names the one directory it owns — `apps/composer`, `apps/gateway`,
+   `apps/console`, `docs/` — and that is the only directory it writes to. If a track needs
+   a change inside another track's module, it asks that owner; it does not reach in. This
+   applies to shared config too: adding a dependency to another module's `package.json` or
+   `pyproject.toml` is that owner's change to make, not a small exception.
+2. **`packages/protocol` is never edited by a track.** It is the contract every other
+   module is checked against (rule #3), so a concurrent edit there breaks everyone at
+   once. Contract changes are serialized through the lead, land on their own, and every
+   track rebases onto them before continuing.
+3. **Each track works in its own git worktree,** so branches cannot stomp one another's
+   working directory.
+4. **Nothing merges to `main` without CI green.** `.github/workflows/ci.yml` runs lint,
+   typecheck, unit + coverage gates, integration, e2e, and the three benchmark gates.
+   The `ci` job is the single required check.
+5. **A track that is blocked stays blocked.** Do not build against an interface that does
+   not exist yet to look busy — writing against an imagined contract and rewriting it
+   later is slower than waiting, and it is how the two sides drift.
+6. **The Compose stack is shared; the worktrees are not.** Every worktree on the machine
+   talks to the same postgres, redis, qdrant and minio. Two tracks running integration
+   suites at once will interfere — `make db-reset` in one drops the database the other is
+   mid-assertion against, and the failures look like flakes rather than like a collision.
+   Only one track runs Compose-backed suites at a time; the others run unit suites, which
+   need nothing. This constraint is local only: in CI each job gets its own runner and its
+   own stack, which is why the integration, e2e and bench jobs can run in parallel there.
+
+**What has not changed:** every rule in § "Non-negotiable engineering rules" applies to
+every track. No stubs. Tests are part of the deliverable, not a follow-up. A track
+reports the real output of its `Done when` command, and reports honestly what it could
+not finish rather than rounding up.
 
 ---
 

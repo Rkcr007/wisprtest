@@ -11,6 +11,11 @@ export default tseslint.config(
       '**/.venv/**',
       'apps/console/.next/**',
       'apps/console/next-env.d.ts',
+      // Parallel-track git worktrees are created under `.claude/worktrees/`, inside the
+      // repository. Each is a full checkout, so without this the type-checked rules load every
+      // copy's program at once and eslint dies with a V8 heap abort rather than a lint error.
+      // Each worktree lints itself, on its own branch, in CI.
+      '.claude/**',
     ],
   },
 

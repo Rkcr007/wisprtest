@@ -203,10 +203,22 @@ describe('collapsing', () => {
   it('hides the intent and telemetry bands', async () => {
     const collapse = page.locator('[data-testid="wispr-hud-collapse"]');
 
+    // Each click is followed by a wait on `data-collapsed` reaching the state it produces,
+    // before anything is asserted about the bands.
+    //
+    // Waiting only on the band counts is not enough, and made this test flake on a loaded CI
+    // runner. The HUD mounts collapsed, so `expectCount(intent, 0)` is already satisfied the
+    // instant it is called — it returns while the first click is still in flight. The second
+    // click then lands on a HUD that has not finished processing the first, the two toggles
+    // coalesce, and the panel ends up collapsed when the test expects it expanded. The failure
+    // surfaces 15s later as "expected 1 matching elements, found 0", which describes the
+    // symptom and hides the race.
     if ((await hud().getAttribute('data-collapsed')) === 'false') await collapse.click();
+    await expectAttribute(hud(), 'data-collapsed', 'true');
     await expectCount(page.locator('[data-testid="wispr-hud-intent"]'), 0);
 
     await collapse.click();
+    await expectAttribute(hud(), 'data-collapsed', 'false');
     await expectCount(page.locator('[data-testid="wispr-hud-intent"]'), 1);
     await expectCount(page.locator('[data-testid="wispr-hud-telemetry"]'), 1);
   });

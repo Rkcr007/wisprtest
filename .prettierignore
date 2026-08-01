@@ -24,3 +24,8 @@ apps/composer/tests/protocol_fixtures.json
 # ASCII diagrams are deliberate and Prettier reflows them into something harder to read.
 CLAUDE.md
 docs/
+
+# Parallel-track git worktrees, per CLAUDE.md § "Parallel tracks". Each is a full checkout of the
+# repository living inside it; formatting them from here would rewrite another branch's files
+# underneath the agent working on them. Each worktree formats itself, on its own branch.
+.claude/

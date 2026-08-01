@@ -27,6 +27,8 @@ ComposerErrorCode = Literal[
     "model_unavailable",
     #: Composition ran past its budget. Reported rather than returned late.
     "budget_exceeded",
+    #: The assembled plan is not a DAG, so no materialization order exists.
+    "plan_not_acyclic",
 ]
 
 
@@ -96,6 +98,23 @@ class ModelUnavailableError(ComposerError):
         super().__init__("model_unavailable", f"escalation failed on {model}: {reason}")
         self.reason: str = reason
         self.model: str = model
+
+
+class PlanCycleError(ComposerError):
+    """The plan graph contains a cycle, so no record in it could be created first.
+
+    A defect in the solver rather than anything the tester did, and raised rather than worked
+    around: `materializationOrder` is executed literally against a live application, and an order
+    that ignores a dependency creates records pointing at identifiers that do not exist yet.
+    """
+
+    def __init__(self, nodes: list[str]) -> None:
+        super().__init__(
+            "plan_not_acyclic",
+            "the composed plan has a dependency cycle and cannot be ordered for creation: "
+            + ", ".join(nodes),
+        )
+        self.nodes: list[str] = nodes
 
 
 class BudgetExceededError(ComposerError):

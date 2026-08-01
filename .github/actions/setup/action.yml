@@ -25,6 +25,22 @@ runs:
       # being silently resolved into something no developer has run.
       run: pnpm install --frozen-lockfile
 
+    # `packages/protocol`, `packages/fingerprint` and `packages/ui` are each consumed through
+    # `./dist/index.d.ts`, and `dist/` is gitignored. On a fresh checkout none of it exists, so
+    # every `import ... from 'protocol'` in the apps resolves to nothing and the types of every
+    # consumer silently degrade to `any`. That does not show up as a missing-module error — it
+    # surfaces as a wall of `no-unsafe-member-access` / "type that cannot be resolved" lint
+    # failures in files nobody touched, which is a genuinely confusing way to learn you forgot to
+    # build. A working tree that has ever run `pnpm build` cannot reproduce it.
+    #
+    # Only the workspace packages are built. The apps are built by the jobs that need them
+    # (`extension` builds itself in e2e), and `make build` is deliberately not used here because
+    # it runs `db-codegen`, which needs a live database that `lint` and `typecheck` do not.
+    - name: build the workspace packages
+      shell: bash
+      # pnpm orders filtered scripts topologically, so protocol is built before its dependents.
+      run: pnpm --filter "./packages/*" build
+
     - name: install uv
       uses: astral-sh/setup-uv@v5
       with:

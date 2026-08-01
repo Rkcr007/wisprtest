@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas
+.PHONY: help dev build test bench lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas
 
 COMPOSE := docker compose
 
@@ -44,6 +44,23 @@ db-codegen: .env
 ## test: run every workspace test suite
 test:
 	pnpm test
+
+## bench: assert the CLAUDE.md latency budgets — the release gate, run on known hardware
+# This is the blocking performance gate, and it lives here rather than in CI on purpose.
+#
+# The budgets in CLAUDE.md § "Performance budgets" describe what a tester experiences in their
+# browser. A shared GitHub runner is not that machine — the 8ms scoped-index budget measures
+# around 9-13ms p95 there while passing comfortably on a developer machine — so CI publishes the
+# numbers on every pull request but does not block on them. This target is what blocks: run it on
+# hardware whose performance is known before cutting a release, and treat a failure as a
+# regression rather than as noise.
+#
+# Close anything that competes for CPU first. A benchmark run alongside a video call measures the
+# video call.
+bench:
+	pnpm --filter extension bench:scope
+	pnpm --filter extension bench:resolve
+	pnpm --filter extension bench:speech-to-reticle
 
 ## lint: lint and format-check TypeScript and Python
 lint:

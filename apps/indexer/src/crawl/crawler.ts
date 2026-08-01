@@ -3,7 +3,12 @@ import type { Page, Response } from 'playwright';
 import type { CrawlBounds, CrawlSkipReason, ElementFingerprint } from 'protocol';
 
 import { CancelledError, NavigationError } from '../errors.js';
-import type { CollectedElement, CollectedPage, CollectOptions } from './collected.js';
+import type {
+  CollectedElement,
+  CollectedFormRegion,
+  CollectedPage,
+  CollectOptions,
+} from './collected.js';
 import { ElementKeyMinter } from './element-key.js';
 import { BUNDLE_GLOBAL, MARKER_ATTRIBUTE } from './fingerprint-bundle.js';
 import type { RateLimiter } from './rate-limiter.js';
@@ -58,9 +63,28 @@ export interface ObservedEdge {
   readonly confidence: number;
 }
 
+/**
+ * The forms found on one route, with the element keys their controls were given.
+ *
+ * Emitted while the page is still on the route, because the marker attributes that connect a
+ * control to its element key exist only in that document. `elementKeys` is indexed by marker.
+ */
+export interface ObservedFormRegions {
+  readonly routePattern: string;
+  readonly elementKeys: readonly string[];
+  readonly regions: readonly CollectedFormRegion[];
+}
+
 export interface CrawlHandlers {
   /** Persist one screen and its elements; returns the screen's id. */
   screenIndexed(screen: IndexedScreen): Promise<string>;
+  /**
+   * Receive the forms on a newly indexed route.
+   *
+   * Optional: a crawl that only wants a navigation map is a complete crawl, and schema
+   * observation is a separate concern that happens to need the same page load.
+   */
+  formsObserved?(observation: ObservedFormRegions): Promise<void>;
   /** Persist one observed transition. Called after both endpoints exist. */
   edgeObserved(edge: ObservedEdge): Promise<void>;
   routeStarted(path: string, depth: number): Promise<void>;
@@ -327,31 +351,58 @@ async function visitRoute(options: VisitOptions): Promise<VisitOutcome> {
   await settle(page, bounds);
 
   const routePattern = toRoutePattern(page.url());
-  const collected = await collectPage(page, {
+  const collectOptions: CollectOptions = {
     routePattern,
     neverInteractSelectors: bounds.neverInteractSelectors,
     viewport: bounds.viewport,
     markerAttribute: MARKER_ATTRIBUTE,
-  });
+  };
+  const collected = await collectPage(page, collectOptions);
+
+  // Minted before the already-indexed check because forms are observed either way, and a form's
+  // controls are named by the keys of the elements that edit them. Minting is pure computation
+  // over what was already collected — no navigation, no database.
+  const { elements, elementKeys } = describeElements(collected, routePattern);
+
+  /**
+   * Hand this route's forms to the observer, while the page is still on it.
+   *
+   * Runs even when the screen was already in memory. A resumed crawl re-walks routes a previous
+   * attempt indexed, and a run that declined to re-read their forms would consolidate a *smaller*
+   * schema than the one it is continuing — losing the requiredness, the validation limits and the
+   * UI materializer that only a form can supply.
+   *
+   * The markers it reads belong to the document that is loaded right now, and edge observation is
+   * about to replace that document repeatedly, so this cannot be deferred.
+   */
+  const observePageForms = async (): Promise<void> => {
+    if (handlers.formsObserved === undefined) return;
+    await handlers.formsObserved({
+      routePattern,
+      elementKeys,
+      regions: await collectFormRegions(page, collectOptions),
+    });
+  };
 
   const existing = options.indexedFingerprints.get(collected.stateFingerprint);
   if (existing !== undefined) {
     // The same reachable state under a different URL — `/orders/1841` and `/orders/1842` are one
     // screen. Its links still matter, because they may reach states nothing else links to.
     await handlers.routeSkipped(path, 'already_indexed');
+    await observePageForms();
     return {
       kind: 'visited',
       screenId: existing,
       stateFingerprint: collected.stateFingerprint,
       routePattern,
       collected,
+      // Empty on purpose, so edge observation does not re-click a screen whose edges are already
+      // recorded. Form observation above took the keys it needed directly.
       elementKeys: [],
       elementCount: 0,
       indexed: false,
     };
   }
-
-  const { elements, elementKeys } = describeElements(collected, routePattern);
 
   const screenId = await handlers.screenIndexed({
     url: collected.url,
@@ -361,6 +412,8 @@ async function visitRoute(options: VisitOptions): Promise<VisitOutcome> {
     label: screenLabel(routePattern),
     elements,
   });
+
+  await observePageForms();
 
   return {
     kind: 'visited',
@@ -400,6 +453,7 @@ async function settle(page: Page, bounds: CrawlBounds): Promise<void> {
  */
 interface InPageApi {
   collect(options: CollectOptions): CollectedPage;
+  collectForms(options: CollectOptions): CollectedFormRegion[];
   stamp(options: { markerAttribute: string }): number;
 }
 
@@ -418,6 +472,38 @@ async function collectPage(page: Page, options: CollectOptions): Promise<Collect
     throw new NavigationError(page.url(), `in-page collection failed: ${describe(error)}`, {
       cause: error,
     });
+  }
+}
+
+/**
+ * Run the injected form collector in the page.
+ *
+ * Called after {@link collectPage}, never before: the markers it reads off each control are
+ * stamped by the collection pass, and without them a field cannot be connected to the element
+ * key that the UI materializer will resolve it by.
+ *
+ * A failure here is not a crawl failure. The screen has already been persisted, and an
+ * application whose forms cannot be read is one that yields no schema — which is a gap in what
+ * was learned, not a reason to discard a navigation map that is already correct.
+ */
+async function collectFormRegions(
+  page: Page,
+  options: CollectOptions,
+): Promise<CollectedFormRegion[]> {
+  try {
+    return await page.evaluate<
+      CollectedFormRegion[],
+      { globalName: string; options: CollectOptions }
+    >(
+      ({ globalName, options: collectOptions }) => {
+        const api = (globalThis as unknown as Record<string, InPageApi | undefined>)[globalName];
+        if (api === undefined) throw new Error('the WisprTest collector was not injected');
+        return api.collectForms(collectOptions);
+      },
+      { globalName: BUNDLE_GLOBAL, options },
+    );
+  } catch {
+    return [];
   }
 }
 

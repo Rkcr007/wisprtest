@@ -35,8 +35,14 @@ import {
   CancelledError,
   failureCodeOf,
   failureDetailOf,
+  PersistenceError,
   SsrfError,
 } from './errors.js';
+import { consolidate, type EntitySchemaDraft } from './observers/consolidate.js';
+import { observeForms } from './observers/form-observer.js';
+import { createNetworkObserver } from './observers/network-observer.js';
+import { persistSchemas } from './observers/repository.js';
+import type { ObservedExchange, ObservedForm } from './observers/types.js';
 import { createCheckpointStore } from './redis/checkpoint.js';
 import { createProgressReporter } from './redis/progress.js';
 import type { IndexerMetrics } from './telemetry/metrics.js';
@@ -165,6 +171,14 @@ export async function runJob(
     const auth = await prepareAuth(job.authProfile, deps.secrets);
     const session = await openSession({ browser: deps.browser, bounds: job.bounds, auth });
 
+    const observedForms: ObservedForm[] = [];
+    const network = createNetworkObserver({
+      allowedOrigins: job.bounds.allowedOrigins,
+      onSkipped: (reason: string) => {
+        logger.debug({ event: 'network.exchange_skipped', reason }, 'exchange not recorded');
+      },
+    });
+
     let summary: CrawlSummary;
     try {
       await applyFormLogin({
@@ -175,6 +189,11 @@ export async function runJob(
         policy,
         resolver: deps.secrets,
       });
+
+      // Attached *after* authentication, and deliberately. A form login posts the tenant's
+      // credential for the application under test, and the surest way to guarantee that body is
+      // never recorded — not redacted, not templated, never seen — is to not be listening yet.
+      network.attach(session.page);
 
       const checkpoint = await checkpoints.load();
       const resumeFrom =
@@ -198,11 +217,23 @@ export async function runJob(
           deps,
           progress,
           checkpoints,
+          observedForms,
         }),
       });
     } finally {
+      // Bodies still being read have to land before the context goes away, and the context is
+      // what is holding them.
+      await network.settle();
       await session.close();
     }
+
+    const schemas = await observeSchemas({
+      job,
+      memoryVersionId: version.id,
+      deps,
+      forms: observedForms,
+      exchanges: network.exchanges(),
+    });
 
     const counts = await deps.database.withTenant(job.tenantId, async (db) => {
       await activateMemoryVersion(db, job.applicationId, version.id);
@@ -229,6 +260,7 @@ export async function runJob(
         screens: counts.screens,
         elements: counts.elements,
         edges: counts.edges,
+        entity_schemas: schemas.length,
         skipped: summary.routesSkipped,
         duration_ms: Math.round(durationMs),
       },
@@ -310,6 +342,83 @@ function assertJobTargetsApplication(job: CrawlJob, registeredBaseUrl: string): 
   }
 }
 
+interface ObserveOptions {
+  readonly job: CrawlJob;
+  readonly memoryVersionId: string;
+  readonly deps: JobRunnerDependencies;
+  readonly forms: readonly ObservedForm[];
+  readonly exchanges: readonly ObservedExchange[];
+}
+
+/**
+ * Consolidate what the observers saw and write it against the memory version.
+ *
+ * Runs after the crawl and before activation, so a version never becomes `active` describing
+ * screens whose entity schemas were not written. A failure here fails the job: a version that
+ * looks complete but has no schemas would have the composer refusing to seed with nothing to say
+ * about why, and "the crawl succeeded but the data engine is empty" is not a state an operator
+ * should have to diagnose from the outside.
+ */
+async function observeSchemas(options: ObserveOptions): Promise<readonly EntitySchemaDraft[]> {
+  const { job, deps } = options;
+
+  const { schemas, apiCandidates } = consolidate({
+    forms: options.forms,
+    exchanges: options.exchanges,
+  });
+
+  let counts;
+  try {
+    counts = await persistSchemas(
+      (work) => deps.database.withTenant(job.tenantId, work),
+      { tenantId: job.tenantId, memoryVersionId: options.memoryVersionId },
+      schemas,
+    );
+  } catch (error: unknown) {
+    throw new PersistenceError(
+      `could not write the learned entity schemas: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+      { cause: error },
+    );
+  }
+
+  for (const schema of schemas) {
+    const hasForm = schema.materializers.some((materializer) => materializer.spec.kind === 'ui');
+    const channel = schema.observedCount > 0 ? (hasForm ? 'both' : 'network') : 'form';
+    deps.metrics.entitySchemasTotal.add(1, { channel });
+    for (const materializer of schema.materializers) {
+      deps.metrics.materializersTotal.add(1, { kind: materializer.spec.kind });
+    }
+  }
+  deps.metrics.fieldSpecsTotal.add(counts.fields);
+
+  // Entity names and counts only. A field name can be application vocabulary; a distribution or
+  // a vocabulary is data, and neither belongs in a log line.
+  deps.logger.info(
+    {
+      event: 'schemas.observed',
+      tenant_id: job.tenantId,
+      memory_version_id: options.memoryVersionId,
+      entities: schemas.map((schema) => ({
+        name: schema.entityName,
+        fields: schema.fields.length,
+        observed: schema.observedCount,
+        confidence: schema.confidence,
+        materializers: schema.materializers.map((materializer) => materializer.spec.kind),
+      })),
+      api_candidates: apiCandidates.map((candidate) => ({
+        entity: candidate.entityName,
+        alignment: candidate.alignment,
+      })),
+      fields_written: counts.fields,
+    },
+    'entity schemas consolidated',
+  );
+
+  return schemas;
+}
+
 interface HandlerOptions {
   readonly job: CrawlJob;
   readonly memoryVersionId: string;
@@ -317,6 +426,8 @@ interface HandlerOptions {
   readonly deps: JobRunnerDependencies;
   readonly progress: ReturnType<typeof createProgressReporter>;
   readonly checkpoints: ReturnType<typeof createCheckpointStore>;
+  /** Filled in as routes are indexed; consolidated once the crawl has finished. */
+  readonly observedForms: ObservedForm[];
 }
 
 /**
@@ -392,6 +503,21 @@ function createHandlers(options: HandlerOptions): CrawlHandlers {
       });
 
       return screenId;
+    },
+
+    async formsObserved(observation): Promise<void> {
+      // Interpreted immediately but consolidated at the end: a form on one route and the records
+      // from an API call on another describe the same entity, and neither is complete until the
+      // crawl is. Held in memory rather than written per route for the same reason — an entity
+      // schema written from the form alone would be superseded a moment later.
+      options.observedForms.push(
+        ...observeForms({
+          routePattern: observation.routePattern,
+          elementKeys: observation.elementKeys,
+          regions: observation.regions,
+        }),
+      );
+      await Promise.resolve();
     },
 
     async edgeObserved(edge): Promise<void> {

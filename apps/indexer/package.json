@@ -12,7 +12,8 @@
     "start": "OTEL_SERVICE_NAME=wispr-indexer node --env-file-if-exists=../../.env dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/crawl/in-page/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:observers": "vitest run --config vitest.e2e.config.ts test/e2e/observers.test.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",

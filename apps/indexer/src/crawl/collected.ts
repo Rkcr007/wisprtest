@@ -56,6 +56,55 @@ export interface CollectedElement {
   readonly href: string | null;
 }
 
+/**
+ * One control of one form, as the page declares it.
+ *
+ * Everything here is the *application's own statement about its data*: what the field is called,
+ * what type it holds, whether it is mandatory, and what values it will accept. That is the shape
+ * of an entity, and it is available without submitting anything — which matters, because the
+ * crawl is forbidden from submitting.
+ *
+ * PII: `accessibleName` and every entry of `options` has been through the redactor. No `value`,
+ * no `placeholder` and no `textContent` is collected at all — a control's *content* is the
+ * tester's data, and the observers need only its shape.
+ */
+export interface CollectedControl {
+  /** Marker of the collected element that edits this field, so it can be given an element key. */
+  readonly marker: number | null;
+  /** The `name` attribute. Structure, and the key the application's own API is likely to use. */
+  readonly name: string;
+  /** Redacted accessible name — the label a tester reads. */
+  readonly accessibleName: string;
+  /** `select`, `textarea`, or the input's `type`. Normalised to lowercase. */
+  readonly controlType: string;
+  readonly required: boolean;
+  /** The `pattern` attribute's source, verbatim. Null when absent. */
+  readonly pattern: string | null;
+  readonly min: number | null;
+  readonly max: number | null;
+  readonly minLength: number | null;
+  readonly maxLength: number | null;
+  /**
+   * Redacted `<option>` values, capped. A closed set of choices is a vocabulary; a picker with
+   * hundreds of entries is a reference to another collection, and is left for the network
+   * observer to identify rather than recorded here as an enum.
+   */
+  readonly options: readonly string[];
+  /** How many options there really were, before the cap. Distinguishes a vocabulary from a list. */
+  readonly optionCount: number;
+}
+
+/** One form, or one form-like region, as observed on a route. */
+export interface CollectedFormRegion {
+  /** Redacted accessible name of the form — `Create order`. The component half of its id. */
+  readonly accessibleName: string;
+  /** Lowercased `method`, defaulting to `get` exactly as the HTML specification does. */
+  readonly method: string;
+  /** Absolute URL the form posts to. Empty when the region is not a `<form>`. */
+  readonly action: string;
+  readonly controls: readonly CollectedControl[];
+}
+
 /** Everything one settled route yields. */
 export interface CollectedPage {
   readonly url: string;

@@ -3,7 +3,13 @@ import type { AddressInfo } from 'node:net';
 
 import express, { type Express } from 'express';
 
-import { FixtureState, type Order } from './data.js';
+import {
+  DUE_OFFSET_DAYS,
+  FixtureState,
+  TITLE_SEPARATOR,
+  type Order,
+  type OrderLine,
+} from './data.js';
 import {
   homePage,
   newOrderPage,
@@ -28,6 +34,15 @@ import {
  * | `/orders/:id`    | Route generalisation — three concrete ids, one screen |
  * | `/orders/new`    | A form: labelled inputs, a select, a submitter that must never be pressed |
  * | `/settings`      | A second form, and a destructive control that is not a form submitter |
+ *
+ * Phase 13 adds a JSON API alongside the pages, because the schema observers learn from traffic
+ * rather than from markup alone:
+ *
+ * | Endpoint                     | What it exercises |
+ * |------------------------------|-------------------|
+ * | `GET /api/v2/orders`         | Fifty records: distributions, enums, ranges, derived rules |
+ * | `GET /api/v2/accounts`       | The second collection a referential edge needs to point at |
+ * | `POST /api/v2/orders`        | The create request, observable because `X-Dry-Run` makes it compute without writing |
  */
 
 export interface FixtureApp {
@@ -36,9 +51,63 @@ export interface FixtureApp {
   close(): Promise<void>;
 }
 
+/** The header that turns a create request into a priced preview. */
+const DRY_RUN_HEADER = 'x-dry-run';
+
+interface OrderPayload {
+  readonly accountId?: string;
+  readonly customer?: string;
+  readonly po_number?: string;
+  readonly status?: Order['status'];
+  readonly terms?: Order['terms'];
+  readonly notes?: string;
+  readonly lines?: readonly Partial<OrderLine>[];
+}
+
+/**
+ * Price a create payload without writing it.
+ *
+ * The same computation the stored records satisfy — which is the point: an observer that learns
+ * `amount = Σ lines[].amount` from the collection is learning something the create path really
+ * does honour, not a coincidence of how the fixture was seeded.
+ */
+function priceOrder(payload: OrderPayload): Record<string, unknown> {
+  const lines = (payload.lines ?? []).map((line) => ({
+    sku: line.sku ?? '',
+    description: line.description ?? '',
+    quantity: line.quantity ?? 0,
+    amount: line.amount ?? 0,
+  }));
+
+  const amount = Math.round(lines.reduce((total, line) => total + line.amount, 0) * 100) / 100;
+  const createdAt = new Date().toISOString();
+  const reference = 'ORD-DRAFT';
+  const poNumber = payload.po_number ?? '';
+
+  return {
+    reference,
+    accountId: payload.accountId ?? '',
+    customer: payload.customer ?? '',
+    amount,
+    status: payload.status ?? 'pending',
+    terms: payload.terms ?? 'net30',
+    po_number: poNumber,
+    title: `${reference}${TITLE_SEPARATOR}${poNumber}`,
+    lineCount: lines.length,
+    largestLine: lines.reduce((highest, line) => Math.max(highest, line.amount), 0),
+    createdAt,
+    dueAt: new Date(Date.parse(createdAt) + DUE_OFFSET_DAYS * 86_400_000).toISOString(),
+    notes: payload.notes ?? '',
+    lines,
+  };
+}
+
 export function buildApp(state: FixtureState): Express {
   const app = express();
-  app.use(express.urlencoded({ extended: false }));
+  // `extended` so the create form's `lines[0][sku]` controls parse into a nested group rather
+  // than into keys with brackets in their names.
+  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json());
 
   app.get('/', (_request, response) => {
     response.type('html').send(homePage(state.orders.length));
@@ -67,6 +136,48 @@ export function buildApp(state: FixtureState): Express {
 
   app.get('/settings', (_request, response) => {
     response.type('html').send(settingsPage());
+  });
+
+  // ── The JSON API ──────────────────────────────────────────────────────────────────────────
+  // Read-only but for the create endpoint, which writes only when it is not asked for a dry run.
+
+  app.get('/api/v2/orders', (request, response) => {
+    const limit = Number(request.query.limit ?? state.orders.length);
+    response.json({
+      data: state.orders.slice(0, Number.isFinite(limit) ? limit : state.orders.length),
+    });
+  });
+
+  app.get('/api/v2/orders/:id', (request, response) => {
+    const order = state.find(Number(request.params.id));
+    if (order === undefined) {
+      response.status(404).json({ error: 'not found' });
+      return;
+    }
+    response.json({ data: order });
+  });
+
+  app.get('/api/v2/accounts', (_request, response) => {
+    response.json({ data: state.accounts });
+  });
+
+  app.post('/api/v2/orders', (request, response) => {
+    const payload = request.body as OrderPayload;
+    const priced = priceOrder(payload);
+
+    // A dry run computes and returns. Nothing is written, and the mutation log stays empty —
+    // which is what makes this request safe for a crawl to observe.
+    if (request.get(DRY_RUN_HEADER) !== undefined) {
+      response.json(priced);
+      return;
+    }
+
+    const order = state.create(
+      payload.customer ?? 'unnamed',
+      Number(priced.amount ?? 0),
+      payload.status ?? 'pending',
+    );
+    response.status(201).json({ data: order });
   });
 
   // ── Mutating endpoints ────────────────────────────────────────────────────────────────────

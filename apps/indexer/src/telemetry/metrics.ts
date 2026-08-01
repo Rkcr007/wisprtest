@@ -29,6 +29,12 @@ export interface IndexerMetrics {
   readonly elementsTotal: Counter;
   /** Navigation edges observed. */
   readonly edgesTotal: Counter;
+  /** Entity schemas learned, labelled `channel=form|network|both`. */
+  readonly entitySchemasTotal: Counter;
+  /** Field specs written. The width of what the test data engine can compose. */
+  readonly fieldSpecsTotal: Counter;
+  /** Materializers recorded, labelled `kind=api|ui|fixture`. */
+  readonly materializersTotal: Counter;
   /** Jobs finished, labelled `outcome=completed|failed|cancelled` and, when failed, `code`. */
   readonly jobsTotal: Counter;
   /** End-to-end job duration, including browser launch and authentication. */
@@ -49,6 +55,15 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Inde
     }),
     edgesTotal: meter.createCounter('wispr_indexer_edges_total', {
       description: 'Navigation edges observed during crawls.',
+    }),
+    entitySchemasTotal: meter.createCounter('wispr_indexer_entity_schemas_total', {
+      description: 'Entity schemas learned, labelled by the observation channels behind them.',
+    }),
+    fieldSpecsTotal: meter.createCounter('wispr_indexer_field_specs_total', {
+      description: 'Field specifications written to memory.',
+    }),
+    materializersTotal: meter.createCounter('wispr_indexer_materializers_total', {
+      description: 'Materializers recorded, labelled by adapter kind.',
     }),
     jobsTotal: meter.createCounter('wispr_indexer_jobs_total', {
       description: 'Crawl jobs finished, labelled by outcome and failure code.',

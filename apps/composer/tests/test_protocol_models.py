@@ -51,6 +51,8 @@ INLINED_BY_DESIGN = {
     # Discriminated unions, inlined at each use site as `Member | Member | …`.
     "ActionPayload",
     "AuthProfile",
+    "CompositionOutcome",
+    "ConflictSide",
     "Constraint",
     "DerivedRuleSpec",
     "DistributionShape",

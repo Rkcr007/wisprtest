@@ -8,6 +8,16 @@ VALID_ENV = {
     "LOG_LEVEL": "info",
     "COMPOSER_HOST": "127.0.0.1",
     "COMPOSER_PORT": "8090",
+    # Phase 14 made the model provider and the composition budgets part of the contract with
+    # the environment. Every one is required — CLAUDE.md rule #10: boot fails loudly on missing
+    # config rather than defaulting.
+    "MODEL_API_KEY": "sk-ant-test",
+    "MODEL_BASE_URL": "https://api.anthropic.com",
+    "MODEL_PRIMARY": "claude-haiku-4-5",
+    "MODEL_FALLBACK": "claude-sonnet-5",
+    "MODEL_TIMEOUT_MS": "800",
+    "COMPOSE_BUDGET_MS": "1200",
+    "COMPOSE_MIN_CONFIDENCE": "0.5",
 }
 
 

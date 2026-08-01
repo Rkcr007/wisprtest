@@ -38,9 +38,15 @@
  * - **No defaults.** Nothing here fills in a missing field. A default would make the parsed
  *   value differ from the wire value, and would diverge between the two languages.
  * - **Timestamps are ISO 8601 with an explicit offset**, per CLAUDE.md § "Conventions".
- * - **No content, only structure.** Accessible names, utterances and typed text appear as a
- *   SHA-256 digest, a redacted display form, or both. Raw text from a customer's application
- *   has no representation in this contract at all.
+ * - **No content, only structure** — everywhere it is persisted. Accessible names, utterances
+ *   and typed text appear as a SHA-256 digest, a redacted display form, or both. Nothing that
+ *   is written to memory carries a customer's data.
+ *
+ *   There is exactly one exception, and it is deliberate: {@link ExistingRecord}, on the
+ *   composer's request boundary, carries real records from the application under test. Reference
+ *   resolution is impossible without them — "an order for Acme Industrial" needs to know that
+ *   Acme Industrial exists. They travel with one request, are never persisted, and never reach a
+ *   model provider. See that schema's own documentation.
  *
  * ## What is not here
  *
@@ -57,6 +63,7 @@ export * from './auth.js';
 export * from './resolution.js';
 export * from './runtime.js';
 export * from './data.js';
+export * from './composition.js';
 export * from './drift.js';
 export * from './errors.js';
 export * from './json-schema.js';

@@ -1,0 +1,55 @@
+name: CodeQL
+
+# Required by the `core` repository ruleset, which gates on CodeQL results at the `errors`
+# threshold for security alerts of high severity or above.
+#
+# Both languages in the repository are analysed. Neither needs a build: CodeQL extracts
+# JavaScript/TypeScript and Python from source, so there is no `pnpm build` or `uv sync` here and
+# nothing to keep in step with the CI workflow's setup.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Alerts depend on a query database that GitHub updates independently of this repository, so a
+  # scheduled run finds newly-classified problems in code nobody has touched. Weekly, off-hours.
+  schedule:
+    - cron: '32 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Uploading results to the Security tab is the entire point of the job.
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # `javascript-typescript` covers packages/** and every TypeScript app; `python` covers
+        # apps/composer. Adding a third language to the repository means adding it here, or its
+        # code is silently unanalysed.
+        language: [javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # `security-and-quality` over the default `security` set: the ruleset gates on code
+          # quality as well as code scanning, and this is the query pack that produces both.
+          queries: security-and-quality
+
+      - name: analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

@@ -154,11 +154,17 @@ describe('the instrument names', () => {
     metrics.httpRequestDurationMs.record(1, {});
     metrics.memorySnapshotTotal.add(1, {});
     metrics.memorySnapshotBuildMs.record(1, {});
+    metrics.indexJobsEnqueuedTotal.add(1, {});
+    metrics.indexProgressSubscribers.add(1, {});
+    metrics.indexProgressEventsTotal.add(1, {});
 
     expect((await collect()).map((entry) => entry.name).sort()).toEqual([
       'wispr_false_execution_total',
       'wispr_gateway_request_duration_ms',
       'wispr_gateway_requests_total',
+      'wispr_index_jobs_enqueued_total',
+      'wispr_index_progress_events_total',
+      'wispr_index_progress_subscribers',
       'wispr_memory_snapshot_build_ms',
       'wispr_memory_snapshot_total',
       'wispr_resolution_latency_ms',
@@ -166,6 +172,19 @@ describe('the instrument names', () => {
       'wispr_seed_plan_latency_ms',
       'wispr_tier_total',
     ]);
+  });
+
+  it('tracks open progress streams as an up-down counter', async () => {
+    // The number that matters is the one at rest. A subscriber that opened and closed must leave
+    // this at zero; anything else is a leaked Redis connection nothing else in the system reports.
+    metrics.indexProgressSubscribers.add(1);
+    metrics.indexProgressSubscribers.add(1);
+    metrics.indexProgressSubscribers.add(-2);
+
+    const metric = (await collect()).find(
+      (entry) => entry.name === 'wispr_index_progress_subscribers',
+    );
+    expect(metric?.points[0]?.value).toBe(0);
   });
 
   it('labels a snapshot fetch by cache result', async () => {

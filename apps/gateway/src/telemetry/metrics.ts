@@ -1,4 +1,10 @@
-import { metrics, type Counter, type Histogram, type Meter } from '@opentelemetry/api';
+import {
+  metrics,
+  type Counter,
+  type Histogram,
+  type Meter,
+  type UpDownCounter,
+} from '@opentelemetry/api';
 
 /**
  * The metrics from docs/ARCHITECTURE.md § 7 that the gateway is responsible for.
@@ -45,6 +51,18 @@ export interface GatewayMetrics {
   readonly memorySnapshotTotal: Counter;
   /** Time to assemble a snapshot from Postgres on a cache miss. Paid once per version. */
   readonly memorySnapshotBuildMs: Histogram;
+  /** Crawl jobs enqueued, labelled by outcome. A run of `rejected` means bounds are misconfigured. */
+  readonly indexJobsEnqueuedTotal: Counter;
+  /**
+   * Console tabs currently watching a crawl, and so Redis connections held open for them.
+   *
+   * An up-down counter rather than a counter, because the number that matters is the one at rest:
+   * a value that does not return to zero after a crawl ends is a leaked subscription, and that is
+   * a failure nothing else in the system reports until Redis refuses new connections.
+   */
+  readonly indexProgressSubscribers: UpDownCounter;
+  /** Progress events forwarded to a console, labelled by event kind. */
+  readonly indexProgressEventsTotal: Counter;
 }
 
 export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): GatewayMetrics {
@@ -79,6 +97,15 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Gate
     memorySnapshotBuildMs: meter.createHistogram('wispr_memory_snapshot_build_ms', {
       description: 'Time to assemble a memory snapshot from Postgres on a cache miss.',
       unit: 'ms',
+    }),
+    indexJobsEnqueuedTotal: meter.createCounter('wispr_index_jobs_enqueued_total', {
+      description: 'Crawl jobs enqueued onto the indexer stream, labelled by outcome.',
+    }),
+    indexProgressSubscribers: meter.createUpDownCounter('wispr_index_progress_subscribers', {
+      description: 'Open index-progress streams, and so Redis connections held for them.',
+    }),
+    indexProgressEventsTotal: meter.createCounter('wispr_index_progress_events_total', {
+      description: 'Index progress events forwarded to a console, labelled by kind.',
     }),
   };
 }

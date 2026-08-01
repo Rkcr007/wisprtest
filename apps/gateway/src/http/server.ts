@@ -11,6 +11,7 @@ import { createAnthropicProvider, type ModelProvider } from '../model/index.js';
 import { createS3EvidenceStore } from '../storage/s3-evidence-store.js';
 import type { EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
+import { registerCrawlRoutes } from '../routes/crawl.js';
 import { registerMemoryRoutes } from '../routes/memory.js';
 import { registerResolveRoutes } from '../routes/resolve.js';
 import { registerSessionRoutes } from '../routes/sessions.js';
@@ -81,6 +82,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   await registerRateLimit(app, { config, redis: options.redis });
   registerHealth(app, { config, database: options.database, redis: options.redis });
   registerMemoryRoutes(app, {
+    config,
+    database: options.database,
+    redis: options.redis,
+    metrics,
+  });
+  registerCrawlRoutes(app, {
     config,
     database: options.database,
     redis: options.redis,

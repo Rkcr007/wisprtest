@@ -64,6 +64,18 @@ const gatewayEnvSchema = z.object({
    */
   MODEL_TIMEOUT_MS: z.coerce.number().int().min(1).max(5000),
 
+  // ── Indexing ───────────────────────────────────────────────────────────────────────────────
+  /**
+   * Redis stream `CrawlJob`s are enqueued on, relative to the `wispr:` key namespace.
+   *
+   * Must be the same value the indexer reads as `INDEXER_JOB_STREAM`. The two services resolve
+   * the namespace differently — the gateway through ioredis's `keyPrefix`, the indexer in code —
+   * but they must land on the same key, and a mismatch fails silently: the gateway reports a job
+   * enqueued and no worker ever sees it. Hence no default here either; the value is stated once
+   * in `.env` and both services read it.
+   */
+  INDEXER_JOB_STREAM: z.string().min(1),
+
   // ── Object storage — session evidence ──────────────────────────────────────────────────────
   /** S3-compatible endpoint. MinIO locally; managed object storage in production. */
   EVIDENCE_ENDPOINT: z.url({ protocol: /^https?$/ }),

@@ -20,7 +20,11 @@ export default defineConfig({
         },
       },
       {
-        esbuild: { jsx: 'automatic' },
+        // `tsconfig.json` sets `jsx: "preserve"` because Next owns the build and its own compiler
+        // transforms JSX. The test runner has no such step, so it is told here to transform JSX
+        // itself — without this, a `.tsx` test file reaches the module graph untransformed and
+        // fails to parse.
+        oxc: { jsx: { runtime: 'automatic' } },
         test: {
           name: 'dom',
           environment: 'happy-dom',

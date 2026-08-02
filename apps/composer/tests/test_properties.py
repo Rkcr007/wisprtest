@@ -34,7 +34,6 @@ from datetime import UTC, datetime
 
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from support.schemas import account_schema, accounts, invoice_schema, order_schema
 
 from composer.protocol.models import (
     ConstraintCardinality,
@@ -53,6 +52,7 @@ from composer.solving.predicates import holds
 from composer.solving.sampler import ValueSampler
 from composer.solving.solver import Conflicted, ConstraintSolver, Refused, Solved
 from composer.solving.types import Constraint
+from support.schemas import account_schema, accounts, invoice_schema, order_schema
 
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 ORDER = order_schema()
@@ -100,9 +100,7 @@ def satisfies(node: PlanNode, constraint: Constraint, schema: EntitySchema) -> b
         # identifier in from the edge. Both are satisfied; neither is the field being absent.
         return constraint.field in fields
 
-    definition = next(
-        (entry for entry in schema.predicates if entry.name == constraint.name), None
-    )
+    definition = next((entry for entry in schema.predicates if entry.name == constraint.name), None)
     if definition is None:
         return True  # solved on a satellite node, checked there
     return all(holds(clause, fields.get(clause.field), NOW) for clause in definition.clauses)
@@ -134,9 +132,7 @@ def _field_problems(spec: FieldSpec, value: object) -> list[str]:
 
     problems: list[str] = []
 
-    if spec.enum_values is not None and value not in {
-        entry.root for entry in spec.enum_values
-    }:
+    if spec.enum_values is not None and value not in {entry.root for entry in spec.enum_values}:
         problems.append(f"{spec.name} is {value!r}, outside its learned vocabulary")
 
     if spec.type in (FieldType.INTEGER, FieldType.NUMBER, FieldType.CURRENCY):
@@ -325,9 +321,7 @@ def test_the_same_two_properties_hold_for_a_different_entity(
     constraints=st.lists(ORDER_CONSTRAINTS, min_size=0, max_size=4),
     seed=st.integers(min_value=0, max_value=2**32),
 )
-def test_a_plan_is_always_orderable_and_rooted(
-    constraints: list[Constraint], seed: int
-) -> None:
+def test_a_plan_is_always_orderable_and_rooted(constraints: list[Constraint], seed: int) -> None:
     """`materializationOrder` is executed literally against a live application.
 
     Every node appears exactly once, dependencies come before the records that need them, and the
@@ -434,7 +428,9 @@ def test_a_derived_total_always_equals_what_the_application_would_compute(
     shown the tester a number the record does not have.
     """
     outcome = compose(
-        ORDER, [ConstraintCardinality(kind="cardinality", field="lineItems", count=count)], seed=seed
+        ORDER,
+        [ConstraintCardinality(kind="cardinality", field="lineItems", count=count)],
+        seed=seed,
     )
     if not isinstance(outcome, Solved):
         return
@@ -455,7 +451,7 @@ def test_a_derived_total_always_equals_what_the_application_would_compute(
 def test_a_bound_on_a_computed_total_is_reached_through_the_lines(
     op: Op, target: float, seed: int
 ) -> None:
-    """"An order over £50,000" when the application computes the total from the lines.
+    """ "An order over £50,000" when the application computes the total from the lines.
 
     Two things have to be true at once and it is easy to get only one: the total satisfies the
     bound, *and* it is still the sum of the lines. Satisfying the bound by writing a number into

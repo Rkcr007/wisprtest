@@ -402,22 +402,30 @@ class ConstraintSolver:
         halves fail differently — inventing an account for "for Acme Industrial" gives the tester
         a broken row wearing a plausible name, and creating a second Acme leaves a duplicate behind
         that changes what the test covered.
+
+        A matched record only becomes a graph node when its schema was supplied. The node is there
+        for the *preview* — so a tester can see that Acme is the account that already exists rather
+        than a second one about to be created — and a node needs an `entitySchemaId` to name. Where
+        the gateway sent the records but not the schema, the reference still resolves and the
+        provenance still explains it; there is simply no node for a record nobody is creating.
         """
         novelty = demands_novelty(self._utterance, target)
         match = None if novelty else self._match_reference(phrase, target)
 
         if match is not None:
-            reused = self._graph.reused_node_for(target, match.record.external_ref)
-            if reused is None:
-                reused = self._graph.add(
-                    PlanNode(
-                        node_id=self._graph.next_node_id(target),
-                        schema=self._by_entity[target],
-                        mode=Mode.REUSE_EXISTING,
-                        existing_external_ref=match.record.external_ref,
+            schema = self._by_entity.get(target)
+            if schema is not None:
+                reused = self._graph.reused_node_for(target, match.record.external_ref)
+                if reused is None:
+                    reused = self._graph.add(
+                        PlanNode(
+                            node_id=self._graph.next_node_id(target),
+                            schema=schema,
+                            mode=Mode.REUSE_EXISTING,
+                            existing_external_ref=match.record.external_ref,
+                        )
                     )
-                )
-            self._graph.connect(node.node_id, reused.node_id, spec.name)
+                self._graph.connect(node.node_id, reused.node_id, spec.name)
             node.fields[spec.name] = match.record.external_ref
             provenance.reference_matched(
                 spec.name,

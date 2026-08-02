@@ -171,8 +171,9 @@ class ProvenanceBuilder:
             field,
             None,
             ProvenanceSource.REQUESTED,
-            f"{size} of them, each set so that {total_field} comes to {total!r} — you asked for a "
-            f"{total_field}, and this application computes it from {field}",
+            f"{size} of them, each set so that {total_field} comes to {total!r} — you asked about "
+            f"{total_field}, and this application computes that from {field}, so your requirement "
+            "had to be met through them",
             confidence,
         )
 

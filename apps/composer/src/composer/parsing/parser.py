@@ -543,15 +543,22 @@ class ConstraintParser:
     def _unparsed_fragments(self, working: _Working) -> list[str]:
         """Content words nobody claimed.
 
-        Filler and the entity's own name are excluded — "I need an order" leaves nothing
-        meaningful behind, and reporting "order" as unparsed would make the warning worthless
-        by crying wolf on every utterance.
+        Filler, the entity's own name and a stranded preposition are all excluded — "I need an
+        order" leaves nothing meaningful behind, and reporting "order" or "on" as unparsed would
+        make the warning worthless by crying wolf on every utterance.
+
+        A preposition on its own carries no requirement. Where one introduced a reference it was
+        claimed with the phrase; where it did not, "on" left over from "on net30 terms" is a word,
+        not a clause somebody dropped, and the whole value of this list is that everything in it
+        is worth a tester's attention.
         """
         entity_forms = field_aliases(self._schema.entity_name)
         leftovers = [
             token
             for token in tokenize(working.remainder())
-            if token not in entity_forms and not token.isdigit()
+            if token not in entity_forms
+            and token not in REFERENCE_PREPOSITIONS
+            and not token.isdigit()
         ]
         return [" ".join(leftovers)] if leftovers else []
 

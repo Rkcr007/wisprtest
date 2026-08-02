@@ -143,7 +143,7 @@ def order_schema() -> EntitySchema:
                     "number",
                     required=True,
                     derivedRule={
-                        "rule": {"kind": "sum", "overField": "lines", "ofField": "amount"},
+                        "rule": {"kind": "sum", "overField": "lineItems", "ofField": "amount"},
                         "confidence": 1.0,
                         "sampleSize": 50,
                     },
@@ -190,7 +190,7 @@ def order_schema() -> EntitySchema:
                     },
                 ),
                 _field(
-                    "lines",
+                    "lineItems",
                     "group",
                     distribution={
                         "shape": {
@@ -206,7 +206,7 @@ def order_schema() -> EntitySchema:
                     },
                 ),
                 _field(
-                    "lines.amount",
+                    "lineItems.amount",
                     "number",
                     distribution={
                         "shape": {
@@ -384,6 +384,9 @@ def accounts(count: int = 3) -> list[ExistingRecord]:
 
 
 def runtime_state(route: str = "/orders") -> RuntimeState:
+    """Where the tester is. Only `routePattern` matters to the composer — it is what scopes an
+    unqualified utterance to an entity — but the contract's shape is honoured in full so the
+    fixture is a real request rather than the subset this service happens to read."""
     return RuntimeState.model_validate(
         {
             "route": route,
@@ -391,8 +394,8 @@ def runtime_state(route: str = "/orders") -> RuntimeState:
             "modalStack": [],
             "focusedLandmark": None,
             "visibleElementKeys": [],
-            "openDisclosures": [],
-            "activeTab": None,
+            "structuralHash": "b" * 64,
+            "stateFingerprint": "c" * 64,
             "capturedAt": NOW,
         }
     )

@@ -95,7 +95,13 @@ describe('ConnectForm — the bounds gate', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Allowed origins/).getAttribute('aria-invalid')).toBe('true');
     });
-    for (const label of [/Allowed origins/, /Route allowlist/, /Depth cap/, /Page cap/, /Never interact with/]) {
+    for (const label of [
+      /Allowed origins/,
+      /Route allowlist/,
+      /Depth cap/,
+      /Page cap/,
+      /Never interact with/,
+    ]) {
       expect(screen.getByLabelText(label).getAttribute('aria-invalid')).toBe('true');
     }
   });
@@ -104,20 +110,23 @@ describe('ConnectForm — the bounds gate', () => {
     renderForm();
 
     for (const label of [/Allowed origins/, /Route allowlist/, /Depth cap/, /Page cap/]) {
-      expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe('');
+      expect(screen.getByLabelText<HTMLInputElement>(label).value).toBe('');
     }
   });
 
   it('pre-fills the operational tuning, which carries no safety', () => {
     renderForm();
 
-    expect((screen.getByLabelText(/Navigations per minute/) as HTMLInputElement).value).toBe('60');
-    expect((screen.getByLabelText(/Viewport width/) as HTMLInputElement).value).toBe('1440');
+    expect(screen.getByLabelText<HTMLInputElement>(/Navigations per minute/).value).toBe('60');
+    expect(screen.getByLabelText<HTMLInputElement>(/Viewport width/).value).toBe('1440');
   });
 
   it('refuses an empty never-interact list until it is acknowledged', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), { status: 202, headers: { 'content-type': 'application/json' } }),
+      new Response(JSON.stringify(accepted), {
+        status: 202,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
@@ -127,7 +136,9 @@ describe('ConnectForm — the bounds gate', () => {
     submit();
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Never interact with/).getAttribute('aria-invalid')).toBe('true');
+      expect(screen.getByLabelText(/Never interact with/).getAttribute('aria-invalid')).toBe(
+        'true',
+      );
     });
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -142,7 +153,10 @@ describe('ConnectForm — the bounds gate', () => {
 
   it('posts a contract-shaped request once the form is complete', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), { status: 202, headers: { 'content-type': 'application/json' } }),
+      new Response(JSON.stringify(accepted), {
+        status: 202,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
@@ -165,7 +179,10 @@ describe('ConnectForm — the bounds gate', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(accepted), { status: 202, headers: { 'content-type': 'application/json' } }),
+        new Response(JSON.stringify(accepted), {
+          status: 202,
+          headers: { 'content-type': 'application/json' },
+        }),
       ),
     );
     renderForm();
@@ -190,7 +207,9 @@ describe('ConnectForm — refusals from the server', () => {
           JSON.stringify({
             code: 'validation_failed',
             message: 'the crawl bounds do not allow the application’s own origin',
-            issues: [{ path: 'bounds.allowedOrigins', message: 'must include the registered origin' }],
+            issues: [
+              { path: 'bounds.allowedOrigins', message: 'must include the registered origin' },
+            ],
           }),
           { status: 400, headers: { 'content-type': 'application/json' } },
         ),
@@ -250,13 +269,16 @@ describe('ConnectForm — refusals from the server', () => {
     submit();
 
     await waitFor(() => {
-      expect((screen.getByRole('button', { name: /Starting index/i }) as HTMLButtonElement).disabled).toBe(
-        true,
-      );
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: /Starting index/i }).disabled,
+      ).toBe(true);
     });
 
     release(
-      new Response(JSON.stringify(accepted), { status: 202, headers: { 'content-type': 'application/json' } }),
+      new Response(JSON.stringify(accepted), {
+        status: 202,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
   });
 });
@@ -301,7 +323,9 @@ describe('ConnectForm — keyboard and assistive technology', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Page cap/).getAttribute('aria-invalid')).toBe('true');
     });
-    const ids = (screen.getByLabelText(/Page cap/).getAttribute('aria-describedby') ?? '').split(' ');
+    const ids = (screen.getByLabelText(/Page cap/).getAttribute('aria-describedby') ?? '').split(
+      ' ',
+    );
     expect(ids).toHaveLength(2);
     for (const id of ids) {
       expect(document.getElementById(id)).not.toBeNull();
@@ -325,7 +349,10 @@ describe('ConnectForm — keyboard and assistive technology', () => {
 
   it('submits on Enter from a text field, without a mouse', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), { status: 202, headers: { 'content-type': 'application/json' } }),
+      new Response(JSON.stringify(accepted), {
+        status: 202,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderForm();

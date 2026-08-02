@@ -134,7 +134,7 @@ export function ConnectForm() {
     },
   });
 
-  const submit = (event: React.FormEvent<HTMLFormElement>): void => {
+  const submit = (event: React.SyntheticEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const parsed = parseCrawlForm(values);
 
@@ -519,10 +519,7 @@ function progressHref(applicationId: string, jobId: string, pageCap: number): st
   return `/applications/${applicationId}/indexing?jobId=${jobId}&pageCap=${String(pageCap)}`;
 }
 
-function pageCapOf(
-  client: ReturnType<typeof useQueryClient>,
-  clientId: string,
-): number {
+function pageCapOf(client: ReturnType<typeof useQueryClient>, clientId: string): number {
   const jobs = client.getQueryData<StartedJob[]>(STARTED_JOBS) ?? [];
   return jobs.find((job) => job.clientId === clientId)?.pageCap ?? 0;
 }

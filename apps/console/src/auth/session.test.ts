@@ -54,7 +54,10 @@ describe('the session cookie', () => {
   });
 
   it('encrypts rather than signs — the token is not readable in the cookie', async () => {
-    const cookie = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() + 60_000 });
+    const cookie = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() + 60_000,
+    });
 
     // A signed-but-plaintext cookie would carry the token base64 in its payload segment, readable
     // by any extension or injected script that can reach the jar.
@@ -70,7 +73,10 @@ describe('the session cookie', () => {
     ['authentication tag', 4],
     ['initialisation vector', 2],
   ])('rejects a cookie whose %s has been tampered with', async (_label, segment) => {
-    const cookie = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() + 60_000 });
+    const cookie = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() + 60_000,
+    });
     const parts = cookie.split('.');
     const original = parts[segment] ?? '';
     // The leading character, so the flip lands on whole bytes rather than on the padding bits a
@@ -83,14 +89,22 @@ describe('the session cookie', () => {
   it('rejects an expired cookie server-side, not only via Max-Age', async () => {
     // Cookie lifetime is enforced by the browser; a replayed cookie ignores it entirely. `exp` is
     // what makes the replay useless.
-    const cookie = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() - 60_000 });
+    const cookie = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() - 60_000,
+    });
 
     expect(await openSession(config, cookie)).toBeNull();
   });
 
   it('rejects a cookie sealed under a rotated secret', async () => {
-    const cookie = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() + 60_000 });
-    const rotated = testConfig({ CONSOLE_SESSION_SECRET: 'a-different-secret-of-at-least-32-chars!!' });
+    const cookie = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() + 60_000,
+    });
+    const rotated = testConfig({
+      CONSOLE_SESSION_SECRET: 'a-different-secret-of-at-least-32-chars!!',
+    });
 
     expect(await openSession(rotated, cookie)).toBeNull();
   });
@@ -108,7 +122,10 @@ describe('the session cookie', () => {
     // CLAUDE.md rule #7: tenancy is derived, never asserted by the client. The console holds the
     // gateway's bearer token and nothing else, so the tenant is whatever the token's issuer says
     // it is. A tenant id in this cookie would be a tenant id a tampering client could edit.
-    const cookie = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() + 60_000 });
+    const cookie = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() + 60_000,
+    });
     const opened = await openSession(config, cookie);
 
     expect(Object.keys(opened ?? {}).sort()).toEqual(['accessToken', 'expiresAt']);
@@ -150,7 +167,10 @@ describe('the flow cookie', () => {
 
   it('rejects a session cookie presented as a flow cookie', async () => {
     // Both are sealed with the same key, so only the claim schema tells them apart.
-    const session = await sealSession(config, { accessToken: TOKEN, expiresAt: Date.now() + 60_000 });
+    const session = await sealSession(config, {
+      accessToken: TOKEN,
+      expiresAt: Date.now() + 60_000,
+    });
 
     expect(await openFlow(config, session)).toBeNull();
   });
@@ -168,7 +188,9 @@ describe('the flow cookie', () => {
 
 describe('safeReturnTo', () => {
   it('keeps a same-site absolute path', () => {
-    expect(safeReturnTo('/applications/abc/indexing?jobId=1')).toBe('/applications/abc/indexing?jobId=1');
+    expect(safeReturnTo('/applications/abc/indexing?jobId=1')).toBe(
+      '/applications/abc/indexing?jobId=1',
+    );
   });
 
   it('defaults to the root when there is no candidate', () => {

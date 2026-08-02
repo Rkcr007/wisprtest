@@ -92,9 +92,7 @@ describe('parseCrawlForm — the bounds are required', () => {
     expect(result.request.bounds.routeAllowlist).toEqual(['/orders', '/settings']);
     expect(result.request.bounds.maxDepth).toBe(3);
     expect(result.request.bounds.maxPages).toBe(50);
-    expect(result.request.bounds.neverInteractSelectors).toEqual([
-      'button[data-action="delete"]',
-    ]);
+    expect(result.request.bounds.neverInteractSelectors).toEqual(['button[data-action="delete"]']);
     expect(result.request.bounds.viewport).toEqual({ width: 1440, height: 900 });
     expect(result.request.authProfile).toEqual({ kind: 'none' });
   });
@@ -315,9 +313,7 @@ describe('issuesFromGateway', () => {
   });
 
   it('maps a nested viewport issue onto its axis', () => {
-    const issues = issuesFromGateway([
-      { path: 'bounds.viewport.height', message: 'too short' },
-    ]);
+    const issues = issuesFromGateway([{ path: 'bounds.viewport.height', message: 'too short' }]);
 
     expect(issues.viewportHeight).toBe('too short');
   });

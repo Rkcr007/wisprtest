@@ -221,11 +221,11 @@ describe('authorizationUrl', () => {
   });
 
   it('never puts the client secret or the verifier in a front-channel URL', () => {
-    const front = authorizationUrl(
-      metadata,
-      testConfig({ OIDC_CLIENT_SECRET: 'super-secret' }),
-      { state: 's', nonce: 'n', challenge: 'c' },
-    );
+    const front = authorizationUrl(metadata, testConfig({ OIDC_CLIENT_SECRET: 'super-secret' }), {
+      state: 's',
+      nonce: 'n',
+      challenge: 'c',
+    });
 
     expect(front).not.toContain('super-secret');
     expect(front).not.toContain('code_verifier');
@@ -240,12 +240,17 @@ describe('exchangeCode', () => {
     vi.stubGlobal('fetch', fetchMock);
     const now = 1_700_000_000_000;
 
-    const tokens = await exchangeCode(metadata, testConfig(), { code: 'the-code', verifier: 'the-verifier' }, now);
+    const tokens = await exchangeCode(
+      metadata,
+      testConfig(),
+      { code: 'the-code', verifier: 'the-verifier' },
+      now,
+    );
 
     expect(tokens.accessToken).toBe('gateway-token');
     expect(tokens.expiresAt).toBe(now + 3_600_000);
 
-    const body = fetchMock.mock.calls[0]?.[1]?.body as URLSearchParams;
+    const body = (fetchMock.mock.calls[0]?.[1] as RequestInit).body as URLSearchParams;
     expect(body.get('grant_type')).toBe('authorization_code');
     expect(body.get('code')).toBe('the-code');
     expect(body.get('code_verifier')).toBe('the-verifier');
@@ -273,12 +278,16 @@ describe('exchangeCode', () => {
 
     await exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' });
 
-    expect((fetchMock.mock.calls[0]?.[1]?.body as URLSearchParams).has('client_secret')).toBe(false);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((init.body as URLSearchParams).has('client_secret')).toBe(false);
   });
 
   it('treats a token with no expires_in as already expired', async () => {
     // The gateway rejects a token with no `exp`; sending one anyway produces a 401 with no story.
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ access_token: 'a', token_type: 'Bearer' })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ access_token: 'a', token_type: 'Bearer' })),
+    );
     const now = 1_700_000_000_000;
 
     const tokens = await exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }, now);
@@ -289,18 +298,24 @@ describe('exchangeCode', () => {
   it('surfaces the provider’s own error code', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ error: 'invalid_grant', error_description: 'code used' }, 400)),
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: 'invalid_grant', error_description: 'code used' }, 400),
+        ),
     );
 
-    await expect(exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' })).rejects.toThrow(
-      /invalid_grant/,
-    );
+    await expect(
+      exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }),
+    ).rejects.toThrow(/invalid_grant/);
   });
 
   it('does not render a provider’s HTML error page as a message', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 })),
+      vi
+        .fn()
+        .mockResolvedValue(new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 })),
     );
 
     const error = await exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }).catch(
@@ -315,25 +330,33 @@ describe('exchangeCode', () => {
   it('refuses a token type the gateway cannot use', async () => {
     // The gateway reads `Authorization: Bearer …` and nothing else. A DPoP token would be stored,
     // sent, and rejected on every call with no indication why.
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...success, token_type: 'DPoP' })));
-
-    await expect(exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' })).rejects.toThrow(
-      /DPoP/,
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ ...success, token_type: 'DPoP' })),
     );
+
+    await expect(
+      exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }),
+    ).rejects.toThrow(/DPoP/);
   });
 
   it('accepts a lowercase bearer, which the RFC permits', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...success, token_type: 'bearer' })));
-
-    await expect(exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' })).resolves.toMatchObject(
-      { accessToken: 'gateway-token' },
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ ...success, token_type: 'bearer' })),
     );
+
+    await expect(
+      exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }),
+    ).resolves.toMatchObject({ accessToken: 'gateway-token' });
   });
 
   it('refuses a 200 response that is not a token', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ nothing: 'useful' })));
 
-    await expect(exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' })).rejects.toMatchObject({
+    await expect(
+      exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }),
+    ).rejects.toMatchObject({
       code: 'auth_failed',
     });
   });
@@ -341,7 +364,9 @@ describe('exchangeCode', () => {
   it('reports an unreachable token endpoint as auth_failed', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNRESET')));
 
-    await expect(exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' })).rejects.toMatchObject({
+    await expect(
+      exchangeCode(metadata, testConfig(), { code: 'c', verifier: 'v' }),
+    ).rejects.toMatchObject({
       code: 'auth_failed',
     });
   });

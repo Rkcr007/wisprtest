@@ -75,7 +75,14 @@ const jobStarted = {
 };
 
 function routeStarted(sequence: number, path: string) {
-  return { ...base, kind: 'route_started', sequence, at: '2026-08-02T10:00:01.000Z', path, depth: 1 };
+  return {
+    ...base,
+    kind: 'route_started',
+    sequence,
+    at: '2026-08-02T10:00:01.000Z',
+    path,
+    depth: 1,
+  };
 }
 
 function routeIndexed(sequence: number, routePattern: string, elementCount: number) {
@@ -364,7 +371,7 @@ describe('IndexingLive — accessibility and lifecycle', () => {
     renderScreen();
 
     for (const table of screen.getAllByRole('table')) {
-      expect(table.querySelector('caption')?.textContent?.length ?? 0).toBeGreaterThan(0);
+      expect(table.querySelector('caption')?.textContent).toBeTruthy();
       for (const header of table.querySelectorAll('th')) {
         expect(header.getAttribute('scope')).toBe('col');
       }

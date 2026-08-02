@@ -156,15 +156,21 @@ describe('callGatewayJson', () => {
   const JOB_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 
   it('parses a successful response with the contract', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ jobId: JOB_ID, extra: 'ignored' })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ jobId: JOB_ID, extra: 'ignored' })),
+    );
 
-    await expect(
-      callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job),
-    ).resolves.toEqual({ jobId: JOB_ID });
+    await expect(callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job)).resolves.toEqual({
+      jobId: JOB_ID,
+    });
   });
 
   it('maps a 401 to auth_required — the session outlived the token', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ code: 'unauthenticated' }, 401)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ code: 'unauthenticated' }, 401)),
+    );
 
     const error = await callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job).catch(
       (thrown: unknown) => thrown,
@@ -197,7 +203,11 @@ describe('callGatewayJson', () => {
   it('does not read a load balancer’s HTML page as a message', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response('<html><h1>504 Gateway Timeout</h1></html>', { status: 504 })),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response('<html><h1>504 Gateway Timeout</h1></html>', { status: 504 }),
+        ),
     );
 
     const error = (await callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job).catch(
@@ -226,9 +236,9 @@ describe('callGatewayJson', () => {
   it('reports a 200 with an unparseable body rather than resolving to null', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json', { status: 200 })));
 
-    await expect(callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job)).rejects.toBeInstanceOf(
-      ConsoleError,
-    );
+    await expect(
+      callGatewayJson(session, { method: 'GET', path: '/v1/x' }, Job),
+    ).rejects.toBeInstanceOf(ConsoleError);
   });
 
   it('never resolves silently on failure — every path throws', async () => {

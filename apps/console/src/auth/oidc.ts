@@ -72,7 +72,10 @@ export function resetDiscoveryCache(): void {
   discovered = null;
 }
 
-export async function discover(config: ConsoleConfig, now: number = Date.now()): Promise<ProviderMetadata> {
+export async function discover(
+  config: ConsoleConfig,
+  now: number = Date.now(),
+): Promise<ProviderMetadata> {
   if (discovered !== null && now - discovered.at < DISCOVERY_TTL_MS) return discovered.metadata;
 
   const url = `${config.OIDC_ISSUER_URL.replace(/\/$/, '')}/.well-known/openid-configuration`;

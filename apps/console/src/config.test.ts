@@ -48,7 +48,9 @@ describe('loadConfig', () => {
     'OIDC_REDIRECT_URI',
     'CONSOLE_SESSION_SECRET',
   ])('refuses to boot without %s, and names it', (variable) => {
-    const { [variable]: _removed, ...partial } = validEnv as Record<string, string>;
+    const partial = Object.fromEntries(
+      Object.entries(validEnv).filter(([key]) => key !== variable),
+    ) as NodeJS.ProcessEnv;
 
     try {
       loadConfig(partial);
@@ -63,7 +65,9 @@ describe('loadConfig', () => {
     // RFC 7636: a confidential secret adds nothing for a client that cannot keep one, and PKCE
     // is what protects the exchange either way.
     expect(loadConfig(validEnv).OIDC_CLIENT_SECRET).toBeUndefined();
-    expect(loadConfig({ ...validEnv, OIDC_CLIENT_SECRET: 's3cret' }).OIDC_CLIENT_SECRET).toBe('s3cret');
+    expect(loadConfig({ ...validEnv, OIDC_CLIENT_SECRET: 's3cret' }).OIDC_CLIENT_SECRET).toBe(
+      's3cret',
+    );
   });
 
   it('refuses a session secret too short to key the cookie', () => {
@@ -79,7 +83,9 @@ describe('loadConfig', () => {
   });
 
   it('refuses a non-http scheme for the gateway', () => {
-    expect(() => loadConfig({ ...validEnv, GATEWAY_URL: 'file:///etc/passwd' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...validEnv, GATEWAY_URL: 'file:///etc/passwd' })).toThrow(
+      ConfigError,
+    );
   });
 
   it('reports every missing variable at once rather than one per restart', () => {

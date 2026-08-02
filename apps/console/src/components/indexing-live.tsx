@@ -74,9 +74,16 @@ export function IndexingLive({
           aria-valuetext={valueText(progress, ratio, pageCap)}
           {...(ratio === null
             ? {}
-            : { 'aria-valuenow': Math.round(ratio * 100), 'aria-valuemin': 0, 'aria-valuemax': 100 })}
+            : {
+                'aria-valuenow': Math.round(ratio * 100),
+                'aria-valuemin': 0,
+                'aria-valuemax': 100,
+              })}
         >
-          <span className="fill" style={ratio === null ? undefined : { width: `${String(ratio * 100)}%` }} />
+          <span
+            className="fill"
+            style={ratio === null ? undefined : { width: `${String(ratio * 100)}%` }}
+          />
         </div>
         <p className="hint">{valueText(progress, ratio, pageCap)}</p>
 
@@ -96,7 +103,7 @@ export function IndexingLive({
           <Detail label="Job" value={progress.jobId ?? '—'} />
           <Detail
             label="Duration"
-            value={progress.totalDurationMs === null ? '—' : `${formatMs(progress.totalDurationMs)}`}
+            value={progress.totalDurationMs === null ? '—' : formatMs(progress.totalDurationMs)}
           />
         </dl>
 

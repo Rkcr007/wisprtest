@@ -80,7 +80,7 @@ function subscribe(): {
 
   const unsubscribe = subscribeToProgress(
     '/api/applications/abc/index-progress?jobId=xyz',
-    handlers as unknown as ProgressStreamHandlers,
+    handlers,
     (requested) => {
       url = requested;
       return source;

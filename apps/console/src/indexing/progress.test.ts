@@ -38,7 +38,14 @@ function jobStarted(sequence = 0, resumed = false): IndexProgressEvent {
 }
 
 function routeStarted(sequence: number, path: string, depth = 0): IndexProgressEvent {
-  return event({ ...base, kind: 'route_started', sequence, at: '2026-08-02T10:00:01.000Z', path, depth });
+  return event({
+    ...base,
+    kind: 'route_started',
+    sequence,
+    at: '2026-08-02T10:00:01.000Z',
+    path,
+    depth,
+  });
 }
 
 function routeIndexed(
@@ -61,7 +68,14 @@ function routeIndexed(
 }
 
 function routeSkipped(sequence: number, path: string, reason: string): IndexProgressEvent {
-  return event({ ...base, kind: 'route_skipped', sequence, at: '2026-08-02T10:00:03.000Z', path, reason });
+  return event({
+    ...base,
+    kind: 'route_skipped',
+    sequence,
+    at: '2026-08-02T10:00:03.000Z',
+    path,
+    reason,
+  });
 }
 
 function edgeRecorded(sequence: number): IndexProgressEvent {
@@ -77,7 +91,10 @@ function edgeRecorded(sequence: number): IndexProgressEvent {
   });
 }
 
-function jobCompleted(sequence: number, totals: Partial<Record<string, number>> = {}): IndexProgressEvent {
+function jobCompleted(
+  sequence: number,
+  totals: Partial<Record<string, number>> = {},
+): IndexProgressEvent {
   return event({
     ...base,
     kind: 'job_completed',
@@ -161,7 +178,11 @@ describe('reduceProgress — routes', () => {
   });
 
   it('pairs an indexed route with the one in flight rather than appending a second row', () => {
-    const state = fold(jobStarted(), routeStarted(1, '/orders/8f21', 2), routeIndexed(2, '/orders/:id', 41));
+    const state = fold(
+      jobStarted(),
+      routeStarted(1, '/orders/8f21', 2),
+      routeIndexed(2, '/orders/:id', 41),
+    );
 
     expect(state.routes).toHaveLength(1);
     expect(state.routes[0]).toMatchObject({
@@ -347,7 +368,11 @@ describe('reduceProgress — sequence integrity', () => {
   it('counts a duplicated route_indexed twice, which is why the gap flag matters', () => {
     // The reducer is not idempotent and does not pretend to be: it flags the anomaly and the
     // completion totals correct the counts. Asserting the real behaviour rather than a wish.
-    const state = fold(routeStarted(1, '/orders'), routeIndexed(2, '/orders', 41), routeIndexed(2, '/orders', 41));
+    const state = fold(
+      routeStarted(1, '/orders'),
+      routeIndexed(2, '/orders', 41),
+      routeIndexed(2, '/orders', 41),
+    );
 
     expect(state.routesIndexed).toBe(2);
     expect(state.sequenceGap).toBe(true);

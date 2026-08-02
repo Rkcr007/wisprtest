@@ -84,7 +84,10 @@ export async function GET(
     });
   } catch (error: unknown) {
     if (error instanceof ConsoleError) {
-      return NextResponse.json({ code: error.code, message: error.message }, { status: error.status });
+      return NextResponse.json(
+        { code: error.code, message: error.message },
+        { status: error.status },
+      );
     }
     return NextResponse.json(
       { code: 'internal', message: 'the progress stream could not be opened' },

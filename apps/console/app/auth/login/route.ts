@@ -43,8 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
     return response;
   } catch (error: unknown) {
-    const message =
-      error instanceof ConsoleError ? error.message : 'sign-in could not be started';
+    const message = error instanceof ConsoleError ? error.message : 'sign-in could not be started';
     return NextResponse.redirect(
       new URL(`/?authError=${encodeURIComponent(message)}`, request.nextUrl.origin),
     );

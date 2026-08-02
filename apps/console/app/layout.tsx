@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { uiCss } from 'ui';
 
 import { currentSession } from '../src/auth/current';
+import { DesignSystemStyles } from '../src/components/design-system-styles';
 import { Providers } from '../src/components/providers';
-import { consoleCss } from '../src/styles';
 
 export const metadata: Metadata = {
   title: 'WisprTest',
@@ -29,7 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <style>{`${uiCss}\n${consoleCss}`}</style>
+        <DesignSystemStyles />
       </head>
       <body>
         <a className="skip-link" href="#main">

@@ -187,24 +187,33 @@ describe('POST /api/applications/:id/crawl', () => {
   it.each([
     ['no bounds at all', { authProfile: { kind: 'none' } }],
     ['no page cap', { bounds: { ...bounds, maxPages: undefined }, authProfile: { kind: 'none' } }],
-    ['no origin allowlist', { bounds: { ...bounds, allowedOrigins: [] }, authProfile: { kind: 'none' } }],
-    ['no never-interact key', { bounds: { ...bounds, neverInteractSelectors: undefined }, authProfile: { kind: 'none' } }],
+    [
+      'no origin allowlist',
+      { bounds: { ...bounds, allowedOrigins: [] }, authProfile: { kind: 'none' } },
+    ],
+    [
+      'no never-interact key',
+      { bounds: { ...bounds, neverInteractSelectors: undefined }, authProfile: { kind: 'none' } },
+    ],
     ['no auth profile', { bounds }],
     ['nothing', {}],
-  ])('refuses a crawl with %s, naming the field, without calling the gateway', async (_label, body) => {
-    await signIn();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const { POST } = await import('../../app/api/applications/[id]/crawl/route');
+  ])(
+    'refuses a crawl with %s, naming the field, without calling the gateway',
+    async (_label, body) => {
+      await signIn();
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const { POST } = await import('../../app/api/applications/[id]/crawl/route');
 
-    const response = await POST(crawlRequest(body), params(APPLICATION_ID));
-    const payload = (await response.json()) as { code: string; issues: { path: string }[] };
+      const response = await POST(crawlRequest(body), params(APPLICATION_ID));
+      const payload = (await response.json()) as { code: string; issues: { path: string }[] };
 
-    expect(response.status).toBe(400);
-    expect(payload.code).toBe('validation_failed');
-    expect(payload.issues.length).toBeGreaterThan(0);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(payload.code).toBe('validation_failed');
+      expect(payload.issues.length).toBeGreaterThan(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses a body carrying a key the contract does not define', async () => {
     // `StartCrawlRequest` is a strict object: an unknown key means the two sides disagree.
@@ -245,7 +254,9 @@ describe('POST /api/applications/:id/crawl', () => {
             code: 'validation_failed',
             message: 'the crawl bounds do not allow the application’s own origin',
             retryable: false,
-            issues: [{ path: 'bounds.allowedOrigins', message: 'must include the base URL origin' }],
+            issues: [
+              { path: 'bounds.allowedOrigins', message: 'must include the base URL origin' },
+            ],
           },
           400,
         ),
@@ -352,9 +363,9 @@ describe('GET /api/applications/:id/index-progress', () => {
 
     await GET(progressRequest('', { 'last-event-id': '1712-4' }), params(APPLICATION_ID));
 
-    expect(((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('last-event-id')).toBe(
-      '1712-4',
-    );
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('last-event-id'),
+    ).toBe('1712-4');
   });
 
   it('omits Last-Event-ID on a first connection', async () => {
@@ -365,7 +376,9 @@ describe('GET /api/applications/:id/index-progress', () => {
 
     await GET(progressRequest(), params(APPLICATION_ID));
 
-    expect(((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('last-event-id')).toBeNull();
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('last-event-id'),
+    ).toBeNull();
   });
 
   it('never puts the token in the query string', async () => {
@@ -407,7 +420,15 @@ describe('GET /api/applications/:id/index-progress', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        jsonResponse({ code: 'validation_failed', message: 'no such application', retryable: false, issues: [{ path: 'id', message: 'unknown' }] }, 404),
+        jsonResponse(
+          {
+            code: 'validation_failed',
+            message: 'no such application',
+            retryable: false,
+            issues: [{ path: 'id', message: 'unknown' }],
+          },
+          404,
+        ),
       ),
     );
     const { GET } = await import('../../app/api/applications/[id]/index-progress/route');
@@ -421,7 +442,10 @@ describe('GET /api/applications/:id/index-progress', () => {
 
   it('does not render an upstream HTML error page', async () => {
     await signIn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>503</html>', { status: 503 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>503</html>', { status: 503 })),
+    );
     const { GET } = await import('../../app/api/applications/[id]/index-progress/route');
 
     const response = await GET(progressRequest(), params(APPLICATION_ID));

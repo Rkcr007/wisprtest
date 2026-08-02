@@ -16,12 +16,16 @@ import type { ReactNode } from 'react';
 interface FieldShellProps {
   readonly id: string;
   readonly label: string;
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   readonly error?: string | undefined;
   readonly children: ReactNode;
 }
 
-function describedBy(props: { id: string; hint?: string; error?: string | undefined }): string | undefined {
+function describedBy(props: {
+  id: string;
+  hint?: string | undefined;
+  error?: string | undefined;
+}): string | undefined {
   const ids = [
     props.hint === undefined ? null : `${props.id}-hint`,
     props.error === undefined ? null : `${props.id}-error`,
@@ -53,10 +57,10 @@ interface InputProps {
   readonly label: string;
   readonly value: string;
   readonly onChange: (value: string) => void;
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   readonly error?: string | undefined;
-  readonly placeholder?: string;
-  readonly required?: boolean;
+  readonly placeholder?: string | undefined;
+  readonly required?: boolean | undefined;
 }
 
 export function TextField(props: InputProps & { readonly type?: 'text' | 'url' }) {
@@ -124,7 +128,7 @@ export function SelectField<T extends string>(props: {
   readonly value: T;
   readonly options: readonly { readonly value: T; readonly label: string }[];
   readonly onChange: (value: T) => void;
-  readonly hint?: string;
+  readonly hint?: string | undefined;
 }) {
   const { id, label, value, options, onChange, hint } = props;
   return (

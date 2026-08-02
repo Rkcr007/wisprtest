@@ -10,7 +10,6 @@ computes differently from the engine, and the preview would show a value the rec
 from __future__ import annotations
 
 import pytest
-from support.schemas import order_schema
 
 from composer.protocol.models import DerivedRule, FieldSpec
 from composer.solving.derived import (
@@ -21,6 +20,7 @@ from composer.solving.derived import (
     evaluate,
     evaluation_order,
 )
+from support.schemas import order_schema
 
 
 def field(name: str) -> FieldSpec:
@@ -170,9 +170,7 @@ def test_evaluation_order_terminates_on_a_cycle_rather_than_recursing_forever() 
     it runs rather than being dropped from the record.
     """
     first = with_rule("amount", {"kind": "concat", "fields": ["reference", "x"], "separator": "-"})
-    second = with_rule(
-        "reference", {"kind": "concat", "fields": ["amount", "x"], "separator": "-"}
-    )
+    second = with_rule("reference", {"kind": "concat", "fields": ["amount", "x"], "separator": "-"})
 
     ordered = evaluation_order([first, second])
     assert sorted(spec.name for spec in ordered) == ["amount", "reference"]
@@ -182,7 +180,7 @@ def test_evaluation_order_terminates_on_a_cycle_rather_than_recursing_forever() 
 
 
 def test_describe_names_the_actual_group_size() -> None:
-    """"the sum of amount across 3 lineItems", not "the sum of amount across lineItems".
+    """ "the sum of amount across 3 lineItems", not "the sum of amount across lineItems".
 
     The number is what lets a tester check the arithmetic against the line items shown beside it,
     which is the difference between provenance and decoration.

@@ -15,7 +15,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from support.schemas import account_schema, accounts, invoice_schema, order_schema
 
 from composer.protocol.models import (
     ConstraintCardinality,
@@ -37,10 +36,11 @@ from composer.solving.solver import (
     Conflicted,
     ConstraintSolver,
     Refused,
-    SolveOutcome,
     Solved,
+    SolveOutcome,
 )
 from composer.solving.types import Constraint
+from support.schemas import account_schema, accounts, invoice_schema, order_schema
 
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
@@ -104,33 +104,51 @@ def test_an_explicit_value_is_used_verbatim_and_marked_requested() -> None:
     assert source_of(node, "status") is ProvenanceSource.REQUESTED
 
 
-def test_a_spoken_bound_produces_a_value_that_satisfies_it() -> None:
-    node = root_of(solve([comparison("lineItems.amount", Op.GT, 1_000)]))
-    value = node.fields["lineItems.amount"]
+def bounded(constraints: list[Constraint], *, seed: int = 5) -> float:
+    """Solve a bound on `Invoice.total` and return the value it produced.
 
+    `Invoice.total` rather than `Order.amount` because the order's total is *derived* — the
+    application computes it from the line items, so a bound on it is satisfied by working
+    backwards into the group (covered further down) rather than by choosing a value here. This
+    section is about the plain case: a top-level numeric field the tester bounded directly.
+    """
+    outcome = solve(
+        constraints,
+        schemas=[invoice_schema(), account_schema()],
+        root=invoice_schema(),
+        seed=seed,
+    )
+    value = root_of(outcome).fields["total"]
     assert isinstance(value, float)
-    assert value > 1_000
+    return value
+
+
+def test_a_spoken_bound_produces_a_value_that_satisfies_it() -> None:
+    assert bounded([comparison("total", Op.GT, 1_000)]) > 1_000
 
 
 def test_a_strict_bound_is_cleared_rather_than_met_exactly() -> None:
-    """"Over 50,000" that returns exactly 50,000 is the kind of off-by-one a tester only
+    """ "Over 50,000" that returns exactly 50,000 is the kind of off-by-one a tester only
     discovers when the assertion they were testing passes for the wrong reason."""
     for seed in range(15):
-        node = root_of(solve([comparison("lineItems.amount", Op.GT, 2_000)], seed=seed))
-        value = node.fields["lineItems.amount"]
-        assert isinstance(value, float)
-        assert value > 2_000
+        assert bounded([comparison("total", Op.GT, 2_000)], seed=seed) > 2_000
 
 
 def test_two_bounds_are_both_honoured() -> None:
-    node = root_of(
-        solve([comparison("lineItems.amount", Op.GTE, 500), comparison(
-            "lineItems.amount", Op.LTE, 800
-        )])
-    )
-    value = node.fields["lineItems.amount"]
-    assert isinstance(value, float)
+    value = bounded([comparison("total", Op.GTE, 500), comparison("total", Op.LTE, 800)])
     assert 500 <= value <= 800
+
+
+def test_a_bound_on_a_group_member_is_refused_rather_than_guessed_at() -> None:
+    """A bare comparison cannot be about `lineItems.amount` without saying which member.
+
+    The parser declines to produce one for exactly this reason. If an alias produces one anyway,
+    refusing and naming the field is better than silently applying it to the first line, or to
+    all of them, or to the group's total — three different records, none of them asked for.
+    """
+    outcome = solve([comparison("lineItems.amount", Op.GT, 1_000)])
+    assert isinstance(outcome, Refused)
+    assert outcome.missing_fields == ["lineItems.amount"]
 
 
 def test_a_bound_on_a_field_with_no_ordering_is_a_conflict() -> None:
@@ -160,9 +178,7 @@ def test_a_named_reference_resolves_to_the_real_record() -> None:
 
 
 def test_a_reused_record_becomes_a_node_the_preview_can_show() -> None:
-    plan = planned(
-        solve([ConstraintReference(kind="reference", field="accountId", phrase="acme")])
-    )
+    plan = planned(solve([ConstraintReference(kind="reference", field="accountId", phrase="acme")]))
     reused = [node for node in plan.graph.nodes() if node.mode is Mode.REUSE_EXISTING]
 
     assert len(reused) == 1
@@ -211,9 +227,28 @@ def test_novelty_in_the_utterance_creates_rather_than_reuses() -> None:
 
 
 def test_novelty_attaches_to_the_noun_it_is_next_to() -> None:
-    # "A new order for Acme Industrial" creates the order and reuses the account.
-    node = root_of(solve([], utterance="a new order for acme industrial"))
+    """ "A new order for Acme Industrial" creates the order and reuses the account.
+
+    The reference constraint is passed explicitly because that is what the parser produces for
+    this sentence: without a phrase there is nothing to match on, and the solver would be free to
+    pick any account in the pool.
+    """
+    node = root_of(
+        solve(
+            [ConstraintReference(kind="reference", field="accountId", phrase="acme industrial")],
+            utterance="a new order for acme industrial",
+        )
+    )
     assert node.fields["accountId"] == "ACC-1001"
+
+
+def test_an_unnamed_reference_picks_reproducibly_from_the_pool() -> None:
+    # Nothing was said about which account, so any real one satisfies the record. The pick comes
+    # from the seeded generator, so the same request composes the same plan twice.
+    first = root_of(solve([], seed=42)).fields["accountId"]
+    second = root_of(solve([], seed=42)).fields["accountId"]
+    assert first == second
+    assert first in {record.external_ref for record in accounts()}
 
 
 def test_a_reference_with_no_records_and_no_schema_is_refused() -> None:
@@ -321,7 +356,7 @@ def test_an_optional_field_nobody_mentioned_is_left_out() -> None:
 
 
 def test_a_derived_field_s_inputs_are_pulled_in_even_when_optional() -> None:
-    """"Needed" is wider than "required".
+    """ "Needed" is wider than "required".
 
     `amount` is required and computed as the sum of `lineItems`; `lineItems` is optional. Filling
     only what is flagged required would leave the sum with nothing to add up and send the
@@ -407,8 +442,11 @@ def test_a_predicate_that_cannot_be_arranged_is_reported_as_a_conflict() -> None
             "fields": [
                 {
                     **spec.model_dump(mode="json", by_alias=True),
-                    **({"enumValues": ["shipped"], "distribution": None}
-                       if spec.name == "status" else {}),
+                    **(
+                        {"enumValues": ["shipped"], "distribution": None}
+                        if spec.name == "status"
+                        else {}
+                    ),
                 }
                 for spec in order_schema().fields
             ],
@@ -445,7 +483,7 @@ def test_a_derived_field_is_computed_from_the_values_finally_chosen() -> None:
 
 
 def test_a_bound_on_a_computed_field_is_satisfied_through_its_inputs() -> None:
-    """"An order over £50,000" when the total is the sum of the line items.
+    """ "An order over £50,000" when the total is the sum of the line items.
 
     The tester cannot set the total — the application recomputes it — so the only honest way to
     satisfy the request is to work backwards into the lines and then compute forwards again.
@@ -487,11 +525,13 @@ def test_a_computed_field_that_cannot_reach_the_requested_value_reports_the_coll
                 {
                     **spec.model_dump(mode="json", by_alias=True),
                     **(
-                        {"derivedRule": {
-                            "rule": {"kind": "count", "overField": "lineItems"},
-                            "confidence": 1.0,
-                            "sampleSize": 50,
-                        }}
+                        {
+                            "derivedRule": {
+                                "rule": {"kind": "count", "overField": "lineItems"},
+                                "confidence": 1.0,
+                                "sampleSize": 50,
+                            }
+                        }
                         if spec.name == "amount"
                         else {}
                     ),
@@ -523,15 +563,17 @@ def test_a_derived_field_whose_inputs_cannot_be_computed_is_refused() -> None:
                 {
                     **spec.model_dump(mode="json", by_alias=True),
                     **(
-                        {"derivedRule": {
-                            "rule": {
-                                "kind": "date_offset",
-                                "fromField": "createdAt",
-                                "offsetDays": 30,
-                            },
-                            "confidence": 1.0,
-                            "sampleSize": 50,
-                        }}
+                        {
+                            "derivedRule": {
+                                "rule": {
+                                    "kind": "date_offset",
+                                    "fromField": "createdAt",
+                                    "offsetDays": 30,
+                                },
+                                "confidence": 1.0,
+                                "sampleSize": 50,
+                            }
+                        }
                         if spec.name == "amount"
                         else {}
                     ),
@@ -582,7 +624,7 @@ def test_a_customer_with_an_overdue_invoice_produces_account_then_invoice() -> N
 
 
 def test_the_same_sentence_read_the_other_way_still_orders_account_first() -> None:
-    """"An overdue invoice" takes the invoice as the head noun.
+    """ "An overdue invoice" takes the invoice as the head noun.
 
     Its required account does not exist, so one is created — and the edge is the same edge, which
     is why both readings of the sentence produce Account before Invoice.
@@ -624,9 +666,12 @@ def test_a_predicate_on_an_entity_with_no_path_back_is_refused() -> None:
 
 def test_a_plan_of_one_record_is_still_a_graph() -> None:
     # Building for one record and retrofitting multi-entity later is a rewrite, so the shape is
-    # the same even when it holds a single node.
-    plan = planned(solve([], records=[], schemas=[order_schema()], root=order_schema()))
+    # the same even when it holds a single node. `Account` references nothing, so it composes
+    # alone.
+    plan = planned(solve([], records=[], schemas=[account_schema()], root=account_schema()))
     assert plan.graph.materialization_order() == [plan.root_node_id]
+    assert len(plan.graph.nodes()) == 1
+    assert plan.graph.edges() == []
 
 
 # ── Verification: nothing is silently dropped ─────────────────────────────────────────────────

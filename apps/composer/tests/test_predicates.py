@@ -12,7 +12,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from support.schemas import invoice_schema, order_schema
 
 from composer.protocol.models import FieldSpec, FieldType, Op1, PredicateClause
 from composer.solving.predicates import (
@@ -24,6 +23,7 @@ from composer.solving.predicates import (
     solve,
 )
 from composer.solving.sampler import ValueSampler
+from support.schemas import invoice_schema, order_schema
 
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
@@ -81,9 +81,7 @@ def test_a_temporal_clause_against_something_that_is_not_a_timestamp() -> None:
     ],
 )
 def test_equality_clauses_against_a_literal(op: str, value: object, expected: bool) -> None:
-    assert (
-        holds(clause("status", op, {"kind": "literal", "value": "paid"}), value, NOW) is expected
-    )
+    assert holds(clause("status", op, {"kind": "literal", "value": "paid"}), value, NOW) is expected
 
 
 def test_ordering_clauses_against_numbers_and_timestamps() -> None:

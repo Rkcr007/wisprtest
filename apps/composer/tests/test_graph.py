@@ -9,11 +9,11 @@ yet, which is why the sort raises rather than emitting a partial answer.
 from __future__ import annotations
 
 import pytest
-from support.schemas import account_schema, invoice_schema, order_schema
 
 from composer.errors import PlanCycleError
 from composer.protocol.models import EntitySchema, Mode, ProvenanceEntry, ProvenanceSource
 from composer.solving.graph import PlanGraph, PlanNode, slug
+from support.schemas import account_schema, invoice_schema, order_schema
 
 
 def node(

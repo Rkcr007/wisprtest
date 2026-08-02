@@ -10,7 +10,6 @@ covered.
 from __future__ import annotations
 
 import pytest
-from support.schemas import accounts
 
 from composer.protocol.models import ExistingRecord
 from composer.solving.references import (
@@ -21,6 +20,7 @@ from composer.solving.references import (
     records_of,
     taken_values,
 )
+from support.schemas import accounts
 
 RECORDS = accounts()
 
@@ -62,7 +62,7 @@ def test_the_phrase_and_the_label_are_the_same_words() -> None:
 
 
 def test_one_contains_the_other() -> None:
-    """"Acme" for "Acme Industrial Ltd" is right nearly always.
+    """ "Acme" for "Acme Industrial Ltd" is right nearly always.
 
     Not scored 1.0, because it is wrong when the application also holds an "Acme Logistics" — and
     the preview shows the tester which one was chosen so they can catch that case.
@@ -165,7 +165,7 @@ def test_the_words_that_ask_for_a_record_that_does_not_exist_yet(utterance: str)
 
 
 def test_novelty_is_matched_adjacently_so_it_attaches_to_the_right_noun() -> None:
-    """"A new order for Acme Industrial" creates the order and reuses the account.
+    """ "A new order for Acme Industrial" creates the order and reuses the account.
 
     Without the adjacency check the word "new" — which testers say about almost every seeding
     request — would force every reference in the sentence to be created too.

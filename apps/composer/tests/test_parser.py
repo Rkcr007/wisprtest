@@ -13,7 +13,6 @@ properties matter more than any individual parse:
 from __future__ import annotations
 
 import pytest
-from support.schemas import account_schema, invoice_schema, order_schema
 
 from composer.parsing.parser import ConstraintParser, ParseResult, choose_entity
 from composer.protocol.models import (
@@ -26,6 +25,7 @@ from composer.protocol.models import (
     EntitySchema,
     Op,
 )
+from support.schemas import account_schema, invoice_schema, order_schema
 
 
 def parse(utterance: str, *, aliases: list[ConstraintAlias] | None = None) -> ConstraintParser:
@@ -88,7 +88,7 @@ def test_refuses_to_guess_between_several_unnamed_candidates() -> None:
 
 
 def test_the_worked_example_from_the_design_doc() -> None:
-    """"I need a pending order for Acme Industrial with three line items" — § 3, verbatim.
+    """ "I need a pending order for Acme Industrial with three line items" — § 3, verbatim.
 
     Three constraints of three different kinds out of one sentence, nothing left unparsed.
     """
@@ -117,9 +117,7 @@ def test_the_worked_example_from_the_design_doc() -> None:
         ("an order worth more than 1.2m", Op.GT, 1_200_000.0),
     ],
 )
-def test_comparisons_attach_to_the_one_numeric_field(
-    utterance: str, op: Op, value: float
-) -> None:
+def test_comparisons_attach_to_the_one_numeric_field(utterance: str, op: Op, value: float) -> None:
     result = parse(utterance).parse(utterance)
     assert ConstraintComparison(kind="comparison", field="amount", op=op, value=value) in (
         result.constraint_set.constraints
@@ -162,7 +160,7 @@ def test_learned_predicates_are_read_before_field_values() -> None:
 
 
 def test_a_predicate_of_a_related_entity_is_read_and_its_entity_name_claimed() -> None:
-    """"An account with an overdue invoice": `overdue` is learned on `Invoice`, not on `Account`.
+    """ "An account with an overdue invoice": `overdue` is learned on `Invoice`, not on `Account`.
 
     A parser that could only see the head noun's own predicates would report the most interesting
     half of that sentence as an unparsed fragment, and the solver would never build the graph § 3

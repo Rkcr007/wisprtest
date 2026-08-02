@@ -86,9 +86,7 @@ def order_schema() -> EntitySchema:
                     "sampleSize": 50,
                 }
             ],
-            "materializers": [
-                _ui_materializer(UUID_B, "orders-new.create-order", "/orders/new")
-            ],
+            "materializers": [_ui_materializer(UUID_B, "orders-new.create-order", "/orders/new")],
             "fields": [
                 _field(
                     "customer",
@@ -426,9 +424,7 @@ def request_body(
             record.model_dump(mode="json", by_alias=True)
             for record in (records if records is not None else accounts())
         ],
-        "aliases": [
-            alias.model_dump(mode="json", by_alias=True) for alias in (aliases or [])
-        ],
+        "aliases": [alias.model_dump(mode="json", by_alias=True) for alias in (aliases or [])],
         "now": now,
         "seed": seed,
     }

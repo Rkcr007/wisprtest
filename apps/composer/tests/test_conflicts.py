@@ -8,8 +8,6 @@ cannot act on is only marginally better than no conflict at all.
 
 from __future__ import annotations
 
-from support.schemas import order_schema
-
 from composer.protocol.models import (
     ConflictSideConstraint,
     ConflictSideSchema,
@@ -21,6 +19,7 @@ from composer.protocol.models import (
 )
 from composer.solving.conflicts import find_conflict
 from composer.solving.types import Constraint
+from support.schemas import order_schema
 
 
 def comparison(field: str, op: Op, value: float) -> ConstraintComparison:
@@ -91,7 +90,7 @@ def test_a_non_numeric_value_is_not_compared_against_a_numeric_bound_here() -> N
 
 
 def test_a_value_outside_the_learned_vocabulary_names_what_is_valid() -> None:
-    """"escalated is not a valid status" is only half an answer.
+    """ "escalated is not a valid status" is only half an answer.
 
     The tester needs to know what *is* valid, and the learned set is exactly that — which is also
     the proof that the vocabulary is per-application data rather than anything written down here.

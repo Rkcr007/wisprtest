@@ -2,7 +2,7 @@
 
 The property that matters is not "produces a value". It is that every value it produces is one the
 application has been seen to hold, because docs/TEST-DATA-ENGINE.md § 3's whole argument for this
-module is that a seeded order for £1.00 in an application whose orders run £800–£240,000 passes
+module is that a seeded order for £1.00 in an application whose orders run £800 to £240,000 passes
 creation and then fails three screens later against a rule nobody wrote down.
 """
 
@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from support.schemas import order_schema
 
 from composer.protocol.models import FieldSpec, FieldType
 from composer.solving.sampler import (
@@ -19,6 +18,7 @@ from composer.solving.sampler import (
     UniquenessExhaustedError,
     ValueSampler,
 )
+from support.schemas import order_schema
 
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 

@@ -706,7 +706,18 @@ class ConstraintSolver:
                     )
                 )
 
+            unchanged = clause.field in node.fields and node.fields[clause.field] == outcome.value
             node.fields[clause.field] = outcome.value
+
+            if unchanged:
+                # The clause was already satisfied by whatever the field held — a status the tester
+                # asked for, or one the sampler happened to draw. Re-explaining it as
+                # `predicate_solved` would tell the tester the engine chose the value to satisfy a
+                # condition, when in fact the value was theirs and the condition merely agreed.
+                # The preview must say why the value it is showing was chosen, and nothing chose
+                # this one twice.
+                continue
+
             provenance.predicate_solved(
                 clause.field,
                 outcome.value,

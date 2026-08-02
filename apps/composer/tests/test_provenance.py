@@ -34,7 +34,10 @@ def test_a_later_stage_replaces_an_earlier_one_in_place() -> None:
     entries = builder()
     entries.sampled("status", SampledValue("shipped", "drawn by frequency", 0.9))
     entries.predicate_solved(
-        "status", "pending", predicate="overdue", requirement="status not to be shipped",
+        "status",
+        "pending",
+        predicate="overdue",
+        requirement="status not to be shipped",
         confidence=0.9,
     )
 
@@ -105,11 +108,15 @@ def test_a_bounded_request_explains_how_the_value_was_chosen() -> None:
 
 
 def test_a_matched_reference_names_the_size_of_the_pool_it_came_from() -> None:
-    """"matched from 64 known accounts" is the difference between a tester believing the engine
+    """ "matched from 64 known accounts" is the difference between a tester believing the engine
     looked and a tester believing it guessed."""
     entries = builder()
     entries.reference_matched(
-        "accountId", "ACC-1001", entity="Account", phrase="acme industrial", pool_size=64,
+        "accountId",
+        "ACC-1001",
+        entity="Account",
+        phrase="acme industrial",
+        pool_size=64,
         confidence=0.9,
     )
     entry = entries.entries()[0]
@@ -177,7 +184,7 @@ def test_a_group_is_explained_as_a_whole() -> None:
 
 
 def test_a_retargeted_group_says_the_requirement_was_met_through_its_members() -> None:
-    """"An order over £50,000" names a total the application computes from the lines.
+    """ "An order over £50,000" names a total the application computes from the lines.
 
     The tester needs to be told that the lines were worked backwards from their number, or the
     preview shows line amounts that look arbitrary.
@@ -230,8 +237,9 @@ def test_a_predicate_solved_field_names_the_condition_and_what_it_required() -> 
 
 def test_a_defaulted_field_says_exactly_why() -> None:
     entries = builder()
-    entries.defaulted("terms", "net30", reason="the only value this field has ever held",
-                      confidence=0.6)
+    entries.defaulted(
+        "terms", "net30", reason="the only value this field has ever held", confidence=0.6
+    )
     entry = entries.entries()[0]
 
     assert entry.source is ProvenanceSource.DEFAULT

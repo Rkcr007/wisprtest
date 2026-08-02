@@ -1,6 +1,6 @@
 # WisprTest — Build Plan
 
-Exact prompts, in order. One phase per Claude Code session.
+Exact prompts, in order.
 
 Everything in a `PROMPT` block is copy-paste verbatim. Do not paraphrase them — they are
 written to be unambiguous and to reference the contract files rather than restate them.
@@ -9,12 +9,22 @@ written to be unambiguous and to reference the contract files rather than restat
 
 ## How to run a session
 
+> **Scheduling changed after Phase 14.** The rule below — one phase per session, worked
+> through in order — is how Phases 0–14 were built. It has been replaced by
+> `CLAUDE.md § "Parallel tracks"`: the unit of work is now a track (one owner, one module,
+> one branch, one PR), several run concurrently, and nothing merges without CI green. See
+> [ADR 0012](adr/0012-parallel-tracks.md) for why, and what it cost.
+>
+> **The phase prompts below are unchanged and remain authoritative** for *what* each phase
+> must deliver and for its `Done when` command. Only the scheduling around them moved.
+
 **The rule that saves the most time:** context lives in files, not in your messages.
 `CLAUDE.md` and `docs/*` are re-read every session. If you find yourself re-explaining
 something in chat for the second time, stop and put it in a file instead.
 
-**One phase per session.** Start a new session for the next phase. Long sessions
-accumulate context that makes the model conservative and repetitive.
+**One phase per session** *(Phases 0–14; superseded by the track protocol above)*. Start a
+new session for the next phase. Long sessions accumulate context that makes the model
+conservative and repetitive — the reasoning that survives into the track model.
 
 **Ask for a plan first on anything large.** Every prompt below already does this where
 it matters.

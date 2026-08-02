@@ -28,7 +28,12 @@ That means two things:
   or a doc, the record cites it. Where it is inferred, it says so.
 - Records 0001–0011 have not been through the review a contemporaneous ADR would have had.
   Anything you find here that disagrees with the code is a bug in this log, not in the code.
-  Two such disagreements are already recorded — see *Known divergences* below.
+  Several such disagreements are recorded — see *Known divergences* below.
+
+Records **0012–0015** are different. They cover decisions taken between `81b786c` and `87ac4d0` —
+the parallel-track protocol, the CI pipeline, the benchmark gate and the CodeQL rulesets — and
+they were written from the commits, the workflow files and the live repository configuration
+rather than reconstructed from prose. Their *Context* sections are not inferred.
 
 New decisions from here on get an ADR **before** the code, not after.
 
@@ -49,6 +54,10 @@ New decisions from here on get an ADR **before** the code, not after.
 | [0009](0009-structure-not-content.md) | Product Memory stores structure, never content | Accepted | 2026-07-25 |
 | [0010](0010-python-confined-to-composer.md) | Python exists only in `apps/composer` | Accepted | 2026-07-25 |
 | [0011](0011-learned-not-configured.md) | Per-application knowledge is learned into tables, never branched on in code | Accepted | 2026-07-25 |
+| [0012](0012-parallel-tracks.md) | The unit of work is a track, not a phase | Accepted | 2026-08-01 |
+| [0013](0013-ci-is-the-merge-gate.md) | CI is the merge gate, and coverage thresholds are a ratchet | Accepted | 2026-08-01 |
+| [0014](0014-benchmarks-report-only-in-ci.md) | The performance budgets are measured in CI and enforced by `make bench` | Accepted | 2026-08-02 |
+| [0015](0015-codeql-and-the-ruleset-split.md) | Code scanning is scoped to `main`; everything else applies to every branch | Accepted | 2026-08-02 |
 
 ---
 
@@ -67,6 +76,20 @@ Recording these here rather than quietly writing the ADRs around them.
   increments it, and `ActionOutcome` has no member that would signal one. See
   [ADR 0005](0005-reversibility-taxonomy.md) and
   [runbooks/README.md](../runbooks/README.md#alerts-that-cannot-fire-yet).
+- **The generated contract is never verified in CI.** [ADR 0003](0003-contract-first-zod-protocol.md)
+  rests on `apps/composer/src/composer/protocol/models.py` being generated from the Zod schemas, so
+  the two *cannot* disagree. `make build` regenerates it and `make db-codegen` fails on a diff of
+  the committed Kysely types — and **no job in `.github/workflows/ci.yml` runs either**. A schema
+  change that was not regenerated passes every gate. See
+  [ADR 0013](0013-ci-is-the-merge-gate.md).
+- **The blocking performance gate is a Makefile target nobody is required to run.**
+  `CLAUDE.md § "Performance budgets"` calls these tests rather than aspirations, and CI measures
+  them without blocking. Between manual `make bench` runs, nothing stops a regression reaching
+  `main`. See [ADR 0014](0014-benchmarks-report-only-in-ci.md).
+- **`docs/BUILD-PLAN.md` describes a scheduling model that has been replaced.** Its *How to run a
+  session* section is the Phases 0–14 protocol; `CLAUDE.md § "Parallel tracks"` is current. The
+  file has been annotated rather than rewritten — the phase prompts below that section are
+  unchanged and still authoritative. See [ADR 0012](0012-parallel-tracks.md).
 
 ---
 

@@ -14,9 +14,10 @@ confirm, immediate mitigation, root-cause investigation, prevention.
 
 ## Read this before using any of them
 
-**These runbooks describe the system at commit `81b786c`, which is mid-build.** Phases 0–13 are
+**These runbooks describe the system at commit `87ac4d0`, which is mid-build.** Phases 0–13 are
 complete, Phase 14 is roughly half done, and Phases 15–19 do not exist. Two of the four scenarios
 above therefore cannot occur yet, because the subsystems that would produce them are unbuilt.
+Product code is unchanged since `81b786c`; everything added on top of it is CI configuration.
 
 Each runbook states that at the top, in a *What exists today* section, and describes the
 procedure against what will exist so it does not have to be written from scratch later.
@@ -29,9 +30,20 @@ dashboards or alert rules — Phase 19 owns all of it. Every metric named below 
 service through OpenTelemetry (`OTEL_EXPORTER_OTLP_ENDPOINT`), and *nothing scrapes, stores or
 alerts on it yet*. "Check the dashboard" means "query your metric backend once one is wired up."
 
-The `make` targets that exist are: `dev`, `build`, `test`, `lint`, `typecheck`, `db-up`,
+The `make` targets that exist are: `dev`, `build`, `test`, `bench`, `lint`, `typecheck`, `db-up`,
 `db-down`, `db-logs`, `db-migrate`, `db-reset`, `db-seed`, `db-codegen`. `make ci`,
 `make load-test` and `make security-audit` are named in Phase 19's `Done when` and do not exist.
+
+**There is now a CI pipeline** (`.github/workflows/ci.yml`, merged in `87ac4d0`), which is a
+merge gate and not an operational one — it tells you a change is safe to land, not that a
+deployment is healthy. Two things about it are worth knowing while holding a pager:
+
+- The `bench` job is **report-only** and excluded from the required check. The latency budgets are
+  enforced by `make bench` on known hardware, not by CI. See
+  [ADR 0014](../adr/0014-benchmarks-report-only-in-ci.md).
+- No CI job runs `make build`, so `pnpm --filter protocol gen:python` and `make db-codegen` never
+  run there. A generated pydantic model or Kysely type that has drifted from its source will not be
+  caught before merge. See [ADR 0013](../adr/0013-ci-is-the-merge-gate.md).
 
 ---
 

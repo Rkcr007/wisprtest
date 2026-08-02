@@ -104,6 +104,9 @@ jobs:
       - name: gateway — sessions and evidence
         run: pnpm --filter gateway test:sessions
 
+      - name: gateway — crawl enqueue and index progress
+        run: pnpm --filter gateway test:crawl
+
       - name: indexer — crawl and observers against the fixture app
         run: |
           pnpm --filter indexer exec playwright install --with-deps chromium

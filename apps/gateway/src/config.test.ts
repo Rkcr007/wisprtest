@@ -28,6 +28,7 @@ const validEnv = {
   MODEL_PRIMARY: 'claude-haiku-4-5-20251001',
   MODEL_FALLBACK: 'claude-haiku-4-5-20251001',
   MODEL_TIMEOUT_MS: '800',
+  INDEXER_JOB_STREAM: 'indexer:jobs',
   EVIDENCE_ENDPOINT: 'http://localhost:9000',
   EVIDENCE_BUCKET: 'wispr-evidence',
   EVIDENCE_REGION: 'us-east-1',

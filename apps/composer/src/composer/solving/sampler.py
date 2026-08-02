@@ -31,8 +31,10 @@ from __future__ import annotations
 import math
 import random
 import string
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TypeVar
 
 from composer.protocol.models import (
     DistributionCategorical,
@@ -42,6 +44,8 @@ from composer.protocol.models import (
     FieldSpec,
     FieldType,
 )
+
+T = TypeVar("T")
 
 #: How many times a unique field may be resampled before the sampler admits defeat.
 MAX_UNIQUE_ATTEMPTS = 24
@@ -116,6 +120,52 @@ class ValueSampler:
                 return candidate
 
         raise UniquenessExhaustedError(field.name, MAX_UNIQUE_ATTEMPTS)
+
+    def sample_within(self, field: FieldSpec, low: float, high: float) -> SampledValue:
+        """Draw a numeric value inside `[low, high]`, preferring the observed range.
+
+        This is what a spoken bound — "an order over £50,000" — turns into. The interval the caller
+        passes is what the tester's words allow; the observed distribution is what the application
+        has actually been seen to hold, and where the two overlap the draw comes from the overlap.
+
+        Where they do not overlap the tester wins, and the explanation says so. § 3's sampling
+        doctrine exists to make seeded data indistinguishable from real data, but a tester who asks
+        for an amount larger than anything the indexer saw is asking for exactly that, and quietly
+        capping them at the observed maximum would be the silent narrowing § 7 forbids.
+        """
+        shape = field.distribution.shape if field.distribution is not None else None
+        observed = shape if isinstance(shape, DistributionNumeric) else None
+
+        inside = observed is not None and observed.min <= high and observed.max >= low
+        if observed is not None and inside:
+            floor, ceiling = max(low, observed.min), min(high, observed.max)
+            drawn = min(max(self._numeric_in_range(observed), floor), ceiling)
+            note = f"inside the observed range {observed.min:g} to {observed.max:g}"
+        else:
+            floor, ceiling = low, high
+            drawn = self._random.uniform(floor, ceiling)
+            note = (
+                "outside everything this application has been seen to hold, because that is what "
+                "was asked for"
+                if observed is not None
+                else "no distribution was learned for this field, so only your bound shaped it"
+            )
+
+        value: float | int = (
+            round(min(max(drawn, floor), ceiling))
+            if field.type is FieldType.INTEGER
+            else round(min(max(drawn, floor), ceiling), 2)
+        )
+        return SampledValue(value, note, 0.85 if inside else 0.6)
+
+    def choose(self, options: Sequence[T]) -> T:
+        """Pick one of `options` under the request's seed.
+
+        Exposed rather than letting callers reach for `random` directly: the seed on the request
+        exists so a composition is reproducible, and a second unseeded generator anywhere in the
+        solver would quietly break that for whichever field used it.
+        """
+        return self._random.choice(options)
 
     # ── Per-shape draws ───────────────────────────────────────────────────────────────────
 

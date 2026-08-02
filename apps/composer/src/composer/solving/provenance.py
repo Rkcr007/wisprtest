@@ -118,7 +118,9 @@ class ProvenanceBuilder:
                 "with — nothing you said asked for a new one"
             )
         )
-        self.record(field, external_ref, ProvenanceSource.REFERENCE_MATCHED, explanation, confidence)
+        self.record(
+            field, external_ref, ProvenanceSource.REFERENCE_MATCHED, explanation, confidence
+        )
 
     def pending_reference(self, field: str, *, entity: str, node_id: str) -> None:
         """A reference to a record this plan creates, whose identifier does not exist yet."""
@@ -137,21 +139,40 @@ class ProvenanceBuilder:
         The explanation comes from the sampler verbatim: it is the only layer that knows which
         shape was drawn from and how much evidence stood behind it.
         """
-        self.record(field, drawn.value, ProvenanceSource.SAMPLED, drawn.explanation, drawn.confidence)
+        self.record(
+            field, drawn.value, ProvenanceSource.SAMPLED, drawn.explanation, drawn.confidence
+        )
 
     def sampled_group(
         self, field: str, *, size: int, requested: bool, explanation: str, confidence: float
     ) -> None:
         """A repeated group. The entry explains the group as a whole, not each member."""
-        opening = (
-            f"the {size} you asked for" if requested else f"{size}, {explanation}"
-        )
+        opening = f"the {size} you asked for" if requested else f"{size}, {explanation}"
         self.record(
             field,
             None,
             ProvenanceSource.REQUESTED if requested else ProvenanceSource.SAMPLED,
             f"{opening}; each one's values are drawn from what this application's "
             f"{field} actually contain",
+            confidence,
+        )
+
+    def group_retargeted(
+        self, field: str, *, size: int, total_field: str, total: object, confidence: float
+    ) -> None:
+        """A group whose members were set so a computed total comes out where it was asked to.
+
+        "An order over £50,000" names the total, but the total is not a field anybody can set — the
+        application computes it from the lines. The only honest way to satisfy the request is to
+        work backwards into the lines, and the tester needs to be told that is what happened, or
+        the preview shows line amounts that look arbitrary.
+        """
+        self.record(
+            field,
+            None,
+            ProvenanceSource.REQUESTED,
+            f"{size} of them, each set so that {total_field} comes to {total!r} — you asked for a "
+            f"{total_field}, and this application computes it from {field}",
             confidence,
         )
 

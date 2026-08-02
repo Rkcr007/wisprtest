@@ -124,6 +124,35 @@ def _number(field: str, member: dict[str, object], name: str) -> float:
     return float(value)
 
 
+def describe(spec: FieldSpec, record: Record) -> str:
+    """The rule in words, for the provenance line the tester reads.
+
+    Takes the record as well as the spec so the sentence can name the *actual* group size — "the
+    sum of amount across 3 lines" rather than "the sum of amount across lines". The number is
+    what lets a tester check the arithmetic against the line items shown beside it.
+    """
+    derived = spec.derived_rule
+    if derived is None:
+        raise UnevaluableRuleError(spec.name, "the field has no derived rule")
+
+    rule = derived.rule
+
+    if isinstance(rule, DerivedRuleSum | DerivedRuleMin | DerivedRuleMax | DerivedRuleCount):
+        members = record.get(rule.over_field)
+        size = len(members) if isinstance(members, list) else 0
+        if isinstance(rule, DerivedRuleCount):
+            return f"the number of {rule.over_field} ({size})"
+        word = {"sum": "the sum", "min": "the smallest", "max": "the largest"}[rule.kind]
+        return f"{word} of {rule.of_field} across {size} {rule.over_field}"
+
+    if isinstance(rule, DerivedRuleDateOffset):
+        direction = "after" if rule.offset_days >= 0 else "before"
+        return f"{abs(rule.offset_days):g} days {direction} {rule.from_field}"
+
+    joined = ", ".join(entry.root for entry in rule.fields)
+    return f"{joined} joined by {rule.separator!r}"
+
+
 def evaluation_order(specs: list[FieldSpec]) -> list[FieldSpec]:
     """Derived fields, ordered so each rule's inputs are computed before it runs.
 

@@ -48,6 +48,17 @@ class ComposerConfig(BaseModel):
     #: and names the fields it cannot fill (docs/TEST-DATA-ENGINE.md § 7).
     compose_min_confidence: float = Field(validation_alias="COMPOSE_MIN_CONFIDENCE", ge=0.0, le=1.0)
 
+    # ── Observability ─────────────────────────────────────────────────────────────────────
+    #: OTLP collector base URL, e.g. `http://localhost:4318`. The one optional setting in this
+    #: model, and deliberately so: unset means spans and measurements are still created but not
+    #: exported, which is the right local default because the compose stack carries no collector.
+    #: That is not the defaulting rule #10 forbids — rule #10 is about values the service cannot
+    #: run correctly without, and there is no correct value to guess for an absent collector.
+    #: The service *name* is not read from here; see `telemetry.SERVICE_NAME` for why.
+    otel_exporter_otlp_endpoint: str | None = Field(
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT", default=None
+    )
+
 
 def load_config(env: Mapping[str, str] | None = None) -> ComposerConfig:
     """Builds the config, or raises ConfigError naming every invalid variable."""

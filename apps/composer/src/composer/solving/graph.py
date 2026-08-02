@@ -59,12 +59,15 @@ class PlanNode:
     provenance: list[ProvenanceEntry] = field(default_factory=list)
 
     def to_model(self) -> CompositionNode:
+        # Field names, not the contract's camelCase aliases: `populate_by_name` accepts either at
+        # runtime, but only the field names are what the pydantic mypy plugin types the synthesised
+        # `__init__` with, and an alias here typechecks as an unexpected keyword.
         return CompositionNode(
-            nodeId=self.node_id,
+            node_id=self.node_id,
             entity=self.schema.entity_name,
-            entitySchemaId=self.schema.id,
+            entity_schema_id=self.schema.id,
             mode=self.mode,
-            existingExternalRef=self.existing_external_ref,
+            existing_external_ref=self.existing_external_ref,
             fields=dict(self.fields),
             provenance=list(self.provenance),
         )
@@ -104,7 +107,7 @@ class PlanGraph:
             if node_id not in self._nodes:
                 raise ValueError(f"cannot connect an edge to unknown node {node_id!r}")
         self._edges.append(
-            CompositionEdge(fromNodeId=from_node_id, toNodeId=to_node_id, viaField=via_field)
+            CompositionEdge(from_node_id=from_node_id, to_node_id=to_node_id, via_field=via_field)
         )
 
     # ── Reading ───────────────────────────────────────────────────────────────────────────

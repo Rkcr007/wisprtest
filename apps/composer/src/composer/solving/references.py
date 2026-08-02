@@ -75,9 +75,7 @@ def _overlap(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
 
 
-def match_phrase(
-    phrase: str, records: list[ExistingRecord], entity: str
-) -> ReferenceMatch | None:
+def match_phrase(phrase: str, records: list[ExistingRecord], entity: str) -> ReferenceMatch | None:
     """The record `phrase` names, or `None` if none of them does.
 
     Four readings, in descending order of how literal they are:

@@ -128,7 +128,9 @@ def holds(clause: PredicateClause, value: object, now: datetime) -> bool:
         moment = _as_moment(value)
         if moment is None:
             return False
-        return _compare(moment.timestamp(), _shift(now, clause.operand.offset_days).timestamp(), clause.op)
+        return _compare(
+            moment.timestamp(), _shift(now, clause.operand.offset_days).timestamp(), clause.op
+        )
 
     literal = clause.operand.value
     if clause.op is Op1.EQ:
@@ -198,7 +200,9 @@ def _solve_temporal(
 
     bound = operand.offset_days
     if clause.op is Op1.EQ:
-        return ClauseSolution(field=spec.name, value=_iso(_shift(now, bound)), requirement=requirement)
+        return ClauseSolution(
+            field=spec.name, value=_iso(_shift(now, bound)), requirement=requirement
+        )
     if clause.op is Op1.NEQ:
         return ClauseSolution(
             field=spec.name,
@@ -252,7 +256,9 @@ def _solve_literal(
         offset = (moment - now).total_seconds() / 86_400
         starting = _as_moment(current)
         start_offset = (starting - now).total_seconds() / 86_400 if starting is not None else None
-        target, outside = _project(start_offset, offset, clause.op, _observed_offsets(spec), MARGIN_DAYS)
+        target, outside = _project(
+            start_offset, offset, clause.op, _observed_offsets(spec), MARGIN_DAYS
+        )
         return ClauseSolution(
             field=spec.name,
             value=_iso(_shift(now, target)),

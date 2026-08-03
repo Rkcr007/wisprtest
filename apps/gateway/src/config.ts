@@ -76,6 +76,43 @@ const gatewayEnvSchema = z.object({
    */
   INDEXER_JOB_STREAM: z.string().min(1),
 
+  /**
+   * Redis stream `UiSeedJob`s are enqueued on. Must match the indexer's `INDEXER_SEED_STREAM`.
+   *
+   * Separate from the crawl stream for the reason stated there: a seed job has a tester's request
+   * held open behind it, and queueing one behind a multi-minute crawl would time the request out.
+   */
+  SEED_JOB_STREAM: z.string().min(1),
+
+  // ── Seeding ────────────────────────────────────────────────────────────────────────────────
+  /** Base URL of the composer. It is stateless, so this is the only thing needed to reach it. */
+  COMPOSER_URL: z.url({ protocol: /^https?$/ }),
+  /**
+   * Hard ceiling on a composition call.
+   *
+   * CLAUDE.md § "Performance budgets" puts the preview at 1.2 s p95, and the composer enforces
+   * that on its own side too. This is the gateway refusing to hold a tester's request open past
+   * the point where the preview would have been useful.
+   */
+  COMPOSER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000),
+  /**
+   * How long a composed plan is held for approval.
+   *
+   * The gateway keeps the plan and hands back an id, so approval cannot smuggle in an edited
+   * record (see `SeedExecuteRequest`). The window is the tester's reading time plus a margin —
+   * long enough to consider a preview, short enough that memory has not moved underneath it.
+   */
+  SEED_PLAN_TTL_SECONDS: z.coerce.number().int().min(30).max(3600),
+  /**
+   * How long to wait for the UI materializer's result before giving up on it.
+   *
+   * Generous by the standards of everything else here: driving a real form is 3–15 s per
+   * TEST-DATA-ENGINE § 4, and the tester has explicitly approved a write and is watching for it.
+   * Must stay below the indexer's `INDEXER_SEED_RESULT_TTL_SECONDS`, so a result outlives the
+   * request waiting for it.
+   */
+  SEED_MATERIALIZE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000),
+
   // ── Object storage — session evidence ──────────────────────────────────────────────────────
   /** S3-compatible endpoint. MinIO locally; managed object storage in production. */
   EVIDENCE_ENDPOINT: z.url({ protocol: /^https?$/ }),

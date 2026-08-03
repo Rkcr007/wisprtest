@@ -419,6 +419,7 @@ describe('re-observing an entity that is already in memory', () => {
           verificationTtlHours: 168,
         },
       ],
+      deleteFlowElementKey: 'invoices.form.invoice-delete',
     };
 
     const richReference = rich.fields[0];
@@ -446,6 +447,7 @@ describe('re-observing an entity that is already in memory', () => {
         },
       ],
       materializers: [],
+      deleteFlowElementKey: null,
     };
 
     const scoped = await createFixture(app.url);
@@ -485,6 +487,11 @@ describe('re-observing an entity that is already in memory', () => {
 
       // And the materializer the thin pass never saw is still the way to create one.
       expect(invoice.materializers.map((materializer) => materializer.kind)).toEqual(['ui']);
+
+      // Same rule for the delete flow: the thin pass never reached the screen holding it, and
+      // must not erase it. An entity that silently lost its inverse operation would have the seed
+      // preview start telling testers their records cannot be reverted.
+      expect(invoice.deleteFlowElementKey).toBe('invoices.form.invoice-delete');
     } finally {
       await scoped.drop();
     }

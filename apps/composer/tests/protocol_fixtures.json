@@ -2763,6 +2763,43 @@
       "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
       "planId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
       "nodeId": "order-1",
+      "entitySchemaId": null,
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "adapterUsed": "ui",
+      "payload": {
+        "id": 4903
+      },
+      "provenance": [
+        {
+          "field": "status",
+          "value": "Pending approval",
+          "source": "requested",
+          "explanation": "matched the enum value spoken as \"pending\"",
+          "confidence": 0.96
+        },
+        {
+          "field": "amount",
+          "value": 46200,
+          "source": "derived",
+          "explanation": "sum of the three line item amounts",
+          "confidence": 1
+        }
+      ],
+      "inverseOp": {
+        "kind": "api",
+        "method": "DELETE",
+        "path": "/api/v2/orders/4903"
+      },
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "revertedAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "planId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "nodeId": "order-1",
       "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
       "entity": "Order",
       "externalRef": "ORD-4903",

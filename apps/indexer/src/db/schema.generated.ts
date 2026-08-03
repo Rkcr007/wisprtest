@@ -121,6 +121,10 @@ export interface Element {
 export interface EntitySchema {
   confidence: Numeric;
   createdAt: Generated<Timestamp>;
+  /**
+   * Element key of the indexed control that removes one record of this entity, or null when none was found. Null becomes InverseOperation {kind:"none"} and is shown in the seed preview before anything is created.
+   */
+  deleteFlowElementKey: string | null;
   entityName: string;
   id: Generated<string>;
   memoryVersionId: string;

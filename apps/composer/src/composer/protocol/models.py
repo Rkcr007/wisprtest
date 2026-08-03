@@ -4141,7 +4141,7 @@ class SeedLedgerEntry(BaseModel):
         ),
     ]
     entity_schema_id: Annotated[
-        UUID, Field(alias="entitySchemaId", description="UUID identifier.", title="Uuid")
+        UUID | None, Field(alias="entitySchemaId", description="UUID identifier.", title="Uuid")
     ]
     entity: Annotated[
         str,

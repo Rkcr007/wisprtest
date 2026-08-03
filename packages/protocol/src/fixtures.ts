@@ -2230,6 +2230,24 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
   SeedLedgerEntry: {
     schema: p.SeedLedgerEntry,
     valid: [
+      // An entry whose learned schema was dropped by a re-index. The record still exists in the
+      // customer's application, and is still revertible.
+      {
+        id: UUID_A,
+        tenantId: UUID_B,
+        sessionId: UUID_C,
+        planId: UUID_D,
+        nodeId: 'order-1',
+        entitySchemaId: null,
+        entity: 'Order',
+        externalRef: 'ORD-4903',
+        adapterUsed: 'ui',
+        payload: { id: 4903 },
+        provenance: PROVENANCE,
+        inverseOp: INVERSE_OP,
+        createdAt: NOW,
+        revertedAt: NOW,
+      },
       {
         id: UUID_A,
         tenantId: UUID_B,

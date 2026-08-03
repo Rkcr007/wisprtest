@@ -238,6 +238,8 @@ export interface LearnedEntity {
   readonly entityName: string;
   readonly observedCount: number;
   readonly confidence: number;
+  /** The indexed control that removes one record, or null when none was found. */
+  readonly deleteFlowElementKey: string | null;
   readonly fields: readonly LearnedField[];
   readonly materializers: readonly LearnedMaterializer[];
 }
@@ -278,8 +280,9 @@ export async function readSchemas(
     entity_name: string;
     observed_count: number;
     confidence: string;
+    delete_flow_element_key: string | null;
   }>(
-    `SELECT id, entity_name, observed_count, confidence
+    `SELECT id, entity_name, observed_count, confidence, delete_flow_element_key
        FROM entity_schemas WHERE memory_version_id = $1 ORDER BY entity_name`,
     [memoryVersionId],
   );
@@ -321,6 +324,7 @@ export async function readSchemas(
     entityName: entity.entity_name,
     observedCount: entity.observed_count,
     confidence: Number(entity.confidence),
+    deleteFlowElementKey: entity.delete_flow_element_key,
     fields: fields.rows
       .filter((field) => field.entity_schema_id === entity.id)
       .map((field) => ({

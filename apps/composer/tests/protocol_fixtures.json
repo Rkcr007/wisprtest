@@ -3668,8 +3668,9 @@
       "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
       "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
       "entity": "Order",
-      "flow": "orders-detail.order.delete",
+      "flow": "orders.order.delete",
       "externalRef": "ORD-4903",
+      "detailPath": "/orders/4903",
       "deadlineMs": 30000
     }
   ],

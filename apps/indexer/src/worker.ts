@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis';
+import type { CrawlJob } from 'protocol';
 import type { Logger } from 'pino';
 import type { Browser } from 'playwright';
 
@@ -30,7 +31,7 @@ import type { IndexerMetrics } from './telemetry/metrics.js';
  */
 
 export interface WorkerOptions {
-  readonly stream: JobStream;
+  readonly stream: JobStream<CrawlJob>;
   readonly database: TenantDatabase;
   readonly redis: Redis;
   readonly browser: Browser;

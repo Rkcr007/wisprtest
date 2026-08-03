@@ -41,6 +41,10 @@ export interface Alias {
 }
 
 export interface Application {
+  /**
+   * How a background browser authenticates against this application. Holds secret references only — never a credential. Validated against protocol.AuthProfile on read.
+   */
+  authProfile: Generated<Json>;
   baseUrl: string;
   createdAt: Generated<Timestamp>;
   env: string;

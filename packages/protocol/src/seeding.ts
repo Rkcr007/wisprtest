@@ -351,10 +351,24 @@ export const UiSeedJob = contract(
           applicationId: Uuid,
           memoryVersionId: Uuid,
           entity: NonEmptyString,
-          /** The indexed delete control, whose screen supplies the route the record lives on. */
+          /** The indexed delete control, whose screen supplies the route it was seen on. */
           flow: ElementKey,
-          /** The record's own identifier, substituted into that route's dynamic segment. */
+          /** The record's own identifier, for the failure message a tester has to act on. */
           externalRef: NonEmptyString,
+          /**
+           * Where the record lives, as read back when it was created.
+           *
+           * This is what makes a delete unambiguous, and it is not a convenience. An indexed
+           * delete control is as often a button on a list row as it is one on a detail page, and
+           * a list holds one per record — identical in role, in accessible name and in
+           * fingerprint. Choosing between them by score would delete whichever row happened to
+           * match best, which is the single worst thing this system can do.
+           *
+           * The record's own path disambiguates them structurally: the row that links here is the
+           * row for this record. It is also how a detail-page delete is addressed, by being the
+           * page the worker navigates to.
+           */
+          detailPath: RoutePath,
           deadlineMs: LatencyMs,
         })
         .meta({

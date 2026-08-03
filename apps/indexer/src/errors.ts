@@ -13,7 +13,8 @@ import type { IndexFailureCode } from 'protocol';
  */
 
 /** Codes that can end a job, mirrored from the contract, plus the process-level ones. */
-export type IndexerErrorCode = IndexFailureCode | 'config_invalid' | 'startup_failed';
+export type IndexerErrorCode =
+  IndexFailureCode | 'config_invalid' | 'startup_failed' | 'seed_failed';
 
 export class IndexerError extends Error {
   readonly code: IndexerErrorCode;
@@ -117,12 +118,27 @@ export class CancelledError extends IndexerError {
   }
 }
 
+/**
+ * A UI materialization could not be carried out.
+ *
+ * Its own code rather than one of the `IndexFailureCode`s above, because a seed job has no memory
+ * version to be recorded against and must never mark one failed: the memory is fine, the form
+ * moved. The message is the one the gateway puts in `UiSeedResult.failureReason` and the tester
+ * eventually reads, so it states what could not be done, not merely that something could not.
+ */
+export class SeedError extends IndexerError {
+  constructor(message: string, options?: ErrorOptions) {
+    super('seed_failed', message, {}, options);
+  }
+}
+
 /** The `IndexFailureCode` to record for an arbitrary thrown value. */
 export function failureCodeOf(error: unknown): IndexFailureCode {
   if (
     error instanceof IndexerError &&
     error.code !== 'config_invalid' &&
-    error.code !== 'startup_failed'
+    error.code !== 'startup_failed' &&
+    error.code !== 'seed_failed'
   ) {
     return error.code;
   }

@@ -24,6 +24,17 @@ import type { CollectedElement, CollectedPage, CollectOptions } from '../collect
 export { collectForms } from './forms.js';
 
 /**
+ * The UI materializer's control locator rides along too.
+ *
+ * Same reasoning as the form extractor above, and the same bundle: the seed worker attaches to a
+ * create form in a page this collector has already been injected into, and a second bundle would
+ * mean a second copy of `packages/fingerprint` in the document. It is also the same *scoring* —
+ * `locateControls` asks `scoreCandidate` the narrower question of whether an indexed control is
+ * still there, rather than which control a tester meant.
+ */
+export { locateControls, locateRecordControl, locateSubmit } from './seed.js';
+
+/**
  * The collector, which runs inside the page under test.
  *
  * This file is bundled by esbuild and injected into every crawled document (see

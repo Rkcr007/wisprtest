@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis';
-import { CrawlJob } from 'protocol';
+import type { ZodType } from 'zod';
 
 import { namespacedKey } from './client.js';
 
@@ -15,18 +15,26 @@ import { namespacedKey } from './client.js';
  *
  * ## Message shape
  *
- * One field, `job`, holding a JSON `CrawlJob`. It is parsed against the contract before anything
+ * One field, `job`, holding a JSON payload. It is parsed against a contract schema before anything
  * touches a browser — an unvalidated job is how an unbounded crawl or an unallowlisted target
  * would get in.
+ *
+ * ## Why this is generic in its payload
+ *
+ * Two kinds of work arrive this way: `CrawlJob`s for the indexing loop, and `UiSeedJob`s for the
+ * UI materializer. They differ only in what the JSON means. Everything else — the consumer group,
+ * the pending-entries list that makes a dead worker's job reclaimable, the poisoned-message
+ * handling — is identical, and a second copy of it would be a second place for the acknowledgement
+ * rules to drift. The schema is a parameter; the plumbing is not.
  */
 
 /** Field name under which the job payload is stored in the stream entry. */
 const JOB_FIELD = 'job';
 
-export interface DeliveredJob {
+export interface DeliveredJob<T> {
   /** Stream entry id, needed to acknowledge the job when it finishes. */
   readonly messageId: string;
-  readonly job: CrawlJob;
+  readonly job: T;
   /**
    * True when this entry was reclaimed from another consumer rather than read fresh.
    *
@@ -36,13 +44,13 @@ export interface DeliveredJob {
   readonly reclaimed: boolean;
 }
 
-/** A message that could not be parsed as a `CrawlJob`. */
+/** A message that could not be parsed against the stream's schema. */
 export interface PoisonedJob {
   readonly messageId: string;
   readonly issues: readonly string[];
 }
 
-export interface JobStream {
+export interface JobStream<T> {
   /** The namespaced Redis key this stream lives at. Named so operators and tests can find it. */
   readonly key: string;
 
@@ -55,13 +63,13 @@ export interface JobStream {
    * Reclaimed work is preferred over new work: a half-finished crawl holds a `building` memory
    * version that nothing else can use, so finishing it is worth more than starting another.
    */
-  next(): Promise<DeliveredJob | PoisonedJob | null>;
+  next(): Promise<DeliveredJob<T> | PoisonedJob | null>;
 
   /** Mark a job finished. Until this lands, the entry stays reclaimable. */
   ack(messageId: string): Promise<void>;
 
   /** Publish a job. Used by the gateway in later phases, and by this service's own tests. */
-  publish(job: CrawlJob): Promise<string>;
+  publish(job: T): Promise<string>;
 }
 
 export interface JobStreamOptions {
@@ -72,11 +80,18 @@ export interface JobStreamOptions {
   readonly claimMinIdleMs: number;
 }
 
-export function isPoisoned(delivery: DeliveredJob | PoisonedJob): delivery is PoisonedJob {
+export function isPoisoned<T>(delivery: DeliveredJob<T> | PoisonedJob): delivery is PoisonedJob {
   return 'issues' in delivery;
 }
 
-export function createJobStream(redis: Redis, options: JobStreamOptions): JobStream {
+/**
+ * @param schema the contract schema every message is parsed against before it is executed.
+ */
+export function createJobStream<T>(
+  redis: Redis,
+  schema: ZodType<T>,
+  options: JobStreamOptions,
+): JobStream<T> {
   // The configured name is relative to the namespace; every command below uses the resolved key.
   const stream = namespacedKey(options.stream);
 
@@ -94,8 +109,8 @@ export function createJobStream(redis: Redis, options: JobStreamOptions): JobStr
       }
     },
 
-    async next(): Promise<DeliveredJob | PoisonedJob | null> {
-      const reclaimed = await claimStale(redis, stream, options);
+    async next(): Promise<DeliveredJob<T> | PoisonedJob | null> {
+      const reclaimed = await claimStale(redis, schema, stream, options);
       if (reclaimed !== null) return reclaimed;
 
       const response = await redis.xreadgroup(
@@ -114,14 +129,14 @@ export function createJobStream(redis: Redis, options: JobStreamOptions): JobStr
 
       const entry = firstEntry(response);
       if (entry === null) return null;
-      return parseEntry(entry.id, entry.fields, false);
+      return parseEntry(schema, entry.id, entry.fields, false);
     },
 
     async ack(messageId: string): Promise<void> {
       await redis.xack(stream, options.group, messageId);
     },
 
-    async publish(job: CrawlJob): Promise<string> {
+    async publish(job: T): Promise<string> {
       const id = await redis.xadd(stream, '*', JOB_FIELD, JSON.stringify(job));
       if (id === null) throw new Error('redis did not return an id for the enqueued job');
       return id;
@@ -130,11 +145,12 @@ export function createJobStream(redis: Redis, options: JobStreamOptions): JobStr
 }
 
 /** Reclaim one entry another consumer abandoned, if any has been idle long enough. */
-async function claimStale(
+async function claimStale<T>(
   redis: Redis,
+  schema: ZodType<T>,
   stream: string,
   options: JobStreamOptions,
-): Promise<DeliveredJob | PoisonedJob | null> {
+): Promise<DeliveredJob<T> | PoisonedJob | null> {
   const [, entries] = await redis.xautoclaim(
     stream,
     options.group,
@@ -149,7 +165,7 @@ async function claimStale(
   if (entry === undefined) return null;
 
   const [id, fields] = entry;
-  return parseEntry(id, fields, true);
+  return parseEntry(schema, id, fields, true);
 }
 
 /** ioredis types `xreadgroup` loosely; this narrows one entry out of its nested arrays. */
@@ -169,11 +185,12 @@ function firstEntry(response: unknown): { id: string; fields: string[] } | null 
  * acknowledges it and carries on, because a job nobody can execute would otherwise be reclaimed
  * forever and would block the queue behind it on every pass.
  */
-function parseEntry(
+function parseEntry<T>(
+  schema: ZodType<T>,
   messageId: string,
   fields: readonly string[],
   reclaimed: boolean,
-): DeliveredJob | PoisonedJob {
+): DeliveredJob<T> | PoisonedJob {
   const index = fields.indexOf(JOB_FIELD);
   const raw = index === -1 ? undefined : fields[index + 1];
   if (raw === undefined) {
@@ -187,7 +204,7 @@ function parseEntry(
     return { messageId, issues: [`payload is not JSON: ${describe(error)}`] };
   }
 
-  const parsed = CrawlJob.safeParse(payload);
+  const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     return {
       messageId,

@@ -50,6 +50,27 @@ const indexerEnvSchema = z.object({
   /** Cap on retained progress events per job, so a long crawl cannot grow Redis without bound. */
   INDEXER_PROGRESS_MAXLEN: z.coerce.number().int().min(100).max(1_000_000),
 
+  // ── Seed jobs ────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Redis stream the gateway enqueues `UiSeedJob`s on. Separate from the crawl stream.
+   *
+   * Two streams rather than one, because the two kinds of work have opposite urgencies: a crawl
+   * runs for minutes and nobody is waiting, a seed job has a tester's request held open behind it.
+   * Sharing a stream would put a seed behind a crawl in the same consumer group, and the request
+   * would time out while a browser worked through someone else's routes.
+   */
+  INDEXER_SEED_STREAM: z.string().min(1),
+  /** Consumer group for the seed stream, shared by every worker replica. */
+  INDEXER_SEED_CONSUMER_GROUP: z.string().min(1),
+  /**
+   * How long a seed result waits to be collected before Redis reclaims it.
+   *
+   * Sized above the gateway's own wait: the result must outlive the request that asked for it, so
+   * that a gateway retrying after a blip can still find it. Not much above — an uncollected result
+   * describes a record that exists in a customer's application, and it should not linger.
+   */
+  INDEXER_SEED_RESULT_TTL_SECONDS: z.coerce.number().int().min(10).max(3600),
+
   // ── Browser ──────────────────────────────────────────────────────────────────────────────────
   /** Headless everywhere except when a developer is watching a crawl to debug it. */
   INDEXER_HEADLESS: z.enum(['true', 'false']).transform((value) => value === 'true'),

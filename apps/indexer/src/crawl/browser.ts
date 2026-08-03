@@ -46,13 +46,23 @@ export async function launchBrowser(headless: boolean): Promise<Browser> {
   }
 }
 
+/**
+ * What opening a context actually depends on.
+ *
+ * A `Pick` rather than the whole of `CrawlBounds` because the UI materializer opens a context too
+ * (`seed/materializer.ts`) and has no crawl to be bounded by — no depth, no page cap, no
+ * never-interact list. Narrowing the parameter is what lets the seed path share this function
+ * instead of growing a second one that launches browsers slightly differently.
+ */
+export type SessionBounds = Pick<CrawlBounds, 'viewport' | 'navigationTimeoutMs'>;
+
 export interface SessionOptions {
   readonly browser: Browser;
-  readonly bounds: CrawlBounds;
+  readonly bounds: SessionBounds;
   readonly auth: PreparedAuth;
 }
 
-/** Open the context one job crawls in, with the collector already injected. */
+/** Open the context one job runs in, with the collector already injected. */
 export async function openSession(options: SessionOptions): Promise<CrawlSession> {
   const { browser, bounds, auth } = options;
 

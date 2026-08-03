@@ -1,3 +1,5 @@
+import { CrawlJob, UiSeedJob } from 'protocol';
+
 import { loadConfig } from './config.js';
 import { launchBrowser } from './crawl/browser.js';
 import { createSecretResolver } from './crawl/secrets.js';
@@ -8,6 +10,8 @@ import { installSignalHandlers, Lifecycle } from './lifecycle.js';
 import { createLogger } from './logger.js';
 import { createRedis } from './redis/client.js';
 import { createJobStream } from './redis/job-stream.js';
+import { createSeedResultChannel } from './redis/seed-results.js';
+import { createSeedWorker } from './seed/worker.js';
 import { createMetrics } from './telemetry/metrics.js';
 import { startTelemetry } from './telemetry/otel.js';
 import { createWorker } from './worker.js';
@@ -52,8 +56,10 @@ async function main(): Promise<void> {
   const browser = await launchBrowser(config.INDEXER_HEADLESS);
   lifecycle.onShutdown('browser', () => browser.close());
 
+  const secrets = createSecretResolver();
+
   const worker = createWorker({
-    stream: createJobStream(redis, {
+    stream: createJobStream(redis, CrawlJob, {
       stream: config.INDEXER_JOB_STREAM,
       group: config.INDEXER_CONSUMER_GROUP,
       consumer: config.INDEXER_WORKER_ID,
@@ -63,10 +69,27 @@ async function main(): Promise<void> {
     database,
     redis,
     browser,
-    secrets: createSecretResolver(),
+    secrets,
     metrics: createMetrics(),
     logger,
     progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,
+  });
+
+  // The seed worker shares the browser and the database with the crawl loop, and runs its own
+  // consume loop against its own stream. One process, two queues: a worker that could crawl but
+  // not seed would leave every UI materialization waiting on a deployment that has both.
+  const seedWorker = createSeedWorker({
+    stream: createJobStream(redis, UiSeedJob, {
+      stream: config.INDEXER_SEED_STREAM,
+      group: config.INDEXER_SEED_CONSUMER_GROUP,
+      consumer: config.INDEXER_WORKER_ID,
+      blockMs: config.INDEXER_BLOCK_MS,
+      claimMinIdleMs: config.INDEXER_CLAIM_MIN_IDLE_MS,
+    }),
+    results: createSeedResultChannel(redis),
+    materializer: { database, browser, secrets },
+    logger,
+    resultTtlSeconds: config.INDEXER_SEED_RESULT_TTL_SECONDS,
   });
 
   const health = await startHealthServer({
@@ -75,9 +98,17 @@ async function main(): Promise<void> {
     database,
     redis,
     logger,
-    isBusy: () => worker.isBusy(),
+    isBusy: () => worker.isBusy() || seedWorker.isBusy(),
   });
   lifecycle.onShutdown('health', () => health.close());
+
+  const seedLoop = seedWorker.run();
+  lifecycle.onShutdown('seed-worker', async () => {
+    seedWorker.stop();
+    // Shorter grace than the crawl gets: a seed job is bounded by its own deadline, and the
+    // gateway waiting on it has one too.
+    await Promise.race([seedLoop, sleep(config.SHUTDOWN_TIMEOUT_MS)]);
+  });
 
   const loop = worker.run();
   lifecycle.onShutdown('worker', async () => {
@@ -94,6 +125,7 @@ async function main(): Promise<void> {
       pid: process.pid,
       health_port: health.port,
       job_stream: config.INDEXER_JOB_STREAM,
+      seed_stream: config.INDEXER_SEED_STREAM,
       consumer_group: config.INDEXER_CONSUMER_GROUP,
       headless: config.INDEXER_HEADLESS,
       telemetry_exporting: telemetry.exporting,
@@ -119,7 +151,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await loop;
+  await Promise.all([loop, seedLoop]);
 }
 
 function sleep(ms: number): Promise<void> {

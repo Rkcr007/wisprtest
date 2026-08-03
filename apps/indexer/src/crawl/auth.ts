@@ -48,7 +48,7 @@ export interface FormLoginOptions {
   readonly page: Page;
   readonly profile: AuthProfile;
   readonly baseUrl: string;
-  readonly bounds: CrawlBounds;
+  readonly bounds: Pick<CrawlBounds, 'navigationTimeoutMs'>;
   readonly policy: UrlPolicy;
   readonly resolver: SecretResolver;
 }

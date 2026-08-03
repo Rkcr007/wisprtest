@@ -4639,6 +4639,15 @@ class UiSeedRevertJob(BaseModel):
             title="NonEmptyString",
         ),
     ]
+    detail_path: Annotated[
+        str,
+        Field(
+            alias="detailPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
     deadline_ms: Annotated[
         float,
         Field(

@@ -228,7 +228,9 @@ wisprtest/
 ├── docs/
 │   ├── ARCHITECTURE.md        ← system map, boundaries, data model
 │   ├── TEST-DATA-ENGINE.md    ← generic vs per-app split, adapters
-│   └── BUILD-PLAN.md          ← phased prompts, in order
+│   ├── BUILD-PLAN.md          ← phased prompts, in order
+│   ├── adr/                   ← decision log: what was decided, and what it cost
+│   └── runbooks/              ← drift backlog, indexer failure, ASR outage, seed failure
 ├── packages/
 │   ├── protocol/              ← Zod schemas + derived TS types (the contract)
 │   ├── fingerprint/           ← element fingerprinting + scoring resolver (SHARED verbatim)
@@ -240,7 +242,7 @@ wisprtest/
 │   ├── indexer/               ← Node + Playwright: crawl, fingerprint, observe schemas
 │   └── composer/              ← FastAPI: schema inference, constraint solve, compose
 ├── db/                        ← SQL migrations (Atlas), seed fixtures
-└── infra/                     ← Docker, Helm, Terraform
+└── infra/                     ← Docker, Helm, Terraform (Phase 19 — not yet populated)
 ```
 
 ### Stack
@@ -321,6 +323,13 @@ pnpm --filter extension test:speculation         # reversibility taxonomy + exec
 pnpm --filter extension test:e2e:command         # real trusted CDP dispatch in Chromium
 pnpm --filter extension bench:speech-to-reticle  # p95 < 400 ms gate
 pnpm --filter extension bench:scope              # scope recompute < 8 ms gate
+pnpm --filter console test                       # console: crawl bounds, SSE, auth, routes
+```
+
+The composer is Python and runs under `uv`, with its 90% coverage gate wired into pytest:
+
+```bash
+cd apps/composer && uv run mypy --strict src && uv run pytest -q
 ```
 
 ---
@@ -328,7 +337,7 @@ pnpm --filter extension bench:scope              # scope recompute < 8 ms gate
 ## 📈 Build progress
 
 Built in the phased order defined in [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md).
-**10 of 19 phases shipped.**
+**Phases 0–14 shipped; 18 and 19 partially landed.**
 
 ```mermaid
 timeline
@@ -337,24 +346,38 @@ timeline
         Foundations : Scaffold : Protocol : Fingerprint
         Backend : DB + RLS : Gateway : Indexer
         Extension : HUD + design system : Runtime state engine : T0/T1 resolution : Voice pipeline : Speculation + CDP
+        Learning : T2 write-back : Sessions
+        Data engine : Schema observation : Composer
+    section 🚧 Partly landed
+        Product : Console — 2 of 8 screens : Hardening — CI + runbooks
     section 🔜 Planned
-        Learning : T2 write-back : Drift + relearn
-        Data engine : Schema observation : Composer : Seeding : Materializers
-        Product : Sessions : Console : Hardening
+        Data engine : Seed preview + ledger : Materializer chain
+        Learning : Drift detection + relearn
+        Product : Remaining console screens : Helm / Terraform / load test
 ```
 
-|   #   | Phase                                                  |   Status   |
-| :---: | ------------------------------------------------------ | :--------: |
-|  0–2  | Scaffold · Protocol · Fingerprint                      |     ✅     |
-|  3–5  | DB + RLS · Gateway · Indexer                           |     ✅     |
-|  6–7  | Extension shell + HUD · Runtime state engine           |     ✅     |
-| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |     ✅     |
-| 11–13 | T2 write-back · Sessions · Schema observation          | ⬜ planned |
-| 14–17 | Composer · Seeding · Materializers · Drift             | ⬜ planned |
-| 18–19 | Console · Production hardening                         | ⬜ planned |
+|   #   | Phase                                                  |         Status          |
+| :---: | ------------------------------------------------------ | :---------------------: |
+|  0–2  | Scaffold · Protocol · Fingerprint                      |           ✅            |
+|  3–5  | DB + RLS · Gateway · Indexer                           |           ✅            |
+|  6–7  | Extension shell + HUD · Runtime state engine           |           ✅            |
+| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |           ✅            |
+| 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
+|  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
+| 15–17 | Seed preview + ledger · Materializers · Drift          |       ⬜ planned        |
+|  18   | Console — Connect + Indexing screens                   |  🚧 2 of 8 screens      |
+|  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
 
-> `apps/composer` and `apps/console` are currently Phase-0 scaffolds (boot entrypoints
-> only); their feature phases (14, 18) are not yet built.
+> **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
+> progress) are built and tested, so an application can be indexed without touching a
+> terminal. The other six screens depend on Phases 15 and 17 and are not started.
+>
+> **Phase 19** landed out of order — the CI pipeline and all four operational runbooks are
+> in, while the Helm charts, Terraform, Grafana dashboards and load test are not.
+
+Since Phase 14 the unit of work is a **track**, not a phase — one owner, one module, one
+branch, one PR, several running concurrently. See [ADR 0012](docs/adr/0012-parallel-tracks.md)
+for why, and what it cost.
 
 ---
 

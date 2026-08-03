@@ -365,7 +365,7 @@ timeline
 | 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
 |  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
 | 15–17 | Seed preview + ledger · Materializers · Drift          |       ⬜ planned        |
-|  18   | Console — Connect + Indexing screens                   |  🚧 2 of 8 screens      |
+|  18   | Console — Connect + Indexing screens                   |    🚧 2 of 8 screens    |
 |  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
 
 > **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE

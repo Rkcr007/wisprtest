@@ -70,27 +70,6 @@ A confident wrong click costs more trust than any latency win gains.
 
 ## Repository layout
 
-```
-wisprtest/
-├── CLAUDE.md                  ← this file
-├── docs/
-│   ├── ARCHITECTURE.md        ← system map, boundaries, data model
-│   ├── TEST-DATA-ENGINE.md    ← generic vs per-app split, adapters
-│   └── BUILD-PLAN.md          ← phased prompts, in order
-├── packages/
-│   ├── protocol/              ← Zod schemas + derived TS types (the contract)
-│   ├── fingerprint/           ← element fingerprinting + scoring resolver (SHARED)
-│   └── ui/                    ← design tokens + HUD primitives
-├── apps/
-│   ├── extension/             ← MV3 Chrome extension: runtime, HUD, voice, executor
-│   ├── console/               ← Next.js 15 web console
-│   ├── gateway/               ← Fastify: API, auth, tenancy, memory CRUD
-│   ├── indexer/               ← Node + Playwright: crawl, fingerprint, observe schemas
-│   └── composer/              ← FastAPI: schema inference, constraint solve, compose
-├── db/                        ← SQL migrations (Atlas), seed fixtures
-└── infra/                     ← Docker, Helm charts, Terraform
-```
-
 **Do not create directories outside this layout without asking.**
 
 ---

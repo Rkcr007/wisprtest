@@ -30,6 +30,9 @@ dev = [
     "hypothesis>=6.140.0",
     "mypy>=1.19.0",
     "pytest>=9.0.0",
+    # Coverage is a gate, not a report. See [tool.pytest.ini_options] below for why it is wired
+    # into the default `addopts` rather than left behind a flag someone has to remember.
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.0",
 ]
 
@@ -88,4 +91,34 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+# Coverage is on by default rather than behind a `--cov` someone has to remember, for the same
+# reason `packages/fingerprint/vitest.config.ts` turns it on by default on the TypeScript side: a
+# gate that only runs when it is asked for is not a gate. `uv run pytest -q` is the command in
+# docs/BUILD-PLAN.md's "Done when" and the command CI runs, so it is the one that has to measure.
+addopts = """
+    --strict-markers
+    --cov=composer
+    --cov-report=term-missing
+    --cov-fail-under=90
+"""
+
+[tool.coverage.run]
+branch = true
+source = ["composer"]
+omit = [
+    # GENERATED from packages/protocol by `pnpm --filter protocol gen:python`. ~4,950 lines of
+    # pydantic models, most of them for parts of the contract this service never touches, and
+    # every one of them exercised by pydantic itself rather than by anything written here.
+    # Measuring it would move the number a long way without a single extra assertion behind it —
+    # the same reasoning `packages/fingerprint/vitest.config.ts` applies to `src/index.ts`.
+    "src/composer/protocol/models.py",
+    # The uvicorn entrypoint. Its one job is to start a server, and a test that exercised it would
+    # be a test of uvicorn. `test_main.py` covers the config-failure path, which is ours.
+    "src/composer/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

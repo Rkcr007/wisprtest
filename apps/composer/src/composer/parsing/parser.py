@@ -147,20 +147,27 @@ def choose_entity(
 
     Returns `None` rather than guessing between several. An engine that composes the wrong
     entity has not misunderstood a detail, it has answered a different question.
+
+    Where the utterance names more than one entity, the **head noun wins** — the one said first.
+    "A customer with an overdue invoice" is a request for a customer, and the invoice is a
+    condition on it; docs/TEST-DATA-ENGINE.md § 3 works exactly that sentence through and reaches
+    the same answer. "An order with three line items" is the same shape and reads the same way. A
+    tie at the same position goes to the longer name, which is the more specific reading.
     """
     normalized = normalize(utterance)
 
-    named = [
-        schema
-        for schema in schemas
-        if any(form in normalized for form in field_aliases(schema.entity_name))
-    ]
-    if len(named) == 1:
-        return named[0]
-    if len(named) > 1:
-        # Prefer the longest name: "line item" and "order" both appear in "order line items",
-        # and the more specific one is what was meant.
-        return max(named, key=lambda schema: len(schema.entity_name))
+    named: list[tuple[int, int, EntitySchema]] = []
+    for schema in schemas:
+        positions = [
+            normalized.find(form)
+            for form in field_aliases(schema.entity_name)
+            if normalized.find(form) >= 0
+        ]
+        if positions:
+            named.append((min(positions), -len(schema.entity_name), schema))
+
+    if named:
+        return min(named, key=lambda entry: (entry[0], entry[1]))[2]
 
     from_route = [
         schema
@@ -176,9 +183,23 @@ def choose_entity(
 class ConstraintParser:
     """Reads an utterance against one learned schema."""
 
-    def __init__(self, schema: EntitySchema, aliases: list[ConstraintAlias]) -> None:
+    def __init__(
+        self,
+        schema: EntitySchema,
+        aliases: list[ConstraintAlias],
+        related: list[EntitySchema] | None = None,
+    ) -> None:
         self._schema = schema
         self._aliases = [alias for alias in aliases if alias.entity == schema.entity_name]
+        # Predicates of *other* entities are readable too. "A customer with an overdue invoice"
+        # names a condition that does not belong to the entity being composed — `overdue` is
+        # learned on `Invoice` — and a parser that could only see the head noun's own predicates
+        # would report the most interesting half of that sentence as an unparsed fragment. Fields,
+        # enum vocabularies and references stay strictly local: they are assignments to *this*
+        # record, and reading another entity's field names into it would invent constraints.
+        self._related = [
+            entry for entry in (related or []) if entry.entity_name != schema.entity_name
+        ]
 
     def parse(self, utterance: str) -> ParseResult:
         working = _Working(text=normalize(utterance))
@@ -230,8 +251,16 @@ class ConstraintParser:
         A predicate is not a field assignment, which is why it is read before the field passes:
         "overdue" must not be mistaken for a value of some field that happens to contain the
         word. The solver expands it into the clauses the indexer learned.
+
+        A predicate belonging to a related entity also claims that entity's name where it appears
+        next to it. In "an account with an overdue invoice" the word `invoice` is not a leftover —
+        it says which record the condition is about — and reporting it as unparsed would tell the
+        tester something was ignored when nothing was.
         """
-        for predicate in self._schema.predicates:
+        local = [(predicate, False) for predicate in self._schema.predicates]
+        foreign = [(predicate, True) for schema in self._related for predicate in schema.predicates]
+
+        for predicate, is_foreign in local + foreign:
             name = normalize(predicate.name)
             start = working.text.find(name)
             if start < 0 or working.is_claimed(start, start + len(name)):
@@ -239,6 +268,12 @@ class ConstraintParser:
 
             working.claim(start, start + len(name))
             working.constraints.append(ConstraintPredicate(kind="predicate", name=predicate.name))
+
+            if is_foreign:
+                for form in field_aliases(predicate.entity):
+                    position = working.text.find(form)
+                    if position >= 0 and not working.is_claimed(position, position + len(form)):
+                        working.claim(position, position + len(form))
 
     # ── T0/T1: comparisons ────────────────────────────────────────────────────────────────
 
@@ -508,15 +543,22 @@ class ConstraintParser:
     def _unparsed_fragments(self, working: _Working) -> list[str]:
         """Content words nobody claimed.
 
-        Filler and the entity's own name are excluded — "I need an order" leaves nothing
-        meaningful behind, and reporting "order" as unparsed would make the warning worthless
-        by crying wolf on every utterance.
+        Filler, the entity's own name and a stranded preposition are all excluded — "I need an
+        order" leaves nothing meaningful behind, and reporting "order" or "on" as unparsed would
+        make the warning worthless by crying wolf on every utterance.
+
+        A preposition on its own carries no requirement. Where one introduced a reference it was
+        claimed with the phrase; where it did not, "on" left over from "on net30 terms" is a word,
+        not a clause somebody dropped, and the whole value of this list is that everything in it
+        is worth a tester's attention.
         """
         entity_forms = field_aliases(self._schema.entity_name)
         leftovers = [
             token
             for token in tokenize(working.remainder())
-            if token not in entity_forms and not token.isdigit()
+            if token not in entity_forms
+            and token not in REFERENCE_PREPOSITIONS
+            and not token.isdigit()
         ]
         return [" ".join(leftovers)] if leftovers else []
 

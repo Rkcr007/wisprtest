@@ -54,7 +54,6 @@ MARGIN_DAYS = 1.0
 #: How many redraws a `neq` clause gets before the sampler is judged unable to avoid the value.
 MAX_AVOIDANCE_ATTEMPTS = 16
 
-_LOWER = (Op1.GT, Op1.GTE)
 _UPPER = (Op1.LT, Op1.LTE)
 
 _TEMPORAL_TYPES = (FieldType.DATE, FieldType.DATETIME)

@@ -107,7 +107,10 @@ jobs:
       - name: gateway — crawl enqueue and index progress
         run: pnpm --filter gateway test:crawl
 
-      - name: indexer — crawl and observers against the fixture app
+      - name: gateway — seed plan, approve and revert
+        run: pnpm --filter gateway test:seed
+
+      - name: indexer — crawl, observers and the UI materializer against the fixture app
         run: |
           pnpm --filter indexer exec playwright install --with-deps chromium
           pnpm --filter indexer test:e2e

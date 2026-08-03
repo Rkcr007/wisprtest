@@ -46,6 +46,13 @@ export interface Application {
   env: string;
   id: Generated<string>;
   name: string;
+  /**
+   * Whether /v1/seed/execute may write to this application. Production requires an explicit, audited opt-in; every other environment is allowed by default.
+   */
+  seedingAllowed: Generated<boolean | null>;
+  seedingEnabledAt: Timestamp | null;
+  seedingEnabledBy: string | null;
+  seedingEnabledReason: string | null;
   tenantId: string;
   updatedAt: Generated<Timestamp>;
 }

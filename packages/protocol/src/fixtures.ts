@@ -426,6 +426,108 @@ const MATERIALIZED_RECORD = {
   inverseOp: INVERSE_OP,
 };
 
+const SEED_REVERT_PLAN = {
+  revertible: true,
+  kind: 'ui',
+  detail: 'drives the indexed delete flow orders-detail.order.delete on /orders/:id',
+};
+
+const SEED_NODE_PREVIEW = {
+  nodeId: 'order-1',
+  entity: 'Order',
+  mode: 'create',
+  adapter: 'ui',
+  adapterReason: 'the API materializer has not been verified in 9 days, so the form will run',
+  revert: SEED_REVERT_PLAN,
+};
+
+const SEED_PLAN_REQUEST = {
+  sessionId: UUID_B,
+  applicationId: UUID_C,
+  utterance: 'I need a pending order for Acme Industrial with three line items',
+  runtimeState: COMPOSITION_REQUEST.runtimeState,
+  existingRecords: [EXISTING_RECORD],
+  seed: 1841,
+};
+
+const SEED_PLAN_RESPONSE = {
+  composition: COMPOSITION_RESPONSE,
+  planId: UUID_A,
+  preview: [SEED_NODE_PREVIEW],
+  expiresAt: NOW,
+};
+
+const SEED_EXECUTE_RESPONSE = {
+  result: {
+    planId: UUID_A,
+    outcome: 'created',
+    adapterUsed: 'ui',
+    attempts: [{ adapter: 'ui', outcome: 'succeeded', reason: null, durationMs: 4200 }],
+    records: [MATERIALIZED_RECORD],
+    verifiedAt: NOW,
+    failureReason: null,
+    durationMs: 4380,
+  },
+  ledger: [
+    {
+      id: UUID_A,
+      tenantId: UUID_B,
+      sessionId: UUID_C,
+      planId: UUID_D,
+      nodeId: 'order-1',
+      entitySchemaId: UUID_B,
+      entity: 'Order',
+      externalRef: 'ORD-4903',
+      adapterUsed: 'ui',
+      payload: { id: 4903 },
+      provenance: PROVENANCE,
+      inverseOp: INVERSE_OP,
+      createdAt: NOW,
+      revertedAt: null,
+    },
+  ],
+};
+
+const SEED_REVERT_OUTCOME = {
+  ledgerEntryId: UUID_A,
+  entity: 'Order',
+  externalRef: 'ORD-4903',
+  outcome: 'failed',
+  reason: 'the delete flow returned the tester to /orders with the record still listed',
+};
+
+const UI_SEED_FIELD_VALUE = {
+  field: 'status',
+  controlElementKey: 'orders-new.create-order.status',
+  value: 'Pending approval',
+};
+
+const UI_SEED_CREATE_JOB = {
+  operation: 'create',
+  jobId: UUID_A,
+  tenantId: UUID_B,
+  applicationId: UUID_C,
+  memoryVersionId: UUID_D,
+  sessionId: UUID_B,
+  planId: UUID_C,
+  nodeId: 'order-1',
+  entity: 'Order',
+  form: 'orders-new.create-order',
+  route: '/orders/new',
+  values: [UI_SEED_FIELD_VALUE],
+  deadlineMs: 30000,
+};
+
+const UI_SEED_RESULT = {
+  jobId: UUID_A,
+  operation: 'create',
+  outcome: 'succeeded',
+  externalRef: 'ORD-4903',
+  detailPath: '/orders/4903',
+  failureReason: null,
+  durationMs: 4200,
+};
+
 const STRUCTURAL_DIFF = {
   added: [
     {
@@ -2305,6 +2407,280 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       {
         why: 'a negative duration',
         value: withField(COMPOSITION_RESPONSE, 'durationMs', -1),
+      },
+    ],
+  },
+
+  /* ------------------------------------------------------------------------------- seeding */
+
+  SeedRevertPlan: {
+    schema: p.SeedRevertPlan,
+    valid: [
+      SEED_REVERT_PLAN,
+      {
+        revertible: false,
+        kind: 'none',
+        detail: 'no delete flow was indexed for Order — this record will remain',
+      },
+    ],
+    invalid: [
+      {
+        why: 'claims to be revertible while naming no adapter to revert it with',
+        value: { revertible: true, kind: 'none', detail: 'x' },
+      },
+      {
+        why: 'names a delete flow but tells the tester it cannot be undone',
+        value: { revertible: false, kind: 'ui', detail: 'drives orders.detail.delete' },
+      },
+    ],
+  },
+  SeedNodePreview: {
+    schema: p.SeedNodePreview,
+    valid: [
+      SEED_NODE_PREVIEW,
+      {
+        nodeId: 'account-1',
+        entity: 'Account',
+        mode: 'reuse_existing',
+        adapter: null,
+        adapterReason: 'Acme Industrial already exists; nothing will be created for it',
+        revert: {
+          revertible: false,
+          kind: 'none',
+          detail: 'nothing is created for a reused record, so there is nothing to undo',
+        },
+      },
+    ],
+    invalid: [
+      {
+        why: 'a reused record naming an adapter that would write it again',
+        value: withField(SEED_NODE_PREVIEW, 'mode', 'reuse_existing'),
+      },
+      {
+        why: 'a created record with no adapter — the preview would not say what will run',
+        value: withField(SEED_NODE_PREVIEW, 'adapter', null),
+      },
+    ],
+  },
+  SeedPlanRequest: {
+    schema: p.SeedPlanRequest,
+    valid: [
+      SEED_PLAN_REQUEST,
+      // No records to resolve against: every reference becomes a node of the graph instead.
+      { ...SEED_PLAN_REQUEST, existingRecords: [], seed: null },
+    ],
+    invalid: [
+      {
+        why: 'an empty utterance asks for nothing',
+        value: withField(SEED_PLAN_REQUEST, 'utterance', ''),
+      },
+      {
+        why: 'naming a memory version the session does not belong to',
+        value: { ...SEED_PLAN_REQUEST, memoryVersionId: UUID_D },
+      },
+    ],
+  },
+  SeedPlanResponse: {
+    schema: p.SeedPlanResponse,
+    valid: [
+      SEED_PLAN_RESPONSE,
+      {
+        composition: {
+          ...COMPOSITION_RESPONSE,
+          outcome: {
+            kind: 'conflict',
+            constraintSet: CONSTRAINT_SET,
+            conflict: CONSTRAINT_CONFLICT,
+          },
+        },
+        planId: null,
+        preview: [],
+        expiresAt: null,
+      },
+    ],
+    invalid: [
+      {
+        why: 'a plan was composed but nothing is holding it for approval',
+        value: withField(SEED_PLAN_RESPONSE, 'planId', null),
+      },
+      {
+        why: 'a held plan with no expiry — an approval could arrive against stale memory',
+        value: withField(SEED_PLAN_RESPONSE, 'expiresAt', null),
+      },
+    ],
+  },
+  SeedExecuteRequest: {
+    schema: p.SeedExecuteRequest,
+    valid: [{ sessionId: UUID_B, planId: UUID_A, approvedAt: NOW }],
+    invalid: [
+      {
+        why: 'carrying the plan instead of naming it — the previewed bytes must be the written ones',
+        value: { sessionId: UUID_B, planId: UUID_A, approvedAt: NOW, plan: COMPOSITION_PLAN },
+      },
+      {
+        why: 'no approval instant to audit',
+        value: { sessionId: UUID_B, planId: UUID_A },
+      },
+    ],
+  },
+  SeedExecuteResponse: {
+    schema: p.SeedExecuteResponse,
+    valid: [
+      SEED_EXECUTE_RESPONSE,
+      // A chain that failed everywhere: an answer, with the attempts as the explanation.
+      {
+        result: {
+          planId: UUID_A,
+          outcome: 'failed',
+          adapterUsed: null,
+          attempts: [
+            {
+              adapter: 'ui',
+              outcome: 'failed',
+              reason: 'the create form rejected the amount',
+              durationMs: 5100,
+            },
+          ],
+          records: [],
+          verifiedAt: null,
+          failureReason: 'every adapter in the chain failed',
+          durationMs: 5100,
+        },
+        ledger: [],
+      },
+    ],
+    invalid: [
+      {
+        why: 'no result — a write with no account of what it did',
+        value: without(SEED_EXECUTE_RESPONSE, 'result'),
+      },
+    ],
+  },
+  SeedRevertRequest: {
+    schema: p.SeedRevertRequest,
+    valid: [
+      { scope: 'entry', ledgerEntryId: UUID_A },
+      { scope: 'session', sessionId: UUID_B },
+    ],
+    invalid: [
+      {
+        why: 'a tenant-wide revert is not a scope the API offers',
+        value: { scope: 'tenant', tenantId: UUID_A },
+      },
+      {
+        why: 'the session scope carrying an entry id',
+        value: { scope: 'session', ledgerEntryId: UUID_A },
+      },
+    ],
+  },
+  SeedRevertOutcome: {
+    schema: p.SeedRevertOutcome,
+    valid: [
+      SEED_REVERT_OUTCOME,
+      {
+        ...SEED_REVERT_OUTCOME,
+        outcome: 'not_revertible',
+        reason: 'no delete flow was indexed for Order; remove ORD-4903 by hand',
+      },
+      { ...SEED_REVERT_OUTCOME, outcome: 'reverted', reason: null },
+    ],
+    invalid: [
+      {
+        why: 'a failure with no reason the tester can act on',
+        value: withField(SEED_REVERT_OUTCOME, 'reason', null),
+      },
+      {
+        why: 'a successful revert still explaining itself, which reads as a failure',
+        value: { ...SEED_REVERT_OUTCOME, outcome: 'reverted' },
+      },
+    ],
+  },
+  SeedRevertResponse: {
+    schema: p.SeedRevertResponse,
+    valid: [
+      { outcomes: [SEED_REVERT_OUTCOME], durationMs: 3200 },
+      // Nothing outstanding to revert is a normal answer, not an error.
+      { outcomes: [], durationMs: 4 },
+    ],
+    invalid: [
+      {
+        why: 'a negative duration',
+        value: { outcomes: [], durationMs: -1 },
+      },
+    ],
+  },
+  UiSeedFieldValue: {
+    schema: p.UiSeedFieldValue,
+    valid: [UI_SEED_FIELD_VALUE, { ...UI_SEED_FIELD_VALUE, value: null }],
+    invalid: [
+      {
+        why: 'a CSS selector instead of an element key — the adapter resolves through memory',
+        value: withField(UI_SEED_FIELD_VALUE, 'controlElementKey', '#order-status'),
+      },
+      {
+        why: 'no field name to blame when the control cannot be found',
+        value: without(UI_SEED_FIELD_VALUE, 'field'),
+      },
+    ],
+  },
+  UiSeedJob: {
+    schema: p.UiSeedJob,
+    valid: [
+      UI_SEED_CREATE_JOB,
+      {
+        operation: 'revert',
+        jobId: UUID_A,
+        tenantId: UUID_B,
+        applicationId: UUID_C,
+        memoryVersionId: UUID_D,
+        entity: 'Order',
+        flow: 'orders-detail.order.delete',
+        externalRef: 'ORD-4903',
+        deadlineMs: 30000,
+      },
+    ],
+    invalid: [
+      {
+        why: 'a create job with no control to fill',
+        value: withField(UI_SEED_CREATE_JOB, 'values', []),
+      },
+      {
+        why: 'unknown operation',
+        value: withField(UI_SEED_CREATE_JOB, 'operation', 'update'),
+      },
+    ],
+  },
+  UiSeedResult: {
+    schema: p.UiSeedResult,
+    valid: [
+      UI_SEED_RESULT,
+      {
+        jobId: UUID_A,
+        operation: 'revert',
+        outcome: 'succeeded',
+        externalRef: null,
+        detailPath: null,
+        failureReason: null,
+        durationMs: 2800,
+      },
+      {
+        jobId: UUID_A,
+        operation: 'create',
+        outcome: 'failed',
+        externalRef: null,
+        detailPath: null,
+        failureReason: 'the form rejected the amount: "must be at least 1"',
+        durationMs: 5100,
+      },
+    ],
+    invalid: [
+      {
+        why: 'a create that succeeded without reading back an identifier — nothing could revert it',
+        value: withField(UI_SEED_RESULT, 'externalRef', null),
+      },
+      {
+        why: 'a failure with nothing to tell the tester',
+        value: { ...UI_SEED_RESULT, outcome: 'failed' },
       },
     ],
   },

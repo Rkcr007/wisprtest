@@ -15,6 +15,7 @@
  * | Resolution | `ScopedQuery`, `ResolutionResult`, `Tier`, `ResolutionCandidate`, `QueryConstraint` |
  * | Runtime    | `RuntimeState`, `StateFingerprint`, `ActionClass`, `ActionRequest`, `ActionResult`, `SessionStep` |
  * | Data       | `EntitySchema`, `FieldSpec`, `Constraint`, `ConstraintSet`, `CompositionPlan`, `ProvenanceEntry`, `MaterializationResult`, `InverseOperation`, `SeedLedgerEntry` |
+ * | Seeding    | `SeedPlanRequest`, `SeedPlanResponse`, `SeedNodePreview`, `SeedExecuteRequest`, `SeedRevertRequest`, `UiSeedJob`, `UiSeedResult` |
  * | Drift      | `DriftReport`, `StructuralDiff` |
  * | Errors     | `WisprError`, `WisprErrorCode`, `Result<T>` |
  *
@@ -64,6 +65,7 @@ export * from './resolution.js';
 export * from './runtime.js';
 export * from './data.js';
 export * from './composition.js';
+export * from './seeding.js';
 export * from './drift.js';
 export * from './errors.js';
 export * from './json-schema.js';

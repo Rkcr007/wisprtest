@@ -140,4 +140,5 @@ export const NEIGHBOUR = {
   tenantId: '99999999-9999-4999-8999-999999999999',
   ownerEmail: 'priya.lead@contoso.example',
   applicationId: '88888888-8888-4888-8888-888888888882',
+  memoryVersionId: '88888888-8888-4888-8888-888888888883',
 } as const;

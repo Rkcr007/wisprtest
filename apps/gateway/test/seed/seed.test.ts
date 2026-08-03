@@ -24,7 +24,7 @@ import {
   startFakeSeedWorker,
   type FakeSeedWorker,
 } from '../support/fake-seed-worker.js';
-import { SEED, startHarness, type Harness } from '../support/harness.js';
+import { NEIGHBOUR, SEED, startHarness, type Harness } from '../support/harness.js';
 
 /**
  * The seed routes, against the real stack.
@@ -455,6 +455,42 @@ describe('approving a plan', () => {
 
     const rows = await client.query('SELECT 1 FROM seed_ledger WHERE plan_id = $1', [plan.id]);
     expect(rows.rowCount).toBe(0);
+  });
+
+  it('does not resolve a plan id belonging to another tenant', async () => {
+    const sessionId = await openSession();
+    const { planId } = await heldPlan(sessionId);
+
+    // The neighbour's own session, in the neighbour's own tenant, approving an id it should have
+    // no way to know. Held plans are keyed by tenant, so the id resolves to a key this caller
+    // cannot reach — the same shape as row-level security, applied to a cache.
+    const neighbourSession = await harness.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: await authed(NEIGHBOUR.ownerEmail),
+      payload: JSON.stringify({
+        applicationId: NEIGHBOUR.applicationId,
+        memoryVersionId: NEIGHBOUR.memoryVersionId,
+      }),
+    });
+    expect(neighbourSession.statusCode).toBe(201);
+
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/v1/seed/execute',
+      headers: await authed(NEIGHBOUR.ownerEmail),
+      payload: JSON.stringify({
+        sessionId: Session.parse(neighbourSession.json()).id,
+        planId,
+        approvedAt: new Date().toISOString(),
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(worker.jobs).toHaveLength(0);
+
+    // And the plan is still there for its own tenant, unconsumed by the attempt.
+    expect((await postExecute(sessionId, planId)).statusCode).toBe(201);
   });
 
   it('does not let a tester approve their own plan', async () => {

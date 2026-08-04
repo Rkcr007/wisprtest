@@ -2,7 +2,16 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { EscalateResponse, EvidenceRef, MemorySnapshot, type ResolutionResult } from 'protocol';
+import {
+  EscalateResponse,
+  EvidenceRef,
+  MemorySnapshot,
+  SeedExecuteResponse,
+  SeedPlanResponse,
+  SeedRevertResponse,
+  type ResolutionResult,
+  type RuntimeState,
+} from 'protocol';
 
 import {
   HUD_PORT,
@@ -25,7 +34,22 @@ import {
   type EscalationOutcome,
   type Resolver,
 } from '../resolver/index.js';
-import { createRuntimeStateEngine, type RuntimeStateEngine } from '../runtime/index.js';
+import {
+  createRuntimeStateEngine,
+  toRuntimeState,
+  type RuntimeStateEngine,
+} from '../runtime/index.js';
+import {
+  createSeedController,
+  createSeedIntentDetector,
+  IDLE_SEED_VIEW,
+  type SeedController,
+  type SeedExecuteOutcome,
+  type SeedFailureReason,
+  type SeedPlanOutcome,
+  type SeedRevertResult,
+  type SeedView,
+} from '../seed/index.js';
 import {
   captureRegion,
   containingLandmark,
@@ -85,6 +109,25 @@ const ESCALATE_REPLY_TIMEOUT_MS = 3_000;
 
 /** The word a clicked ordinal is spoken as, so the click path enters the same parser speech does. */
 const ORDINAL_WORD: Record<number, string> = { 1: 'one', 2: 'two', 3: 'three' };
+
+/** One answer to a seed call, as the worker sends it back over the port. */
+type SeedReply =
+  | { readonly ok: true; readonly payload: unknown }
+  | { readonly ok: false; readonly reason: SeedFailureReason; readonly detail: string | null };
+
+/**
+ * How long the content script waits for the worker's answer to a seed call.
+ *
+ * Both sit above the worker's own ceilings (`background/seed-client.ts`), so the timeout that fires
+ * first is the one that can say something specific. These exist only for a worker terminated
+ * mid-call, where no reply is ever coming.
+ *
+ * The write ceiling is minutes rather than seconds on purpose: the UI adapter drives a real form in
+ * a real browser, which § 4 measures at "3–15 s", and giving up early would abandon a request that
+ * is going to create a record anyway — leaving the tester with a row nobody told them about.
+ */
+const SEED_PLAN_REPLY_TIMEOUT_MS = 15_000;
+const SEED_WRITE_REPLY_TIMEOUT_MS = 90_000;
 
 /**
  * How long a capture waits for the worker.
@@ -181,6 +224,24 @@ function HudApp({
   const escalations = useRef(new Map<string, (outcome: EscalationOutcome) => void>());
   /** Evidence captures awaiting the worker's reply, by request id. */
   const captures = useRef(new Map<string, (refs: readonly EvidenceRef[]) => void>());
+  /** Seed calls awaiting the worker's reply, by request id. */
+  const seedCalls = useRef(new Map<string, (reply: SeedReply) => void>());
+  /** The seeding flow — class S, never speculative. Built alongside the resolver and controller. */
+  const seedRef = useRef<SeedController | null>(null);
+  const [seed, setSeed] = useState<SeedView>(IDLE_SEED_VIEW);
+  /**
+   * Recognises a request for a precondition. Constructed once: it holds nothing per-page, and its
+   * lexicons are normalised at construction.
+   */
+  const seedIntent = useRef(createSeedIntentDetector());
+  /**
+   * The current runtime state, in the protocol's wire form.
+   *
+   * Set by the resolver effect below, because building one needs the engine's live state *and* the
+   * locator's binding — the scope is which of memory's elements are on screen, and only the binder
+   * can pair a live node with the key memory knows it by. Null until both exist.
+   */
+  const runtimeStateRef = useRef<(() => RuntimeState) | null>(null);
   // Transition tracking, so the voice snapshot below drives one onset/partial/final per change.
   const prevPhaseRef = useRef<HudVoice['phase']>('idle');
   const lastPartialRef = useRef(-1);
@@ -302,6 +363,49 @@ function HudApp({
     }
   }, []);
 
+  /**
+   * Send one seed call to the worker and await its reply.
+   *
+   * Same shape as {@link escalate}, and for the same reason: the token, the session id and the
+   * application id all live in the worker and none of them crosses into the page. Every failure
+   * resolves rather than rejects — a seed request that could not be made must reach the tester as a
+   * card that says why.
+   */
+  const callSeed = useCallback(
+    (message: Record<string, unknown>, timeoutMs: number): Promise<SeedReply> =>
+      new Promise<SeedReply>((settle) => {
+        const target = portRef.current;
+        if (target === null) {
+          settle({
+            ok: false,
+            reason: 'unavailable',
+            detail: 'the extension worker is not running',
+          });
+          return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const timer = setTimeout(() => {
+          seedCalls.current.delete(requestId);
+          settle({ ok: false, reason: 'timeout', detail: null });
+        }, timeoutMs);
+
+        seedCalls.current.set(requestId, (reply) => {
+          clearTimeout(timer);
+          settle(reply);
+        });
+
+        try {
+          target.postMessage({ ...message, requestId });
+        } catch {
+          clearTimeout(timer);
+          seedCalls.current.delete(requestId);
+          settle({ ok: false, reason: 'unavailable', detail: null });
+        }
+      }),
+    [],
+  );
+
   /** Hand a learned alias to the worker's write-back queue. Fire and forget, by design. */
   const sendAlias = useCallback((writeback: unknown) => {
     try {
@@ -310,6 +414,75 @@ function HudApp({
       // A write-back lost to a terminated worker costs one future T0 hit, not a resolution.
     }
   }, []);
+
+  /**
+   * The seeding controller, built once and independent of the snapshot.
+   *
+   * It needs neither memory nor the DOM: the composer owns entity knowledge, and the plan comes
+   * back from the gateway already describing what would be created. What it does need is a
+   * transport, and that is the port — so the controller outlives a snapshot refetch, and a plan
+   * awaiting approval is not thrown away because memory reloaded underneath it.
+   */
+  useEffect(() => {
+    const controller = createSeedController({
+      transport: {
+        plan: async ({ utterance, runtimeState }): Promise<SeedPlanOutcome> => {
+          const reply = await callSeed(
+            { kind: 'seed_plan', utterance, runtimeState },
+            SEED_PLAN_REPLY_TIMEOUT_MS,
+          );
+          if (!reply.ok) return reply;
+          // Validated on arrival, like the snapshot and the escalation. A preview card is rendered
+          // from this and a tester approves what the card says, so nothing unchecked reaches it.
+          const parsed = SeedPlanResponse.safeParse(reply.payload);
+          return parsed.success
+            ? { ok: true, response: parsed.data }
+            : { ok: false, reason: 'failed', detail: 'the gateway sent a malformed plan' };
+        },
+
+        execute: async ({ planId, approvedAt }): Promise<SeedExecuteOutcome> => {
+          const reply = await callSeed(
+            { kind: 'seed_execute', planId, approvedAt },
+            SEED_WRITE_REPLY_TIMEOUT_MS,
+          );
+          if (!reply.ok) return reply;
+          const parsed = SeedExecuteResponse.safeParse(reply.payload);
+          return parsed.success
+            ? { ok: true, result: parsed.data.result, ledger: parsed.data.ledger }
+            : { ok: false, reason: 'failed', detail: 'the gateway sent a malformed result' };
+        },
+
+        revert: async (input): Promise<SeedRevertResult> => {
+          const reply = await callSeed(
+            {
+              kind: 'seed_revert',
+              scope: input.scope,
+              ledgerEntryId: input.scope === 'entry' ? input.ledgerEntryId : null,
+            },
+            SEED_WRITE_REPLY_TIMEOUT_MS,
+          );
+          if (!reply.ok) return reply;
+          const parsed = SeedRevertResponse.safeParse(reply.payload);
+          return parsed.success
+            ? { ok: true, outcomes: parsed.data.outcomes }
+            : { ok: false, reason: 'failed', detail: 'the gateway sent a malformed revert result' };
+        },
+      },
+      onError: (error: unknown) => {
+        console.warn('wispr: seed flow recovered', error);
+      },
+    });
+
+    seedRef.current = controller;
+    const subscription = controller.view.subscribe(setSeed);
+
+    return () => {
+      seedRef.current = null;
+      subscription.unsubscribe();
+      controller.dispose();
+      setSeed(IDLE_SEED_VIEW);
+    };
+  }, [callSeed]);
 
   useEffect(() => {
     if (!attached) return undefined;
@@ -381,6 +554,18 @@ function HudApp({
 
         // The runtime loop: parse → resolve → speculate/stage → commit → execute, all in-process.
         // The executor's trusted dispatch is relayed to the worker, which owns `chrome.debugger`.
+        const locator = createBinderLocator(snapshot);
+        // The scope, in the protocol's wire form: where the tester is, and which of memory's
+        // elements are on screen. The seeding flow sends it to the composer so an unqualified
+        // "I need one of these" is scoped to the screen rather than to the whole application.
+        runtimeStateRef.current = () => {
+          const live = source.current();
+          return toRuntimeState(
+            engine.state.value,
+            locator.keys?.(live.stateFingerprint, live.candidates) ?? [],
+          );
+        };
+
         const controller = createSpeculationController({
           parser: createIntentParser({ vocabulary: buildIntentVocabulary(snapshot) }),
           // Passed through with one addition: every call republishes whatever choice the resolver
@@ -410,7 +595,7 @@ function HudApp({
             onStep: sendStep,
             captureEvidence,
           }),
-          locator: createBinderLocator(snapshot),
+          locator,
           source,
           window,
           navRouteFor: buildNavRoutes(snapshot),
@@ -428,6 +613,7 @@ function HudApp({
       lifecycle.cancelled = true;
       resolver.current = null;
       controllerRef.current = null;
+      runtimeStateRef.current = null;
       lifecycle.viewSub?.unsubscribe();
       lifecycle.controller?.dispose();
       lifecycle.built?.dispose();
@@ -470,6 +656,21 @@ function HudApp({
         return;
       }
 
+      if (next.kind === 'seed_result') {
+        const settle = seedCalls.current.get(next.requestId);
+        // No waiter means the call already timed out locally. Dropping the late reply is right for
+        // a plan — the card has moved on — and harmless for a write, whose durable record is the
+        // ledger the gateway wrote either way.
+        if (settle === undefined) return;
+        seedCalls.current.delete(next.requestId);
+        settle(
+          next.ok
+            ? { ok: true, payload: next.payload }
+            : { ok: false, reason: next.reason ?? 'failed', detail: next.detail },
+        );
+        return;
+      }
+
       if (next.kind === 'escalate_result') {
         const settle = escalations.current.get(next.requestId);
         // No waiter means the escalation already timed out locally. Dropping the late reply is
@@ -508,6 +709,11 @@ function HudApp({
       for (const settle of escalations.current.values())
         settle({ ok: false, reason: 'unavailable' });
       escalations.current.clear();
+      // The same for seed calls: the worker that owed them an answer is gone, and a card stuck on
+      // "creating…" would be claiming a write is in flight when nothing is.
+      for (const settle of seedCalls.current.values())
+        settle({ ok: false, reason: 'unavailable', detail: 'the extension worker went away' });
+      seedCalls.current.clear();
       setDisambiguation(null);
       // The worker was terminated or the extension reloaded. Showing the last known state would
       // claim an attachment that no longer exists.
@@ -579,14 +785,36 @@ function HudApp({
 
     if (voice.partial !== null && voice.partial.revision > lastPartialRef.current) {
       lastPartialRef.current = voice.partial.revision;
-      void controller.onPartial({
-        revision: voice.partial.revision,
-        transcript: voice.partial.text,
-      });
+      // A request for data is not an action, so it never enters the speculation controller — not
+      // even to aim. Suppressing the partial costs a reticle on a phrase that would have resolved
+      // to nothing anyway, and it keeps a seeding utterance off the speculative path entirely.
+      if (!seedIntent.current.detect(voice.partial.text).isSeed) {
+        void controller.onPartial({
+          revision: voice.partial.revision,
+          transcript: voice.partial.text,
+        });
+      }
     }
+
     if (voice.final !== null && voice.final.revision > lastFinalRef.current) {
       lastFinalRef.current = voice.final.revision;
-      void controller.onFinal({ revision: voice.final.revision, transcript: voice.final.text });
+      const transcript = voice.final.text;
+
+      // The fork. Seeding is reached here and nowhere else: on a *final* transcript, through a
+      // controller whose only writing method takes no arguments and can send back only a plan it
+      // composed itself. There is deliberately no path from a partial hypothesis to either side of
+      // this branch — CLAUDE.md § "Reversibility taxonomy" puts class S in the same never-
+      // speculative column as class C, and the shape of the code is what enforces it.
+      const seeding = seedIntent.current.detect(transcript).isSeed;
+      const runtimeState = runtimeStateRef.current?.() ?? null;
+
+      if (seeding && seedRef.current !== null && runtimeState !== null) {
+        // Writes nothing: `/v1/seed/plan` composes and returns a preview. The write needs the
+        // tester's explicit approval on the card, which is a separate call they make with a click.
+        void seedRef.current.plan(transcript, runtimeState);
+      } else {
+        void controller.onFinal({ revision: voice.final.revision, transcript });
+      }
     }
   }, [voice]);
 
@@ -595,6 +823,17 @@ function HudApp({
       update={update}
       voice={voice}
       speculation={speculation}
+      seed={seed}
+      // The one path to a write, and it is a click on a card the tester has read. No key binding,
+      // no voice shortcut, no default focus that a stray Enter could reach.
+      onSeedApprove={() => {
+        void seedRef.current?.approve();
+      }}
+      onSeedDismiss={() => seedRef.current?.dismiss()}
+      onSeedRevert={() => {
+        void seedRef.current?.revertSession();
+      }}
+      stateFingerprint={engine?.state.value.stateFingerprint ?? null}
       onConfirm={() => controllerRef.current?.confirm()}
       disambiguation={disambiguation}
       // A click takes the same road as speech: it feeds the controller the ordinal as a final

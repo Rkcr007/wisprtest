@@ -7,6 +7,7 @@ import { createCdpDispatchService } from './cdp-dispatch.js';
 import { createEscalateClient } from './escalate-client.js';
 import { createMemoryClient } from './memory-client.js';
 import { createEvidenceUploader } from './evidence-uploader.js';
+import { createSeedClient } from './seed-client.js';
 import { createSessionClient } from './session-client.js';
 import { createTokenClient } from './token-client.js';
 import { createTokenStore } from './token-store.js';
@@ -108,6 +109,9 @@ const controller = createAttachController({
       'step buffer storage failed',
     );
   }),
+  // Seeding: composed, previewed and approved before anything is written. The session and
+  // application ids that scope the write live here with the token, never in the page.
+  seeds: createSeedClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   // Evidence: the screenshot comes over the same debugger attachment dispatch uses, and the bytes
   // go straight to object storage through a pre-signed URL the gateway hands out.
   screenshots: cdp,

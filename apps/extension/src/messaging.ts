@@ -131,6 +131,43 @@ export const HudRequest = z.discriminatedUnion('kind', [
       height: z.number(),
     }),
   }),
+  /**
+   * Compose a plan for a seeding utterance. Writes nothing — `/v1/seed/plan` is a read.
+   *
+   * The content script sends only what it alone knows: what the tester said, and where they are.
+   * The session and application ids are the worker's, deliberately (`background/seed-client.ts`),
+   * so a page the extension does not control never holds the identifier that scopes a write to a
+   * customer's application.
+   */
+  z.strictObject({
+    kind: z.literal('seed_plan'),
+    requestId: z.string().min(1),
+    utterance: z.string().min(1),
+    /** A `RuntimeState`, validated against the contract in the worker. */
+    runtimeState: z.unknown(),
+  }),
+  /**
+   * The tester approved a previewed plan. The one message on this channel that writes.
+   *
+   * It carries a `planId` and no plan, for exactly the reason `SeedExecuteRequest` does: the
+   * gateway is already holding the composed plan, so what was previewed is what gets written and a
+   * message cannot describe a record into existence.
+   */
+  z.strictObject({
+    kind: z.literal('seed_execute'),
+    requestId: z.string().min(1),
+    planId: z.string().min(1),
+    /** The tester's own approval instant. Evidence in the audit log, never authority. */
+    approvedAt: z.string().min(1),
+  }),
+  /** Undo one seeded record, or everything this session seeded. */
+  z.strictObject({
+    kind: z.literal('seed_revert'),
+    requestId: z.string().min(1),
+    scope: z.enum(['entry', 'session']),
+    /** Set exactly when `scope` is `entry`. The session's id is the worker's own. */
+    ledgerEntryId: z.string().min(1).nullable(),
+  }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 
@@ -259,9 +296,35 @@ export const HudEvidenceResult = z.strictObject({
 });
 export type HudEvidenceResult = z.infer<typeof HudEvidenceResult>;
 
+/**
+ * Service worker → content script: the answer to one seed call.
+ *
+ * One shape for all three routes, correlated by `requestId`, because the HUD's controller settles
+ * them the same way and a message per route would be three copies of the same envelope. `payload`
+ * is the route's response carried opaquely and validated against its contract by the worker before
+ * it is sent — a preview card is rendered from this, and a tester approves what the card says.
+ *
+ * `reason` is the closed set from `background/seed-client.ts`. `forbidden` is its own member
+ * because it is the one failure a tester cannot retry their way out of: seeding is not enabled for
+ * this application, which is policy rather than an outage, and the card has to say so.
+ */
+export const HudSeedResult = z.strictObject({
+  kind: z.literal('seed_result'),
+  requestId: z.string().min(1),
+  call: z.enum(['plan', 'execute', 'revert']),
+  ok: z.boolean(),
+  /** Present when `ok`: the route's response, validated by the worker. */
+  payload: z.unknown(),
+  /** Present when not `ok`: why the call produced no answer. */
+  reason: z.enum(['unavailable', 'timeout', 'forbidden', 'invalid', 'failed']).nullable(),
+  /** Concrete detail from the gateway, when it sent one. Never a token or a request body. */
+  detail: z.string().nullable(),
+});
+export type HudSeedResult = z.infer<typeof HudSeedResult>;
+
 /** Everything the worker may push to the content script. */
 export type WorkerMessage =
-  HudUpdate | HudSnapshot | HudVoice | HudEscalateResult | HudEvidenceResult;
+  HudUpdate | HudSnapshot | HudVoice | HudEscalateResult | HudEvidenceResult | HudSeedResult;
 
 /** Parse any worker → content message, or null if it is not one of ours. */
 export function parseWorkerMessage(message: unknown): WorkerMessage | null {
@@ -281,6 +344,10 @@ export function parseWorkerMessage(message: unknown): WorkerMessage | null {
   }
   if (kind === 'evidence_result') {
     const parsed = HudEvidenceResult.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  if (kind === 'seed_result') {
+    const parsed = HudSeedResult.safeParse(message);
     return parsed.success ? parsed.data : null;
   }
   return parseUpdate(message);

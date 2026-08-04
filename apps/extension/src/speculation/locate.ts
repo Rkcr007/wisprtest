@@ -21,6 +21,18 @@ export interface Locator {
     candidates: readonly Element[],
     elementKey: ElementKey,
   ): Element | null;
+  /**
+   * The keys of the current scope, as `RuntimeState.visibleElementKeys` wants them.
+   *
+   * The same bind {@link locate} performs, read for its other half: which of memory's elements are
+   * on screen right now. The seeding flow sends this to the composer as the state the utterance was
+   * spoken in, so "I need one of these" is scoped to the screen the tester is looking at.
+   *
+   * Optional, like `ResolverLike.pending`, so a caller that only ever locates — a benchmark, an
+   * older test — need not implement it. Without it the scope is simply empty, which is a truthful
+   * answer rather than a wrong one.
+   */
+  keys?(stateFingerprint: string, candidates: readonly Element[]): readonly ElementKey[];
 }
 
 /** Group a snapshot's element records by the state fingerprint of the screen they belong to. */
@@ -48,6 +60,12 @@ export function createBinderLocator(snapshot: MemorySnapshot): Locator {
         if (candidate.record.elementKey === elementKey) return candidate.element;
       }
       return null;
+    },
+
+    keys(stateFingerprint, candidates): readonly ElementKey[] {
+      // The binder memoises by the candidate array's identity, so asking for the scope right after
+      // a resolution on the same screen is a cache hit rather than a second fingerprint pass.
+      return binder.bind(stateFingerprint, candidates).candidateKeys;
     },
   };
 }

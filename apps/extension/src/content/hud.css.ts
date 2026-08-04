@@ -171,4 +171,147 @@ export const hudCss = `
 }
 
 .wispr-hud__toast-slot { padding: 0 var(--wispr-space-3) var(--wispr-space-3); }
+
+/* ── Seed preview: what the tester is being asked to approve ─────────────────────────────── */
+
+/*
+ * The seed token throughout, because that is what it means. tokens.ts describes it as "everywhere
+ * generated data appears: the seed preview, the ledger, and the created rows in the application
+ * itself" — one colour connecting the card, the record it creates and the mark drawn over that
+ * record on screen, so a tester follows one visual thread from approval to result.
+ *
+ * A scroll ceiling rather than an unbounded list: a multi-entity plan can carry a dozen fields per
+ * record, and a card that grows past the viewport puts its own approve button off-screen.
+ */
+.wispr-seed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wispr-space-2);
+  border-left: 2px solid var(--wispr-seed);
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wispr-seed__head { display: flex; align-items: center; gap: var(--wispr-space-2); }
+.wispr-seed__count { color: var(--wispr-text-muted); font-size: 11px; margin-left: auto; }
+
+.wispr-seed__utterance {
+  color: var(--wispr-text-muted);
+  font-size: 11px;
+  line-height: 15px;
+  font-style: italic;
+}
+
+.wispr-seed__answer, .wispr-seed__error {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--wispr-text);
+}
+.wispr-seed__error { color: var(--wispr-drift); }
+
+.wispr-seed__nodes, .wispr-seed__fields, .wispr-seed__attempts, .wispr-seed__reverted {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wispr-space-1);
+}
+
+.wispr-seed__node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wispr-space-1);
+  padding: var(--wispr-space-2);
+  border: 1px solid var(--wispr-border);
+  border-radius: var(--wispr-radius-md);
+  background: var(--wispr-surface-sunken);
+}
+
+.wispr-seed__node-head { display: flex; align-items: center; gap: var(--wispr-space-2); }
+
+/* Numbered because a plan is a graph and the order is the order the records will be created in. */
+.wispr-seed__node-ordinal {
+  color: var(--wispr-seed);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  min-width: 12px;
+}
+
+.wispr-seed__node-entity { font-size: 12px; font-weight: 600; }
+
+.wispr-seed__adapter-why, .wispr-seed__revert {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--wispr-text-muted);
+}
+
+/* An unrevertable record is a decision, not a detail. It reads in the drift colour — the palette's
+   "something is wrong with what we know" — because approving one is not undoable. */
+.wispr-seed__revert--none { color: var(--wispr-drift); }
+
+.wispr-seed__warning {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--wispr-drift);
+  padding: var(--wispr-space-1) var(--wispr-space-2);
+  border: 1px solid var(--wispr-drift);
+  border-radius: var(--wispr-radius-sm);
+}
+
+.wispr-seed__field { display: flex; flex-direction: column; gap: 2px; }
+.wispr-seed__field-head { display: flex; align-items: center; gap: var(--wispr-space-2); }
+.wispr-seed__field-name { color: var(--wispr-text-muted); font-size: 11px; min-width: 84px; }
+.wispr-seed__field-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* The explanation is the whole reason the card is trustworthy, so it is never truncated. */
+.wispr-seed__field-why {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--wispr-text-muted);
+  padding-left: 84px;
+}
+
+.wispr-seed__attempt { display: flex; align-items: center; gap: var(--wispr-space-2); }
+.wispr-seed__attempt-why { font-size: 10px; color: var(--wispr-text-muted); }
+
+.wispr-seed__created { font-size: 11px; line-height: 15px; color: var(--wispr-seed); }
+
+.wispr-seed__actions { display: flex; gap: var(--wispr-space-1); flex-wrap: wrap; }
+
+/* ── The mark drawn over a created record in the application under test ──────────────────── */
+
+/*
+ * Fixed, so it tracks the viewport the same way the rect it was measured from does, and
+ * pointer-events none so the row underneath stays clickable — the tester has to be able to open
+ * the record we just drew a box around.
+ */
+.wispr-seed-mark {
+  position: fixed;
+  border: 2px solid var(--wispr-seed);
+  border-radius: var(--wispr-radius-sm);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transition: opacity var(--wispr-duration-fast) var(--wispr-easing-standard);
+}
+
+.wispr-seed-mark__label {
+  position: absolute;
+  top: -9px;
+  left: 6px;
+  padding: 0 4px;
+  background: var(--wispr-surface);
+  color: var(--wispr-seed);
+  font-size: 9px;
+  line-height: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  white-space: nowrap;
+}
 `;

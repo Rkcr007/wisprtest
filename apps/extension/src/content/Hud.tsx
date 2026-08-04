@@ -4,9 +4,12 @@ import { Cell, Chip, Reticle, Toast, useDraggable, VadBars, type Tone } from 'ui
 
 import { INITIAL_VOICE, type AttachState, type HudUpdate, type HudVoice } from '../messaging.js';
 import type { Disambiguation } from '../resolver/index.js';
+import { IDLE_SEED_VIEW, type SeedView } from '../seed/index.js';
 import type { SpeculationView } from '../speculation/index.js';
 import type { ActionClass } from 'protocol';
 import type { VoicePhase } from '../voice/messages.js';
+import { SeedMarks } from './SeedMarks.js';
+import { SeedPreview } from './SeedPreview.js';
 
 /**
  * The HUD.
@@ -66,6 +69,25 @@ export interface HudProps {
   readonly disambiguation?: Disambiguation | null;
   /** Called with the one-based ordinal the tester picked. */
   readonly onChoose?: (ordinal: number) => void;
+  /**
+   * The seeding flow's view (Phase 15): the preview awaiting approval, or what was created.
+   *
+   * Rendered as its own band rather than folded into the intent band, because it is not an intent —
+   * it is a decision the tester has to make, with enough detail to make it. Defaults to idle, so a
+   * HUD built before anything was seeded renders no card.
+   */
+  readonly seed?: SeedView;
+  /** The tester's explicit approval of a previewed plan. The only path to a write. */
+  readonly onSeedApprove?: () => void;
+  /** Dismiss the card without approving. The held plan lapses server-side. */
+  readonly onSeedDismiss?: () => void;
+  /** Undo everything this session seeded, in reverse dependency order. */
+  readonly onSeedRevert?: () => void;
+  /**
+   * The runtime state engine's fingerprint, so the marks over created records re-measure when the
+   * page moves under them. Null before the engine exists.
+   */
+  readonly stateFingerprint?: string | null;
   readonly onAttach: () => void;
   readonly onDetach: () => void;
   /** The page the HUD is mounted on. Origin only — never the path, which is content. */
@@ -131,6 +153,11 @@ export function Hud({
   onConfirm,
   disambiguation = null,
   onChoose,
+  seed = IDLE_SEED_VIEW,
+  onSeedApprove,
+  onSeedDismiss,
+  onSeedRevert,
+  stateFingerprint = null,
   onAttach,
   onDetach,
   origin,
@@ -154,6 +181,14 @@ export function Hud({
         rect={reticleRect}
         state={reticleState}
         {...(speculation.label === null ? {} : { label: speculation.label })}
+      />
+
+      {/* The distinct visual treatment § 6 step 5 asks for: an outline over every record in the
+          application that exists because this session asked for it. Drawn here, in our own shadow
+          root, so the application's DOM is never touched. */}
+      <SeedMarks
+        externalRefs={seed.ledger.map((entry) => entry.externalRef)}
+        stateFingerprint={stateFingerprint}
       />
       <div
         ref={draggable.ref}
@@ -218,6 +253,17 @@ export function Hud({
             </button>
           </span>
         </div>
+
+        {/* ── Seed preview ────────────────────────────────────────────────────────────────
+            Outside the collapse, deliberately. Every other band is detail a tester expands when
+            they want it; this one is a question being asked of them, and a card that hid itself
+            behind a chevron would be a plan expiring unread. It renders nothing when idle. */}
+        <SeedPreview
+          view={seed}
+          onApprove={() => onSeedApprove?.()}
+          onDismiss={() => onSeedDismiss?.()}
+          onRevertSession={() => onSeedRevert?.()}
+        />
 
         {collapsed ? null : (
           <>

@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:command": "vitest run --config vitest.e2e-command.config.ts",
+    "test:e2e:seed": "vitest run --config vitest.e2e-seed.config.ts",
+    "test:seed": "vitest run src/seed src/background/seed-client.test.ts src/content/SeedPreview.test.tsx",
     "test:runtime": "vitest run src/runtime",
     "test:resolver": "vitest run --config vitest.resolver.config.ts",
     "test:tier2": "vitest run src/resolver/tier2.test.ts src/resolver/writeback.test.ts src/resolver/disambiguation.test.ts",

@@ -349,12 +349,11 @@ timeline
         Backend : DB + RLS : Gateway : Indexer
         Extension : HUD + design system : Runtime state engine : T0/T1 resolution : Voice pipeline : Speculation + CDP
         Learning : T2 write-back : Sessions
-        Data engine : Schema observation : Composer
+        Data engine : Schema observation : Composer : Seed preview + approval + ledger
     section 🚧 Partly landed
-        Data engine : Seed routes + ledger + UI materializer
         Product : Console — 2 of 8 screens : Hardening — CI + runbooks
     section 🔜 Planned
-        Data engine : Seed preview card + approval : Materializer chain
+        Data engine : Materializer chain
         Learning : Drift detection + relearn
         Product : Remaining console screens : Helm / Terraform / load test
 ```
@@ -367,20 +366,22 @@ timeline
 | 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |           ✅            |
 | 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
 |  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
-|  15   | Seed plan, approve, revert · UI materializer · ledger  |     🚧 gateway half     |
+|  15   | Seed plan, approve, revert · UI materializer · ledger  |           ✅            |
 | 16–17 | Materializer chain (API, fixture) · Drift              |       ⬜ planned        |
 |  18   | Console — Connect + Indexing screens                   |    🚧 2 of 8 screens    |
 |  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
 
 > **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
 > progress) are built and tested, so an application can be indexed without touching a
-> terminal. The other six screens depend on Phases 15 and 17 and are not started.
+> terminal. The other six screens depend on Phase 17 and the materializer chain, and are not
+> started.
 >
-> **Phase 15** is landing as two PRs, as Phase 14 did. The gateway half is in: the three seed
-> routes, the fallback chain, the ledger, the audited production policy, and the UI materializer
-> that drives a customer's own create form using the fingerprints the crawl stored. What is not in
-> is the extension half — the seed preview card, the approval gate, and the class-S wiring that
-> keeps seeding out of the speculative path.
+> **Phase 15** landed as two PRs, as Phase 14 did. The gateway half is the three seed routes, the
+> fallback chain, the ledger, the audited production policy, and the UI materializer that drives a
+> customer's own create form using the fingerprints the crawl stored. The extension half is the
+> preview card — every field with the reason it holds its value, the adapter that will run, and
+> whether the record can be removed — behind an approval gate that is the only path to a write, and
+> the class-S wiring that keeps seeding off the speculative path entirely.
 >
 > **Phase 19** landed out of order — the CI pipeline and all four operational runbooks are
 > in, while the Helm charts, Terraform, Grafana dashboards and load test are not.

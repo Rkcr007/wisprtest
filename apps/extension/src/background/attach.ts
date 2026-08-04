@@ -1,4 +1,10 @@
-import { AliasWriteback, EscalateRequest, SessionStep, type ExtensionToken } from 'protocol';
+import {
+  AliasWriteback,
+  EscalateRequest,
+  RuntimeState,
+  SessionStep,
+  type ExtensionToken,
+} from 'protocol';
 
 import {
   INITIAL_UPDATE,
@@ -6,6 +12,7 @@ import {
   type AttachFailure,
   type AttachState,
   type HudEscalateResult,
+  type HudSeedResult,
   type HudSnapshot,
   type HudUpdate,
   type SnapshotState,
@@ -19,6 +26,7 @@ import type { SessionClient } from './session-client.js';
 import type { AliasClient } from './alias-client.js';
 import type { EscalateClient } from './escalate-client.js';
 import type { MemoryClient } from './memory-client.js';
+import type { SeedClient } from './seed-client.js';
 import { isUsable, type TokenClient } from './token-client.js';
 import type { TokenStore } from './token-store.js';
 import type { VoiceController } from './voice-controller.js';
@@ -110,6 +118,12 @@ export interface AttachControllerOptions {
   readonly screenshots?: Pick<CdpDispatchService, 'captureScreenshot'>;
   /** Uploads captured artifacts and returns the references to record. Optional alongside it. */
   readonly evidence?: EvidenceUploader;
+  /**
+   * Plans, materializes and reverts seeded records. Optional so the attach lifecycle can be tested
+   * in isolation; without it a seed request is answered `unavailable` and the HUD says the gateway
+   * could not be reached — which is the honest degraded behaviour, and writes nothing.
+   */
+  readonly seeds?: SeedClient;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -185,6 +199,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
     bufferStore,
     screenshots,
     evidence,
+    seeds,
     writebackIntervalMs = DEFAULT_WRITEBACK_INTERVAL_MS,
     stepIntervalMs = DEFAULT_STEP_INTERVAL_MS,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
@@ -427,6 +442,117 @@ export function createAttachController(options: AttachControllerOptions): Attach
     } catch (error: unknown) {
       onError?.('escalate.failed', error);
       reply(false, undefined, 'unavailable');
+    }
+  }
+
+  /**
+   * Run one seed call for a tab and post the outcome back over its port.
+   *
+   * The worker completes every request: the content script sends the utterance, the plan id or the
+   * ledger entry, and this side supplies the session, the application and the token. That split is
+   * the point — the ids that scope a write to a customer's application stay out of a page the
+   * extension does not control, and so does the credential.
+   *
+   * Every failure is a reply, never a throw. A seed request that could not be made must reach the
+   * tester as a card that says why; an unhandled rejection in a service worker reaches nobody.
+   */
+  async function seed(
+    session: Session,
+    requestId: string,
+    call: HudSeedResult['call'],
+    body:
+      | { readonly kind: 'plan'; readonly utterance: string; readonly runtimeState: unknown }
+      | { readonly kind: 'execute'; readonly planId: string; readonly approvedAt: string }
+      | { readonly kind: 'revert'; readonly ledgerEntryId: string | null },
+  ): Promise<void> {
+    const reply = (
+      ok: boolean,
+      payload: unknown,
+      reason: HudSeedResult['reason'],
+      detail: string | null,
+    ): void => {
+      try {
+        session.port.postMessage({
+          kind: 'seed_result',
+          requestId,
+          call,
+          ok,
+          payload,
+          reason,
+          detail,
+        });
+      } catch (error: unknown) {
+        onError?.('seed.post_failed', error);
+      }
+    };
+
+    const token = session.token?.token;
+    const sessionId = session.sessionId;
+    const applicationId = session.token?.applicationId ?? null;
+
+    if (
+      seeds === undefined ||
+      token === undefined ||
+      sessionId === null ||
+      session.state !== 'attached'
+    ) {
+      // No client, no session, or not attached. Seeding needs all three, and saying so beats
+      // failing deep inside a route that would have rejected it anyway.
+      reply(false, undefined, 'unavailable', 'not attached to an indexed application');
+      return;
+    }
+
+    try {
+      if (body.kind === 'plan') {
+        if (applicationId === null) {
+          reply(false, undefined, 'unavailable', 'this origin matches no indexed application');
+          return;
+        }
+        // Validated at the trust boundary, like a write-back and a step: this arrives from a page
+        // the extension does not control, and an unvalidated state would be sent on to the composer
+        // as the scope that decides which entity an unqualified utterance is about.
+        const parsed = RuntimeState.safeParse(body.runtimeState);
+        if (!parsed.success) {
+          onError?.('seed.invalid_runtime_state', parsed.error);
+          reply(false, undefined, 'invalid', 'the runtime state was malformed');
+          return;
+        }
+        const outcome = await seeds.plan({
+          sessionId,
+          applicationId,
+          utterance: body.utterance,
+          runtimeState: parsed.data,
+          bearerToken: token,
+        });
+        if (outcome.ok) reply(true, outcome.value, null, null);
+        else reply(false, undefined, outcome.reason, outcome.detail);
+        return;
+      }
+
+      if (body.kind === 'execute') {
+        const outcome = await seeds.execute({
+          sessionId,
+          planId: body.planId,
+          approvedAt: body.approvedAt,
+          bearerToken: token,
+        });
+        if (outcome.ok) reply(true, outcome.value, null, null);
+        else reply(false, undefined, outcome.reason, outcome.detail);
+        return;
+      }
+
+      const outcome = await seeds.revert({
+        scope:
+          body.ledgerEntryId === null
+            ? { kind: 'session', sessionId }
+            : { kind: 'entry', ledgerEntryId: body.ledgerEntryId },
+        bearerToken: token,
+      });
+      if (outcome.ok) reply(true, outcome.value, null, null);
+      else reply(false, undefined, outcome.reason, outcome.detail);
+    } catch (error: unknown) {
+      onError?.('seed.failed', error);
+      reply(false, undefined, 'failed', null);
     }
   }
 
@@ -711,6 +837,28 @@ export function createAttachController(options: AttachControllerOptions): Attach
               region: request.region,
             }).catch((error: unknown) => {
               onError?.('evidence.capture_failed', error);
+            });
+            return;
+          case 'seed_plan':
+            void seed(session, request.requestId, 'plan', {
+              kind: 'plan',
+              utterance: request.utterance,
+              runtimeState: request.runtimeState,
+            });
+            return;
+          case 'seed_execute':
+            void seed(session, request.requestId, 'execute', {
+              kind: 'execute',
+              planId: request.planId,
+              approvedAt: request.approvedAt,
+            });
+            return;
+          case 'seed_revert':
+            void seed(session, request.requestId, 'revert', {
+              kind: 'revert',
+              // The session scope names no entry: the session's own id is the worker's, and a
+              // content script naming one would be naming a session it has no handle on.
+              ledgerEntryId: request.scope === 'session' ? null : request.ledgerEntryId,
             });
             return;
         }

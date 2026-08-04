@@ -142,6 +142,13 @@ jobs:
       - name: extension — T2 alias write-back loop
         run: pnpm --filter extension test:writeback-loop
 
+      # Action class S, end to end: utterance → plan → preview → approve → the record exists in a
+      # real application → revert → it is gone. Two of its assertions are about what did *not*
+      # happen — an unapproved plan writes nothing, and an ordinary command never enters the flow —
+      # which is CLAUDE.md § "Reversibility taxonomy" holding at runtime rather than only in types.
+      - name: extension — the seeding loop, approved and reverted
+        run: pnpm --filter extension test:e2e:seed
+
   # Report-only, and deliberately excluded from the `ci` gate below.
   #
   # The budgets in CLAUDE.md § "Performance budgets" describe what a tester experiences in their

@@ -286,6 +286,52 @@ function fromGatewayError(error: GatewayError, traceId: string): WisprError {
         applicationId,
       };
     }
+    case 'seeding_forbidden':
+      // Environment policy refused the write. Not retryable and not a permission problem the
+      // caller can fix by trying harder: an application has to be auditably opted in, by a human,
+      // in the console. The environment travels with it so the HUD can say *which* one.
+      return {
+        code: 'seeding_forbidden',
+        message: error.message,
+        retryable: false,
+        applicationId: readUuid(error.details.applicationId) ?? ZERO_UUID,
+        environment: readText(error.details.environment) || 'unknown',
+      };
+    case 'schema_confidence_too_low':
+      // The engine declining to guess. § 7: "refuse with the specific missing field; offer to
+      // index the create form." The named fields are the whole value of the refusal — without
+      // them a tester has been told no and given nothing to do about it.
+      return {
+        code: 'schema_confidence_too_low',
+        message: error.message,
+        retryable: false,
+        entity: readText(error.details.entity) || 'unknown',
+        confidence: readConfidence(error.details.confidence),
+        threshold: readConfidence(error.details.threshold),
+        missingFields: readStrings(error.details.missingFields),
+      };
+    case 'materializer_unavailable':
+      // Nothing in this application knows how to create the record. 501 rather than 500: the
+      // request was understood and is simply not implementable against this app's learned
+      // knowledge, and re-indexing — not retrying — is what changes the answer.
+      return {
+        code: 'materializer_unavailable',
+        message: error.message,
+        retryable: false,
+        entity: readText(error.details.entity) || 'unknown',
+        triedAdapters: readAdapters(error.details.triedAdapters),
+      };
+    case 'materialization_failed':
+      // Every rung of the chain failed. Retryable, because the usual causes are transient — a
+      // worker that was not listening, a form that was slow — and the per-attempt reasons in the
+      // result are what say whether retrying is worth anything.
+      return {
+        code: 'materialization_failed',
+        message: error.message,
+        retryable: true,
+        planId: readUuid(error.details.planId) ?? ZERO_UUID,
+        adapter: readAdapter(error.details.adapter),
+      };
     default:
       // A protocol code this phase can name but has no richer construction for yet. Reported as
       // `internal` rather than guessed at: a half-populated variant would fail the contract's
@@ -323,6 +369,33 @@ function readText(value: unknown): string {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ADAPTERS = ['api', 'ui', 'fixture'] as const;
+type Adapter = (typeof ADAPTERS)[number];
+
+/** An adapter kind off an error's details, or `ui` — the one adapter always present. */
+function readAdapter(value: unknown): Adapter {
+  return ADAPTERS.includes(value as Adapter) ? (value as Adapter) : 'ui';
+}
+
+function readAdapters(value: unknown): Adapter[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Adapter => ADAPTERS.includes(entry as Adapter))
+    : [];
+}
+
+/** Plain strings off an error's details — field names, never values. */
+function readStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+/** A score clamped into [0, 1], because the contract will not accept anything else. */
+function readConfidence(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
 
 function readUuid(value: unknown): string | null {
   return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;

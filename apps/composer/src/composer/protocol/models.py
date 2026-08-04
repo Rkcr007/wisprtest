@@ -695,6 +695,41 @@ class SecretRef(BaseModel):
     ]
 
 
+class Outcome2(StrEnum):
+    REVERTED = "reverted"
+    FAILED = "failed"
+    NOT_REVERTIBLE = "not_revertible"
+    ALREADY_REVERTED = "already_reverted"
+
+
+class Kind3(StrEnum):
+    API = "api"
+    UI = "ui"
+    FIXTURE = "fixture"
+    NONE = "none"
+
+
+class SeedRevertPlan(BaseModel):
+    """
+    Whether a record will be removable after it is created, and by what.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    revertible: bool
+    kind: Kind3
+    detail: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
 class SessionCloseRequest(BaseModel):
     """
     Close a session. Terminal: no further steps are accepted afterwards.
@@ -802,6 +837,45 @@ class Tier(StrEnum):
     T0 = "T0"
     T1 = "T1"
     T2 = "T2"
+
+
+class UiSeedFieldValue(BaseModel):
+    """
+    One form control to fill, addressed by its indexed element key.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    field: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    control_element_key: Annotated[
+        str,
+        Field(
+            alias="controlElementKey",
+            description="Stable element identifier in the form screen.component.element.",
+            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
+            title="ElementKey",
+        ),
+    ]
+    value: Annotated[Any, Field(description="Arbitrary JSON value; not modelled further.")]
+
+
+class Operation(StrEnum):
+    CREATE = "create"
+    REVERT = "revert"
+
+
+class Outcome3(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 class ValidationIssue(BaseModel):
@@ -4017,6 +4091,29 @@ class ScreenNode(BaseModel):
     ]
 
 
+class SeedExecuteRequest(BaseModel):
+    """
+    Execute a previously previewed plan. Requires explicit tester approval.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
+    approved_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="approvedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+
+
 class SeedLedgerEntry(BaseModel):
     """
     Ledger record of one seeded entity, with its provenance and inverse operation.
@@ -4044,7 +4141,7 @@ class SeedLedgerEntry(BaseModel):
         ),
     ]
     entity_schema_id: Annotated[
-        UUID, Field(alias="entitySchemaId", description="UUID identifier.", title="Uuid")
+        UUID | None, Field(alias="entitySchemaId", description="UUID identifier.", title="Uuid")
     ]
     entity: Annotated[
         str,
@@ -4087,6 +4184,172 @@ class SeedLedgerEntry(BaseModel):
             alias="revertedAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
+        ),
+    ]
+
+
+class SeedNodePreview(BaseModel):
+    """
+    One record the tester is being asked to approve, and how it will be written.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    node_id: Annotated[
+        str,
+        Field(
+            alias="nodeId",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    mode: Mode
+    adapter: Annotated[AdapterUsed | None, Field(description="Which adapter creates the record.")]
+    adapter_reason: Annotated[
+        str,
+        Field(
+            alias="adapterReason",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    revert: SeedRevertPlan
+
+
+class SeedPlanRequest(BaseModel):
+    """
+    Compose a plan for one utterance. Nothing is created.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    utterance: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    runtime_state: Annotated[RuntimeState, Field(alias="runtimeState")]
+    existing_records: Annotated[list[ExistingRecord], Field(alias="existingRecords")]
+    seed: Annotated[int | None, Field(ge=-9007199254740991, le=9007199254740991)]
+
+
+class SeedRevertOutcome(BaseModel):
+    """
+    What became of one ledger entry when a revert ran.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    ledger_entry_id: Annotated[
+        UUID, Field(alias="ledgerEntryId", description="UUID identifier.", title="Uuid")
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    outcome: Outcome2
+    reason: Annotated[
+        str | None,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class SeedRevertEntry(BaseModel):
+    """
+    Revert one seeded record.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    scope: Literal["entry"]
+    ledger_entry_id: Annotated[
+        UUID, Field(alias="ledgerEntryId", description="UUID identifier.", title="Uuid")
+    ]
+
+
+class SeedRevertSession(BaseModel):
+    """
+    Revert every outstanding record a session seeded, newest first.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    scope: Literal["session"]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+
+
+class SeedRevertRequest(RootModel[SeedRevertEntry | SeedRevertSession]):
+    root: Annotated[
+        SeedRevertEntry | SeedRevertSession,
+        Field(description="Revert one seeded record, or everything a session seeded."),
+    ]
+
+
+class SeedRevertResponse(BaseModel):
+    """
+    Outcome of a revert, one entry at a time, in reverse dependency order.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    outcomes: list[SeedRevertOutcome]
+    duration_ms: Annotated[
+        float,
+        Field(
+            alias="durationMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
         ),
     ]
 
@@ -4260,6 +4523,199 @@ class StructuralDiff(BaseModel):
     moved: list[ElementMove]
     renamed: list[ElementRename]
     schema_changes: Annotated[list[SchemaChange], Field(alias="schemaChanges")]
+
+
+class UiSeedCreateJob(BaseModel):
+    """
+    Fill and submit the real create form, then verify the record is reachable.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    operation: Literal["create"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
+    node_id: Annotated[
+        str,
+        Field(
+            alias="nodeId",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    form: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    route: Annotated[
+        str,
+        Field(
+            description="Route with dynamic segments generalised, e.g. /orders/:id.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePattern",
+        ),
+    ]
+    values: Annotated[list[UiSeedFieldValue], Field(min_length=1)]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+
+
+class UiSeedRevertJob(BaseModel):
+    """
+    Drive the indexed delete flow for one seeded record.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    operation: Literal["revert"]
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    flow: Annotated[
+        str,
+        Field(
+            description="Stable element identifier in the form screen.component.element.",
+            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
+            title="ElementKey",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    detail_path: Annotated[
+        str,
+        Field(
+            alias="detailPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+
+
+class UiSeedJob(RootModel[UiSeedCreateJob | UiSeedRevertJob]):
+    root: Annotated[
+        UiSeedCreateJob | UiSeedRevertJob,
+        Field(
+            description="A UI adapter job: create a record through the real form, or delete one."
+        ),
+    ]
+
+
+class UiSeedResult(BaseModel):
+    """
+    The outcome of one UI adapter job, with the identifier it read back.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    operation: Operation
+    outcome: Outcome3
+    external_ref: Annotated[
+        str | None,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    detail_path: Annotated[
+        str | None,
+        Field(
+            alias="detailPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    failure_reason: Annotated[
+        str | None,
+        Field(
+            alias="failureReason",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    duration_ms: Annotated[
+        float,
+        Field(
+            alias="durationMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
 
 
 class ActionResult(BaseModel):
@@ -4790,6 +5246,19 @@ class NavEdge(BaseModel):
     ]
 
 
+class SeedExecuteResponse(BaseModel):
+    """
+    The outcome of materializing an approved plan, with the ledger it wrote.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    result: MaterializationResult
+    ledger: list[SeedLedgerEntry]
+
+
 class CompositionPlanned(BaseModel):
     """
     A dependency-ordered plan, awaiting human approval. Nothing was created.
@@ -4911,6 +5380,30 @@ class MemorySnapshot(BaseModel):
         AwareDatetime,
         Field(
             alias="generatedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+
+
+class SeedPlanResponse(BaseModel):
+    """
+    A composed plan awaiting approval, or the conflict or refusal that replaced it.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    composition: CompositionResponse
+    plan_id: Annotated[
+        UUID | None, Field(alias="planId", description="UUID identifier.", title="Uuid")
+    ]
+    preview: list[SeedNodePreview]
+    expires_at: Annotated[
+        AwareDatetime | None,
+        Field(
+            alias="expiresAt",
             description="ISO 8601 timestamp with an explicit UTC offset.",
             title="IsoDateTime",
         ),

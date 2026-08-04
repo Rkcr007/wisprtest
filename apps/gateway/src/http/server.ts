@@ -14,7 +14,10 @@ import type { GatewayMetrics } from '../telemetry/metrics.js';
 import { registerCrawlRoutes } from '../routes/crawl.js';
 import { registerMemoryRoutes } from '../routes/memory.js';
 import { registerResolveRoutes } from '../routes/resolve.js';
+import { registerSeedRoutes } from '../routes/seed.js';
 import { registerSessionRoutes } from '../routes/sessions.js';
+import { createComposerClient, type ComposerClient } from '../composer/client.js';
+import { createSeedJobDispatcher, createSeedPlanStore } from '../redis/seed-queue.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
 import { registerRateLimit } from './rate-limit.js';
@@ -50,6 +53,11 @@ export interface ServerOptions {
    * keys needs no bucket.
    */
   readonly evidence?: EvidenceStore;
+  /**
+   * The composer. Built from config when absent; the seed suite injects one so a preview can be
+   * asserted without a FastAPI process, and so a conflict or a refusal is reproducible.
+   */
+  readonly composer?: ComposerClient;
 }
 
 export async function buildServer(options: ServerOptions): Promise<FastifyInstance> {
@@ -104,6 +112,20 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     modelProvider:
       options.modelProvider ??
       createAnthropicProvider({ apiKey: config.MODEL_API_KEY, baseUrl: config.MODEL_BASE_URL }),
+  });
+
+  registerSeedRoutes(app, {
+    config,
+    database: options.database,
+    metrics,
+    composer:
+      options.composer ??
+      createComposerClient({
+        baseUrl: config.COMPOSER_URL,
+        timeoutMs: config.COMPOSER_TIMEOUT_MS,
+      }),
+    plans: createSeedPlanStore(options.redis),
+    dispatcher: createSeedJobDispatcher(options.redis, config.SEED_JOB_STREAM),
   });
 
   app.addHook('onResponse', (request, reply, done) => {

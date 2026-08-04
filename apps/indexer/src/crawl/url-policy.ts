@@ -59,7 +59,15 @@ export interface UrlPolicy {
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
-export function createUrlPolicy(bounds: CrawlBounds, lookup: AddressLookup): UrlPolicy {
+/**
+ * What the policy actually reads: the two allowlists, and nothing about crawl shape.
+ *
+ * Narrowed for the same reason as `SessionBounds` — the UI materializer navigates to the
+ * application under test and is subject to the same SSRF rules, without being a crawl.
+ */
+export type PolicyBounds = Pick<CrawlBounds, 'allowedOrigins' | 'routeAllowlist'>;
+
+export function createUrlPolicy(bounds: PolicyBounds, lookup: AddressLookup): UrlPolicy {
   const origins = new Set(bounds.allowedOrigins.map(normalizeOrigin));
   // Hostnames the tenant named literally, and which therefore may resolve to a private address.
   const literalHosts = new Set(

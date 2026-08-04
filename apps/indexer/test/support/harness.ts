@@ -49,6 +49,9 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): IndexerC
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     DB_POOL_MAX: '4',
     INDEXER_JOB_STREAM: `indexer:test:jobs:${randomUUID()}`,
+    INDEXER_SEED_STREAM: `indexer:test:seed:${randomUUID()}`,
+    INDEXER_SEED_CONSUMER_GROUP: 'seeders',
+    INDEXER_SEED_RESULT_TTL_SECONDS: '120',
     INDEXER_CONSUMER_GROUP: 'indexers',
     INDEXER_BLOCK_MS: '250',
     INDEXER_CLAIM_MIN_IDLE_MS: '1000',
@@ -235,6 +238,8 @@ export interface LearnedEntity {
   readonly entityName: string;
   readonly observedCount: number;
   readonly confidence: number;
+  /** The indexed control that removes one record, or null when none was found. */
+  readonly deleteFlowElementKey: string | null;
   readonly fields: readonly LearnedField[];
   readonly materializers: readonly LearnedMaterializer[];
 }
@@ -275,8 +280,9 @@ export async function readSchemas(
     entity_name: string;
     observed_count: number;
     confidence: string;
+    delete_flow_element_key: string | null;
   }>(
-    `SELECT id, entity_name, observed_count, confidence
+    `SELECT id, entity_name, observed_count, confidence, delete_flow_element_key
        FROM entity_schemas WHERE memory_version_id = $1 ORDER BY entity_name`,
     [memoryVersionId],
   );
@@ -318,6 +324,7 @@ export async function readSchemas(
     entityName: entity.entity_name,
     observedCount: entity.observed_count,
     confidence: Number(entity.confidence),
+    deleteFlowElementKey: entity.delete_flow_element_key,
     fields: fields.rows
       .filter((field) => field.entity_schema_id === entity.id)
       .map((field) => ({

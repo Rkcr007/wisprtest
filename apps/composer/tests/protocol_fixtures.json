@@ -2654,7 +2654,146 @@
       "key": "/var/run/secrets/wispr/northwind.json"
     }
   ],
+  "SeedExecuteRequest": [
+    {
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "approvedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "SeedExecuteResponse": [
+    {
+      "result": {
+        "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "outcome": "created",
+        "adapterUsed": "ui",
+        "attempts": [
+          {
+            "adapter": "ui",
+            "outcome": "succeeded",
+            "reason": null,
+            "durationMs": 4200
+          }
+        ],
+        "records": [
+          {
+            "nodeId": "order-1",
+            "entity": "Order",
+            "externalRef": "ORD-4903",
+            "payload": {
+              "id": 4903,
+              "status": "Pending approval"
+            },
+            "inverseOp": {
+              "kind": "api",
+              "method": "DELETE",
+              "path": "/api/v2/orders/4903"
+            }
+          }
+        ],
+        "verifiedAt": "2026-07-25T09:30:00.000Z",
+        "failureReason": null,
+        "durationMs": 4380
+      },
+      "ledger": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "planId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+          "nodeId": "order-1",
+          "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "entity": "Order",
+          "externalRef": "ORD-4903",
+          "adapterUsed": "ui",
+          "payload": {
+            "id": 4903
+          },
+          "provenance": [
+            {
+              "field": "status",
+              "value": "Pending approval",
+              "source": "requested",
+              "explanation": "matched the enum value spoken as \"pending\"",
+              "confidence": 0.96
+            },
+            {
+              "field": "amount",
+              "value": 46200,
+              "source": "derived",
+              "explanation": "sum of the three line item amounts",
+              "confidence": 1
+            }
+          ],
+          "inverseOp": {
+            "kind": "api",
+            "method": "DELETE",
+            "path": "/api/v2/orders/4903"
+          },
+          "createdAt": "2026-07-25T09:30:00.000Z",
+          "revertedAt": null
+        }
+      ]
+    },
+    {
+      "result": {
+        "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "outcome": "failed",
+        "adapterUsed": null,
+        "attempts": [
+          {
+            "adapter": "ui",
+            "outcome": "failed",
+            "reason": "the create form rejected the amount",
+            "durationMs": 5100
+          }
+        ],
+        "records": [],
+        "verifiedAt": null,
+        "failureReason": "every adapter in the chain failed",
+        "durationMs": 5100
+      },
+      "ledger": []
+    }
+  ],
   "SeedLedgerEntry": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "planId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "nodeId": "order-1",
+      "entitySchemaId": null,
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "adapterUsed": "ui",
+      "payload": {
+        "id": 4903
+      },
+      "provenance": [
+        {
+          "field": "status",
+          "value": "Pending approval",
+          "source": "requested",
+          "explanation": "matched the enum value spoken as \"pending\"",
+          "confidence": 0.96
+        },
+        {
+          "field": "amount",
+          "value": 46200,
+          "source": "derived",
+          "explanation": "sum of the three line item amounts",
+          "confidence": 1
+        }
+      ],
+      "inverseOp": {
+        "kind": "api",
+        "method": "DELETE",
+        "path": "/api/v2/orders/4903"
+      },
+      "createdAt": "2026-07-25T09:30:00.000Z",
+      "revertedAt": "2026-07-25T09:30:00.000Z"
+    },
     {
       "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
       "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
@@ -2691,6 +2830,345 @@
       },
       "createdAt": "2026-07-25T09:30:00.000Z",
       "revertedAt": null
+    }
+  ],
+  "SeedNodePreview": [
+    {
+      "nodeId": "order-1",
+      "entity": "Order",
+      "mode": "create",
+      "adapter": "ui",
+      "adapterReason": "the API materializer has not been verified in 9 days, so the form will run",
+      "revert": {
+        "revertible": true,
+        "kind": "ui",
+        "detail": "drives the indexed delete flow orders-detail.order.delete on /orders/:id"
+      }
+    },
+    {
+      "nodeId": "account-1",
+      "entity": "Account",
+      "mode": "reuse_existing",
+      "adapter": null,
+      "adapterReason": "Acme Industrial already exists; nothing will be created for it",
+      "revert": {
+        "revertible": false,
+        "kind": "none",
+        "detail": "nothing is created for a reused record, so there is nothing to undo"
+      }
+    }
+  ],
+  "SeedPlanRequest": [
+    {
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "utterance": "I need a pending order for Acme Industrial with three line items",
+      "runtimeState": {
+        "route": "/orders",
+        "routePattern": "/orders",
+        "modalStack": [],
+        "focusedLandmark": "region:orders",
+        "visibleElementKeys": [
+          "orders.orders.view"
+        ],
+        "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "capturedAt": "2026-07-25T09:30:00.000Z"
+      },
+      "existingRecords": [
+        {
+          "entity": "Account",
+          "externalRef": "ACC-1001",
+          "label": "Acme Industrial",
+          "fields": {
+            "id": "ACC-1001",
+            "name": "Acme Industrial",
+            "tier": "enterprise"
+          }
+        }
+      ],
+      "seed": 1841
+    },
+    {
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "utterance": "I need a pending order for Acme Industrial with three line items",
+      "runtimeState": {
+        "route": "/orders",
+        "routePattern": "/orders",
+        "modalStack": [],
+        "focusedLandmark": "region:orders",
+        "visibleElementKeys": [
+          "orders.orders.view"
+        ],
+        "structuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "capturedAt": "2026-07-25T09:30:00.000Z"
+      },
+      "existingRecords": [],
+      "seed": null
+    }
+  ],
+  "SeedPlanResponse": [
+    {
+      "composition": {
+        "constraintSet": {
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "equals",
+              "field": "status",
+              "value": "Pending approval"
+            },
+            {
+              "kind": "reference",
+              "field": "account",
+              "phrase": "Acme Industrial"
+            },
+            {
+              "kind": "cardinality",
+              "field": "line_items",
+              "count": 3
+            }
+          ],
+          "confidence": 0.96,
+          "unparsedFragments": []
+        },
+        "outcome": {
+          "kind": "planned",
+          "plan": {
+            "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+            "sessionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+            "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+            "rootNodeId": "order-1",
+            "nodes": [
+              {
+                "nodeId": "order-1",
+                "entity": "Order",
+                "entitySchemaId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+                "mode": "create",
+                "existingExternalRef": null,
+                "fields": {
+                  "status": "Pending approval",
+                  "amount": 46200,
+                  "account": "ACC-118"
+                },
+                "provenance": [
+                  {
+                    "field": "status",
+                    "value": "Pending approval",
+                    "source": "requested",
+                    "explanation": "matched the enum value spoken as \"pending\"",
+                    "confidence": 0.96
+                  },
+                  {
+                    "field": "amount",
+                    "value": 46200,
+                    "source": "derived",
+                    "explanation": "sum of the three line item amounts",
+                    "confidence": 1
+                  }
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "fromNodeId": "order-1",
+                "toNodeId": "account-1",
+                "viaField": "account"
+              }
+            ],
+            "materializationOrder": [
+              "account-1",
+              "order-1"
+            ],
+            "constraintSet": {
+              "entity": "Order",
+              "constraints": [
+                {
+                  "kind": "equals",
+                  "field": "status",
+                  "value": "Pending approval"
+                },
+                {
+                  "kind": "reference",
+                  "field": "account",
+                  "phrase": "Acme Industrial"
+                },
+                {
+                  "kind": "cardinality",
+                  "field": "line_items",
+                  "count": 3
+                }
+              ],
+              "confidence": 0.96,
+              "unparsedFragments": []
+            },
+            "createdAt": "2026-07-25T09:30:00.000Z"
+          },
+          "aliasWriteBacks": []
+        },
+        "parseTier": "T0",
+        "durationMs": 412
+      },
+      "planId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "preview": [
+        {
+          "nodeId": "order-1",
+          "entity": "Order",
+          "mode": "create",
+          "adapter": "ui",
+          "adapterReason": "the API materializer has not been verified in 9 days, so the form will run",
+          "revert": {
+            "revertible": true,
+            "kind": "ui",
+            "detail": "drives the indexed delete flow orders-detail.order.delete on /orders/:id"
+          }
+        }
+      ],
+      "expiresAt": "2026-07-25T09:30:00.000Z"
+    },
+    {
+      "composition": {
+        "constraintSet": {
+          "entity": "Order",
+          "constraints": [
+            {
+              "kind": "equals",
+              "field": "status",
+              "value": "Pending approval"
+            },
+            {
+              "kind": "reference",
+              "field": "account",
+              "phrase": "Acme Industrial"
+            },
+            {
+              "kind": "cardinality",
+              "field": "line_items",
+              "count": 3
+            }
+          ],
+          "confidence": 0.96,
+          "unparsedFragments": []
+        },
+        "outcome": {
+          "kind": "conflict",
+          "constraintSet": {
+            "entity": "Order",
+            "constraints": [
+              {
+                "kind": "equals",
+                "field": "status",
+                "value": "Pending approval"
+              },
+              {
+                "kind": "reference",
+                "field": "account",
+                "phrase": "Acme Industrial"
+              },
+              {
+                "kind": "cardinality",
+                "field": "line_items",
+                "count": 3
+              }
+            ],
+            "confidence": 0.96,
+            "unparsedFragments": []
+          },
+          "conflict": {
+            "left": {
+              "kind": "constraint",
+              "constraint": {
+                "kind": "comparison",
+                "field": "amount",
+                "op": "gt",
+                "value": 50000
+              }
+            },
+            "right": {
+              "kind": "constraint",
+              "constraint": {
+                "kind": "comparison",
+                "field": "amount",
+                "op": "lt",
+                "value": 1000
+              }
+            },
+            "field": "amount",
+            "explanation": "amount cannot be both over 50,000 and under 1,000"
+          }
+        },
+        "parseTier": "T0",
+        "durationMs": 412
+      },
+      "planId": null,
+      "preview": [],
+      "expiresAt": null
+    }
+  ],
+  "SeedRevertOutcome": [
+    {
+      "ledgerEntryId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "outcome": "failed",
+      "reason": "the delete flow returned the tester to /orders with the record still listed"
+    },
+    {
+      "ledgerEntryId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "outcome": "not_revertible",
+      "reason": "no delete flow was indexed for Order; remove ORD-4903 by hand"
+    },
+    {
+      "ledgerEntryId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "outcome": "reverted",
+      "reason": null
+    }
+  ],
+  "SeedRevertPlan": [
+    {
+      "revertible": true,
+      "kind": "ui",
+      "detail": "drives the indexed delete flow orders-detail.order.delete on /orders/:id"
+    },
+    {
+      "revertible": false,
+      "kind": "none",
+      "detail": "no delete flow was indexed for Order — this record will remain"
+    }
+  ],
+  "SeedRevertRequest": [
+    {
+      "scope": "entry",
+      "ledgerEntryId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    },
+    {
+      "scope": "session",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80"
+    }
+  ],
+  "SeedRevertResponse": [
+    {
+      "outcomes": [
+        {
+          "ledgerEntryId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "entity": "Order",
+          "externalRef": "ORD-4903",
+          "outcome": "failed",
+          "reason": "the delete flow returned the tester to /orders with the record still listed"
+        }
+      ],
+      "durationMs": 3200
+    },
+    {
+      "outcomes": [],
+      "durationMs": 4
     }
   ],
   "Session": [
@@ -3185,6 +3663,82 @@
     "T0",
     "T1",
     "T2"
+  ],
+  "UiSeedFieldValue": [
+    {
+      "field": "status",
+      "controlElementKey": "orders-new.create-order.status",
+      "value": "Pending approval"
+    },
+    {
+      "field": "status",
+      "controlElementKey": "orders-new.create-order.status",
+      "value": null
+    }
+  ],
+  "UiSeedJob": [
+    {
+      "operation": "create",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "nodeId": "order-1",
+      "entity": "Order",
+      "form": "orders-new.create-order",
+      "route": "/orders/new",
+      "values": [
+        {
+          "field": "status",
+          "controlElementKey": "orders-new.create-order.status",
+          "value": "Pending approval"
+        }
+      ],
+      "deadlineMs": 30000
+    },
+    {
+      "operation": "revert",
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "entity": "Order",
+      "flow": "orders.order.delete",
+      "externalRef": "ORD-4903",
+      "detailPath": "/orders/4903",
+      "deadlineMs": 30000
+    }
+  ],
+  "UiSeedResult": [
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "create",
+      "outcome": "succeeded",
+      "externalRef": "ORD-4903",
+      "detailPath": "/orders/4903",
+      "failureReason": null,
+      "durationMs": 4200
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "revert",
+      "outcome": "succeeded",
+      "externalRef": null,
+      "detailPath": null,
+      "failureReason": null,
+      "durationMs": 2800
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "create",
+      "outcome": "failed",
+      "externalRef": null,
+      "detailPath": null,
+      "failureReason": "the form rejected the amount: \"must be at least 1\"",
+      "durationMs": 5100
+    }
   ],
   "Uuid": [
     "3f2504e0-4f89-41d3-9a0c-0305e82c3301",

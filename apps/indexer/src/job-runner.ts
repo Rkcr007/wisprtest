@@ -39,6 +39,7 @@ import {
   SsrfError,
 } from './errors.js';
 import { consolidate, type EntitySchemaDraft } from './observers/consolidate.js';
+import { findDeleteFlows, type DeleteFlowCandidate } from './observers/delete-flow.js';
 import { observeForms } from './observers/form-observer.js';
 import { createNetworkObserver } from './observers/network-observer.js';
 import { persistSchemas } from './observers/repository.js';
@@ -172,6 +173,10 @@ export async function runJob(
     const session = await openSession({ browser: deps.browser, bounds: job.bounds, auth });
 
     const observedForms: ObservedForm[] = [];
+    // Delete controls, gathered as screens are indexed. They come from the crawl rather than from
+    // the form or network channels, because a delete flow is an element on a page — see
+    // `observers/delete-flow.ts` for why it has to be found now and not at revert time.
+    const deleteCandidates: DeleteFlowCandidate[] = [];
     const network = createNetworkObserver({
       allowedOrigins: job.bounds.allowedOrigins,
       onSkipped: (reason: string) => {
@@ -218,6 +223,7 @@ export async function runJob(
           progress,
           checkpoints,
           observedForms,
+          deleteCandidates,
         }),
       });
     } finally {
@@ -233,6 +239,7 @@ export async function runJob(
       deps,
       forms: observedForms,
       exchanges: network.exchanges(),
+      deleteCandidates,
     });
 
     const counts = await deps.database.withTenant(job.tenantId, async (db) => {
@@ -348,6 +355,7 @@ interface ObserveOptions {
   readonly deps: JobRunnerDependencies;
   readonly forms: readonly ObservedForm[];
   readonly exchanges: readonly ObservedExchange[];
+  readonly deleteCandidates: readonly DeleteFlowCandidate[];
 }
 
 /**
@@ -365,6 +373,7 @@ async function observeSchemas(options: ObserveOptions): Promise<readonly EntityS
   const { schemas, apiCandidates } = consolidate({
     forms: options.forms,
     exchanges: options.exchanges,
+    deleteFlows: findDeleteFlows(options.deleteCandidates),
   });
 
   let counts;
@@ -428,6 +437,7 @@ interface HandlerOptions {
   readonly checkpoints: ReturnType<typeof createCheckpointStore>;
   /** Filled in as routes are indexed; consolidated once the crawl has finished. */
   readonly observedForms: ObservedForm[];
+  readonly deleteCandidates: DeleteFlowCandidate[];
 }
 
 /**
@@ -487,6 +497,16 @@ function createHandlers(options: HandlerOptions): CrawlHandlers {
         for (const [key, elementId] of ids) elementIdsByKey.set(`${id}:${key}`, elementId);
         return id;
       });
+
+      for (const element of screen.elements) {
+        options.deleteCandidates.push({
+          elementKey: element.elementKey,
+          routePattern: screen.routePattern,
+          // The redacted name, which is the only form memory holds (CLAUDE.md § "PII rule").
+          accessibleNameRedacted: element.fingerprint.accessibleNameRedacted,
+          role: element.fingerprint.role,
+        });
+      }
 
       const durationMs = performance.now() - routeStartedAt;
       deps.metrics.routesTotal.add(1, { outcome: 'indexed' });

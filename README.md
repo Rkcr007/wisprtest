@@ -324,6 +324,8 @@ pnpm --filter extension test:e2e:command         # real trusted CDP dispatch in 
 pnpm --filter extension bench:speech-to-reticle  # p95 < 400 ms gate
 pnpm --filter extension bench:scope              # scope recompute < 8 ms gate
 pnpm --filter console test                       # console: crawl bounds, SSE, auth, routes
+pnpm --filter gateway test:seed                  # seed plan, approve, revert, policy, ledger
+pnpm --filter indexer test:seed                  # UI materializer against the fixture app
 ```
 
 The composer is Python and runs under `uv`, with its 90% coverage gate wired into pytest:
@@ -337,7 +339,7 @@ cd apps/composer && uv run mypy --strict src && uv run pytest -q
 ## 📈 Build progress
 
 Built in the phased order defined in [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md).
-**Phases 0–14 shipped; 18 and 19 partially landed.**
+**Phases 0–14 shipped; 15, 18 and 19 partially landed.**
 
 ```mermaid
 timeline
@@ -349,9 +351,10 @@ timeline
         Learning : T2 write-back : Sessions
         Data engine : Schema observation : Composer
     section 🚧 Partly landed
+        Data engine : Seed routes + ledger + UI materializer
         Product : Console — 2 of 8 screens : Hardening — CI + runbooks
     section 🔜 Planned
-        Data engine : Seed preview + ledger : Materializer chain
+        Data engine : Seed preview card + approval : Materializer chain
         Learning : Drift detection + relearn
         Product : Remaining console screens : Helm / Terraform / load test
 ```
@@ -364,13 +367,20 @@ timeline
 | 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |           ✅            |
 | 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
 |  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
-| 15–17 | Seed preview + ledger · Materializers · Drift          |       ⬜ planned        |
-|  18   | Console — Connect + Indexing screens                   |  🚧 2 of 8 screens      |
+|  15   | Seed plan, approve, revert · UI materializer · ledger  |     🚧 gateway half     |
+| 16–17 | Materializer chain (API, fixture) · Drift              |       ⬜ planned        |
+|  18   | Console — Connect + Indexing screens                   |    🚧 2 of 8 screens    |
 |  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
 
 > **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
 > progress) are built and tested, so an application can be indexed without touching a
 > terminal. The other six screens depend on Phases 15 and 17 and are not started.
+>
+> **Phase 15** is landing as two PRs, as Phase 14 did. The gateway half is in: the three seed
+> routes, the fallback chain, the ledger, the audited production policy, and the UI materializer
+> that drives a customer's own create form using the fingerprints the crawl stored. What is not in
+> is the extension half — the seed preview card, the approval gate, and the class-S wiring that
+> keeps seeding out of the speculative path.
 >
 > **Phase 19** landed out of order — the CI pipeline and all four operational runbooks are
 > in, while the Helm charts, Terraform, Grafana dashboards and load test are not.

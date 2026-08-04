@@ -97,11 +97,21 @@ export interface EntitySchemaDraft {
   readonly confidence: number;
   readonly fields: readonly FieldSpecDraft[];
   readonly materializers: readonly MaterializerDraft[];
+  /**
+   * The indexed control that removes one record of this entity, or null when none was found.
+   *
+   * Not derived from the forms or the exchanges like everything else here — a delete control is
+   * an element on a screen, so it comes from the crawl. Carried on the draft because it belongs
+   * to the entity and this is the shape the entity is written from.
+   */
+  readonly deleteFlowElementKey: string | null;
 }
 
 export interface ConsolidationInput {
   readonly forms: readonly ObservedForm[];
   readonly exchanges: readonly ObservedExchange[];
+  /** Delete flows found across the crawled screens, by entity name. See `delete-flow.ts`. */
+  readonly deleteFlows: ReadonlyMap<string, string>;
 }
 
 export interface ConsolidationResult {
@@ -399,6 +409,7 @@ export function consolidate(input: ConsolidationInput): ConsolidationResult {
       confidence: confidenceOf(fields, records.length, materializers.length),
       fields: fields.map(finalize),
       materializers,
+      deleteFlowElementKey: input.deleteFlows.get(entityName) ?? null,
     });
   }
 

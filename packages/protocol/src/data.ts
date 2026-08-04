@@ -685,7 +685,15 @@ export const SeedLedgerEntry = contract(
       sessionId: Uuid,
       planId: Uuid,
       nodeId: NonEmptyString,
-      entitySchemaId: Uuid,
+      /**
+       * The learned schema this record was composed from, or null once that schema is gone.
+       *
+       * Nullable because the ledger has to outlive a re-index. It records records that exist in
+       * the customer's application right now, and dropping an entry when its memory version is
+       * superseded would strand a row nobody can revert. `entity` is kept alongside for exactly
+       * this case: the name survives even when the schema behind it does not.
+       */
+      entitySchemaId: Uuid.nullable(),
       entity: NonEmptyString,
       externalRef: NonEmptyString,
       adapterUsed: MaterializerKind,

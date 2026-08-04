@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { pino } from 'pino';
 import type { Browser } from 'playwright';
-import { IndexProgressEvent } from 'protocol';
+import { CrawlJob, IndexProgressEvent } from 'protocol';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
@@ -414,7 +414,7 @@ describe('the job stream', () => {
     const fx = await createFixture(app.url);
     scoped = fx;
     const streamName = `indexer:test:jobs:${randomUUID()}`;
-    const stream = createJobStream(redis, {
+    const stream = createJobStream(redis, CrawlJob, {
       stream: streamName,
       group: 'indexers',
       consumer: 'worker-under-test',

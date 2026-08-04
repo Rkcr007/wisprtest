@@ -41,11 +41,22 @@ export interface Alias {
 }
 
 export interface Application {
+  /**
+   * How a background browser authenticates against this application. Holds secret references only — never a credential. Validated against protocol.AuthProfile on read.
+   */
+  authProfile: Generated<Json>;
   baseUrl: string;
   createdAt: Generated<Timestamp>;
   env: string;
   id: Generated<string>;
   name: string;
+  /**
+   * Whether /v1/seed/execute may write to this application. Production requires an explicit, audited opt-in; every other environment is allowed by default.
+   */
+  seedingAllowed: Generated<boolean | null>;
+  seedingEnabledAt: Timestamp | null;
+  seedingEnabledBy: string | null;
+  seedingEnabledReason: string | null;
   tenantId: string;
   updatedAt: Generated<Timestamp>;
 }
@@ -110,6 +121,10 @@ export interface Element {
 export interface EntitySchema {
   confidence: Numeric;
   createdAt: Generated<Timestamp>;
+  /**
+   * Element key of the indexed control that removes one record of this entity, or null when none was found. Null becomes InverseOperation {kind:"none"} and is shown in the seed preview before anything is created.
+   */
+  deleteFlowElementKey: string | null;
   entityName: string;
   id: Generated<string>;
   memoryVersionId: string;

@@ -82,11 +82,17 @@ async function upsertEntitySchema(
       entityName: draft.entityName,
       observedCount: draft.observedCount,
       confidence: draft.confidence,
+      deleteFlowElementKey: draft.deleteFlowElementKey,
     })
     .onConflict((conflict) =>
       conflict.columns(['memoryVersionId', 'entityName']).doUpdateSet((eb) => ({
         observedCount: sql<number>`greatest(${eb.ref('excluded.observedCount')}, ${eb.ref('entitySchemas.observedCount')})`,
         confidence: sql<number>`greatest(${eb.ref('excluded.confidence')}, ${eb.ref('entitySchemas.confidence')})`,
+        // Coalesced rather than overwritten: a resumed crawl that has not yet reached the screen
+        // holding the delete control must not erase what the first attempt found there.
+        deleteFlowElementKey: sql<
+          string | null
+        >`coalesce(${eb.ref('excluded.deleteFlowElementKey')}, ${eb.ref('entitySchemas.deleteFlowElementKey')})`,
       })),
     )
     .returning('id')

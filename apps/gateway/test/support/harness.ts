@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
 
 import { createJwks } from '../../src/auth/jwks.js';
+import type { ComposerClient } from '../../src/composer/client.js';
 import { loadConfig, type GatewayConfig } from '../../src/config.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { buildServer } from '../../src/http/server.js';
@@ -57,6 +58,8 @@ export interface HarnessOptions {
    * assert a timeline resolves its keys without a bucket to clean up between runs.
    */
   readonly evidence?: EvidenceStore;
+  /** The composer. Injected so a preview can be asserted without a FastAPI process. */
+  readonly composer?: ComposerClient;
 }
 
 export async function startHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -101,6 +104,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     jwks: createJwks(config, { cooldownMs: options.jwksCooldownMs ?? 0 }),
     ...(options.modelProvider === undefined ? {} : { modelProvider: options.modelProvider }),
     ...(options.evidence === undefined ? {} : { evidence: options.evidence }),
+    ...(options.composer === undefined ? {} : { composer: options.composer }),
   });
 
   options.routes?.(app);
@@ -136,4 +140,5 @@ export const NEIGHBOUR = {
   tenantId: '99999999-9999-4999-8999-999999999999',
   ownerEmail: 'priya.lead@contoso.example',
   applicationId: '88888888-8888-4888-8888-888888888882',
+  memoryVersionId: '88888888-8888-4888-8888-888888888883',
 } as const;

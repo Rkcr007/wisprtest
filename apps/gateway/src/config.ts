@@ -84,6 +84,25 @@ const gatewayEnvSchema = z.object({
    */
   SEED_JOB_STREAM: z.string().min(1),
 
+  /**
+   * Redis stream `DriftReconcileJob`s are enqueued on. Must match `INDEXER_DRIFT_STREAM`.
+   *
+   * Its own stream for the same reason the seed one has its own: a reconcile opens a browser and
+   * takes tens of seconds, and sharing the crawl stream would put it behind a job that runs for
+   * minutes. Nothing waits on a reconcile, but a review queue that fills up faster than it drains
+   * is still a broken learning loop.
+   */
+  DRIFT_JOB_STREAM: z.string().min(1),
+
+  // ── Drift ──────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Wall-clock ceiling handed to a reconcile job.
+   *
+   * Sized for a navigation, an extraction and a schema observation pass — not for a crawl. The
+   * worker enforces it; this is the number written into the job so the two cannot disagree.
+   */
+  DRIFT_RECONCILE_TIMEOUT_MS: z.coerce.number().int().min(1000),
+
   // ── Seeding ────────────────────────────────────────────────────────────────────────────────
   /** Base URL of the composer. It is stateless, so this is the only thing needed to reach it. */
   COMPOSER_URL: z.url({ protocol: /^https?$/ }),

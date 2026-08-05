@@ -89,12 +89,20 @@ export interface AuditLog {
 export interface DriftReport {
   aliasMigrationRate: Numeric | null;
   approvedBy: string | null;
+  /**
+   * The building memory version a reconcile produced, which approving this report activates. Null until reconciliation has built one. Approval flips its status rather than editing memory in place, so a session resolving against the current version keeps working.
+   */
+  candidateMemoryVersionId: string | null;
   createdAt: Generated<Timestamp>;
   detectedBy: string;
   diff: Json | null;
   expectedStructuralHash: string;
   id: Generated<string>;
   memoryVersionId: string;
+  /**
+   * The concrete path the drift was seen at, e.g. /orders/4903. Kept because route_pattern cannot be navigated to and a reconcile job lost to a Redis restart must be re-enqueueable.
+   */
+  observedRoute: string;
   observedStructuralHash: string;
   resolvedAt: Timestamp | null;
   routePattern: string;

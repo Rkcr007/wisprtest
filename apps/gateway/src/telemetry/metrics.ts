@@ -53,6 +53,15 @@ export interface GatewayMetrics {
   readonly memorySnapshotBuildMs: Histogram;
   /** Crawl jobs enqueued, labelled by outcome. A run of `rejected` means bounds are misconfigured. */
   readonly indexJobsEnqueuedTotal: Counter;
+  /** Drift reports raised, by what noticed. The learning loop's input rate. */
+  readonly driftReportsTotal: Counter;
+  /**
+   * Human decisions on drift reports, by decision.
+   *
+   * The pair worth watching together: approvals without rejections means nobody is reading the
+   * diffs, and rejections climbing means reconciliation is proposing changes it should not.
+   */
+  readonly driftDecisionsTotal: Counter;
   /**
    * Console tabs currently watching a crawl, and so Redis connections held open for them.
    *
@@ -97,6 +106,12 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Gate
     memorySnapshotBuildMs: meter.createHistogram('wispr_memory_snapshot_build_ms', {
       description: 'Time to assemble a memory snapshot from Postgres on a cache miss.',
       unit: 'ms',
+    }),
+    driftReportsTotal: meter.createCounter('wispr_drift_reports_total', {
+      description: 'Drift reports raised, labelled by the component that detected the mismatch.',
+    }),
+    driftDecisionsTotal: meter.createCounter('wispr_drift_decisions_total', {
+      description: 'Human decisions on drift reports, labelled approved or rejected.',
     }),
     indexJobsEnqueuedTotal: meter.createCounter('wispr_index_jobs_enqueued_total', {
       description: 'Crawl jobs enqueued onto the indexer stream, labelled by outcome.',

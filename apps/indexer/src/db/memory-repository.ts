@@ -69,6 +69,11 @@ export async function openMemoryVersion(
     .select(['id', 'version'])
     .where('applicationId', '=', applicationId)
     .where('status', '=', 'building')
+    // Only another crawl's. A drift reconcile also leaves a version `building`, and resuming one
+    // of those would write this crawl's screens into a reviewed proposal — a human would then
+    // approve a version that is half the small change the diff described and half a full re-crawl.
+    // See db/migrations/20260805130000_memory_version_origin.sql.
+    .where('origin', '=', 'crawl')
     .orderBy('version', 'desc')
     .executeTakeFirst();
 
@@ -91,6 +96,7 @@ export async function openMemoryVersion(
       applicationId,
       version,
       status: 'building' satisfies MemoryVersionStatus,
+      origin: 'crawl',
       // Null: a version has no approver until a human approves it, and an index job is not one.
       approvedBy: null,
       failureReason: null,

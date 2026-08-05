@@ -10,6 +10,7 @@ import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob } from '../../src/job-runner.js';
 import { createRedis } from '../../src/redis/client.js';
+import { materializeOverHttp, type HttpJob } from '../../src/seed/http.js';
 import type { MaterializerDependencies, UiJob } from '../../src/seed/materializer.js';
 import { materialize } from '../../src/seed/materializer.js';
 import { createMetrics } from '../../src/telemetry/metrics.js';
@@ -26,13 +27,19 @@ import {
 } from '../support/harness.js';
 
 /**
- * The UI materializer, against a real application.
+ * All three materializers, against a real application.
  *
- * The half of docs/BUILD-PLAN.md Phase 15 that lives in this service. Nothing is mocked: a real
- * browser crawls a real Express application to build the memory, and then a second browser
- * session drives that application's own create form using nothing but the fingerprints the crawl
- * stored. The record it creates is asserted against the application's own API, not against
- * anything the adapter reported about itself.
+ * The half of docs/BUILD-PLAN.md Phases 15 and 16 that lives in this service. Nothing is mocked: a
+ * real browser crawls a real Express application to build the memory, and then a second browser
+ * session writes into that application — by driving its create form from the fingerprints the
+ * crawl stored, by replaying the create request the crawl observed, or by posting to the seeding
+ * endpoint a customer configured. Every record is asserted against the application's own API, not
+ * against anything an adapter reported about itself.
+ *
+ * All three share one crawl, deliberately. They are three answers to the same question — how does
+ * a record get into this application — and the memory they work from has to be the same memory, or
+ * the suite stops being able to say the API materializer and the UI materializer describe the same
+ * entity.
  *
  * ## What is actually being tested
  *
@@ -48,6 +55,13 @@ import {
  *    identical in every fingerprint signal to the delete button of every other order. Deleting
  *    the wrong one is the worst thing this code can do, so the suite creates two records and
  *    asserts the untouched one survives.
+ * 4. **A replay that wrote nothing is caught.** The only create request a crawl can observe here
+ *    is the form's dry run, which computes and returns without writing. The materializer inferred
+ *    from it replays a request that, as observed, was a no-op — and reading the record back is the
+ *    only thing that distinguishes the two outcomes.
+ * 5. **Neither HTTP adapter can be pointed off the application.** Both take a path from data — an
+ *    observed spec, or a customer-configured command — and a database column that could dial
+ *    anywhere would be an SSRF reachable through configuration.
  */
 
 const config = testConfig();
@@ -332,4 +346,237 @@ describe('reverting through the indexed delete flow', () => {
     expect(second.outcome).toBe('succeeded');
     expect(second.failureReason).toBeNull();
   }, 180_000);
+});
+
+/**
+ * A create job for the API adapter, built from the materializer the crawl actually inferred.
+ *
+ * The spec is read out of the database rather than written here, because the point of the suite is
+ * that observation produced something replayable. A hand-written path and payload would pass even
+ * if `inferApiMaterializers` had learned nothing at all.
+ */
+function apiCreateJob(overrides: Partial<HttpJob<'api_create'>> = {}): HttpJob<'api_create'> {
+  const learned = order.materializers.find((candidate) => candidate.kind === 'api');
+  if (learned === undefined) {
+    throw new Error(
+      `the crawl inferred no API materializer for Order; kinds: ${order.materializers
+        .map((candidate) => candidate.kind)
+        .join(', ')}`,
+    );
+  }
+
+  const spec = learned.spec as {
+    method: 'POST' | 'PUT' | 'PATCH';
+    path: string;
+    readBackPath: string | null;
+  };
+
+  return {
+    operation: 'api_create',
+    jobId: randomUUID(),
+    tenantId: fixture.tenantId,
+    applicationId: fixture.applicationId,
+    memoryVersionId,
+    sessionId: randomUUID(),
+    planId: randomUUID(),
+    nodeId: 'order-1',
+    entity: 'Order',
+    method: spec.method,
+    path: spec.path,
+    // What the gateway's adapter produces by filling the observed template. Composed here because
+    // the filling itself is the gateway's job and is tested there.
+    payload: {
+      accountId,
+      customer: 'Replayed Holdings',
+      po_number: 'PO-7781',
+      status: 'pending',
+      terms: 'net30',
+      notes: '',
+      lines: [{ sku: 'W-1', quantity: 2, amount: 400 }],
+    },
+    readBackPath: spec.readBackPath,
+    deadlineMs: 60_000,
+    ...overrides,
+  };
+}
+
+describe('creating a record through the observed API', () => {
+  it('replays the create the crawl observed, and reads the record back to prove it', async () => {
+    const before = await ordersFromApi();
+    const job = apiCreateJob();
+
+    // The materializer under test was inferred, not configured: the crawl saw the create form's
+    // priced preview go out and matched its payload against the form's own fields.
+    expect(job.path).toBe('/api/v2/orders');
+    expect(job.readBackPath).toBe('/api/v2/orders/:id');
+
+    const result = await materializeOverHttp(job, dependencies());
+
+    expect(result.failureReason).toBeNull();
+    expect(result.outcome).toBe('succeeded');
+    expect(result.externalRef).not.toBeNull();
+    // An API replay learns an identifier and nothing about where the record is rendered.
+    expect(result.detailPath).toBeNull();
+
+    // The application's own account of what exists, not the adapter's.
+    const after = await ordersFromApi();
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.map((row) => String(row.id))).toContain(result.externalRef);
+    expect(after.find((row) => String(row.id) === result.externalRef)?.customer).toBe(
+      'Replayed Holdings',
+    );
+  }, 180_000);
+
+  it('is the reason verification exists: the observed request, as observed, wrote nothing', async () => {
+    // The only create the crawl could observe is the form's dry run — `X-Dry-Run` makes the
+    // fixture compute a price and return without writing. The inferred materializer therefore
+    // replays a request that, exactly as seen, is a no-op. `MaterializerSpec` stores no headers,
+    // so the replay omits it and does write.
+    //
+    // Both outcomes return 201 with a body. Reading the record back is the only thing that tells
+    // them apart, which is why a create with no observed read-back can never be marked verified.
+    const before = await ordersFromApi();
+
+    const dryRun = await fetch(`${app.url}/api/v2/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-dry-run': '1' },
+      body: JSON.stringify(apiCreateJob().payload),
+    });
+    expect(dryRun.status).toBe(200);
+    expect(await ordersFromApi()).toHaveLength(before.length);
+
+    const result = await materializeOverHttp(apiCreateJob(), dependencies());
+    expect(result.outcome).toBe('succeeded');
+    expect(await ordersFromApi()).toHaveLength(before.length + 1);
+  }, 180_000);
+
+  it('fails with the status when the application rejects the payload', async () => {
+    const result = await materializeOverHttp(
+      apiCreateJob({ path: '/api/v2/orders/nope/nowhere' }),
+      dependencies(),
+    );
+
+    expect(result.outcome).toBe('failed');
+    expect(result.externalRef).toBeNull();
+    expect(result.failureReason).toContain('404');
+    // The endpoint and the status, never the response body — that is a customer's data, and this
+    // reason reaches the ledger and the HUD.
+    expect(result.failureReason).toContain('/api/v2/orders/nope/nowhere');
+  }, 120_000);
+
+  it('reports a create it cannot read back rather than claiming success', async () => {
+    // A read-back aimed at an endpoint that answers 404 for everything. The record *was* created;
+    // what the adapter cannot do is prove it, and § 4 makes proof the precondition for running
+    // ahead of the UI adapter.
+    const result = await materializeOverHttp(
+      apiCreateJob({ readBackPath: '/api/v2/accounts/:id' }),
+      dependencies(),
+    );
+
+    expect(result.outcome).toBe('failed');
+    expect(result.failureReason).toContain('could not be read back');
+  }, 120_000);
+
+  it('refuses a read-back path it cannot address unambiguously', async () => {
+    const result = await materializeOverHttp(
+      apiCreateJob({ readBackPath: '/api/v2/accounts/:accountId/orders/:id' }),
+      dependencies(),
+    );
+
+    expect(result.outcome).toBe('failed');
+    expect(result.failureReason).toContain('2 identifiers');
+  }, 120_000);
+
+  it('refuses to leave the application it was registered for', async () => {
+    const result = await materializeOverHttp(
+      apiCreateJob({ path: 'http://169.254.169.254/latest/meta-data/' }),
+      dependencies(),
+    );
+
+    expect(result.outcome).toBe('failed');
+    expect(result.externalRef).toBeNull();
+  }, 120_000);
+});
+
+describe("creating a record through the customer's seeding endpoint", () => {
+  function fixtureJobFor(command: string): HttpJob<'fixture_create'> {
+    return {
+      operation: 'fixture_create',
+      jobId: randomUUID(),
+      tenantId: fixture.tenantId,
+      applicationId: fixture.applicationId,
+      memoryVersionId,
+      sessionId: randomUUID(),
+      planId: randomUUID(),
+      nodeId: 'order-1',
+      entity: 'Order',
+      command,
+      payload: {
+        accountId,
+        customer: 'Sanctioned Holdings',
+        po_number: 'PO-9002',
+        status: 'pending',
+        terms: 'net30',
+        notes: '',
+        lines: [{ sku: 'W-2', quantity: 1, amount: 250 }],
+      },
+      deadlineMs: 60_000,
+    };
+  }
+
+  it('posts the composed record to the configured endpoint', async () => {
+    const before = await ordersFromApi();
+
+    const result = await materializeOverHttp(fixtureJobFor('/__seed/orders'), dependencies());
+
+    expect(result.failureReason).toBeNull();
+    expect(result.outcome).toBe('succeeded');
+
+    const after = await ordersFromApi();
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.find((row) => String(row.id) === result.externalRef)?.customer).toBe(
+      'Sanctioned Holdings',
+    );
+  }, 120_000);
+
+  it('runs the configured teardown, and treats an already-gone record as reverted', async () => {
+    const created = await materializeOverHttp(fixtureJobFor('/__seed/orders'), dependencies());
+    expect(created.outcome).toBe('succeeded');
+    const ref = created.externalRef ?? '';
+
+    const revertJob: HttpJob<'fixture_revert'> = {
+      operation: 'fixture_revert',
+      jobId: randomUUID(),
+      tenantId: fixture.tenantId,
+      applicationId: fixture.applicationId,
+      memoryVersionId,
+      entity: 'Order',
+      externalRef: ref,
+      command: '/__seed/orders/teardown',
+      deadlineMs: 60_000,
+    };
+
+    expect((await materializeOverHttp(revertJob, dependencies())).outcome).toBe('succeeded');
+    expect((await ordersFromApi()).map((row) => String(row.id))).not.toContain(ref);
+
+    // The endpoint answers 404 the second time. A revert is idempotent because its post-condition
+    // — the record is not there — already holds.
+    const second = await materializeOverHttp(revertJob, dependencies());
+    expect(second.outcome).toBe('succeeded');
+    expect(second.failureReason).toBeNull();
+  }, 180_000);
+
+  it('refuses a seeding endpoint outside the application, rather than calling it', async () => {
+    // The single most important refusal in this module: `command` is a database column, and a
+    // fixture adapter that dialled whatever it held would be an allowlist bypass reachable
+    // through configuration. A customer whose seeder lives on another host cannot use it yet,
+    // and finding that out here is the correct outcome.
+    const result = await materializeOverHttp(
+      fixtureJobFor('http://169.254.169.254/latest/meta-data/'),
+      dependencies(),
+    );
+
+    expect(result.outcome).toBe('failed');
+    expect(result.externalRef).toBeNull();
+  }, 120_000);
 });

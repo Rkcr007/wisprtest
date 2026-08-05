@@ -2,10 +2,8 @@ import type { Browser, Page } from 'playwright';
 import { pathOf, toRoutePattern } from 'fingerprint';
 import type { SeedJob, SeedJobResult } from 'protocol';
 
-import { applyFormLogin, prepareAuth } from '../crawl/auth.js';
-import { openSession, type SessionBounds } from '../crawl/browser.js';
 import type { SecretResolver } from '../crawl/secrets.js';
-import { createUrlPolicy, type AddressLookup, type UrlPolicy } from '../crawl/url-policy.js';
+import type { AddressLookup, UrlPolicy } from '../crawl/url-policy.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { SeedError } from '../errors.js';
 import type {
@@ -18,6 +16,13 @@ import type {
   SubmitLocation,
 } from './located.js';
 import { findSeedApplication, loadIndexedElements, type SeedApplication } from './repository.js';
+import {
+  createSeedPolicy,
+  describe,
+  withAuthenticatedPage,
+  withDeadline,
+  SEED_VIEWPORT,
+} from './session.js';
 
 /**
  * The UI materializer: the runtime executor, pointed at a create form.
@@ -101,15 +106,6 @@ const RECORD_CONTROL_MARKER = 100_001;
  */
 const CONTROL_MATCH_THRESHOLD = 0.55;
 
-/**
- * The viewport controls are located against.
- *
- * Fingerprint geometry is normalised against the viewport, so the bbox signal only agrees with
- * the stored value if the window is the size it was indexed at. This is the crawl's default, and
- * a mismatch degrades one signal of seven rather than breaking the match outright.
- */
-const SEED_VIEWPORT = { width: 1440, height: 900 } as const;
-
 export interface MaterializerDependencies {
   readonly database: TenantDatabase;
   readonly browser: Browser;
@@ -146,30 +142,20 @@ async function run(
   startedAt: number,
 ): Promise<SeedJobResult> {
   const context = await loadContext(job, deps);
-  const bounds: SessionBounds = {
-    viewport: SEED_VIEWPORT,
-    navigationTimeoutMs: Math.min(job.deadlineMs, 60_000),
-  };
 
-  const auth = await prepareAuth(context.application.authProfile, deps.secrets);
-  const session = await openSession({ browser: deps.browser, bounds, auth });
-
-  try {
-    await applyFormLogin({
-      page: session.page,
-      profile: context.application.authProfile,
-      baseUrl: context.application.baseUrl,
-      bounds,
+  return await withAuthenticatedPage(
+    {
+      application: context.application,
       policy: context.policy,
-      resolver: deps.secrets,
-    });
-
-    return job.operation === 'ui_create'
-      ? await create(job, context, session.page, startedAt)
-      : await revert(job, context, session.page, startedAt);
-  } finally {
-    await session.close();
-  }
+      browser: deps.browser,
+      secrets: deps.secrets,
+      deadlineMs: job.deadlineMs,
+    },
+    async (page) =>
+      job.operation === 'ui_create'
+        ? await create(job, context, page, startedAt)
+        : await revert(job, context, page, startedAt),
+  );
 }
 
 /** Everything a job needs from the database and from the application's registration. */
@@ -228,14 +214,7 @@ async function loadContext(job: UiJob, deps: MaterializerDependencies): Promise<
 
   return {
     application: loaded.application,
-    // The allowlist is the application's own origin: a seed job navigates to the application it
-    // was registered for and nowhere else, so there is nothing a tenant needs to configure and
-    // nothing a compromised plan could redirect. The SSRF checks that matter — scheme, embedded
-    // credentials, private address ranges — still run on every navigation.
-    policy: createUrlPolicy(
-      { allowedOrigins: [originOf(loaded.application.baseUrl)], routeAllowlist: ['/'] },
-      deps.addressLookup ?? defaultAddressLookup,
-    ),
+    policy: createSeedPolicy(loaded.application, deps.addressLookup),
     targets,
     entryPath,
   };
@@ -570,14 +549,6 @@ function element(
   return found;
 }
 
-function originOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).origin;
-  } catch {
-    throw new SeedError(`the application's base URL is not a URL: ${baseUrl}`);
-  }
-}
-
 function describeMissing(located: SeedLocateResult): string {
   const fields = located.missing.map((control) => control.field);
   return (
@@ -612,43 +583,4 @@ function reverted(job: UiJob, startedAt: number): SeedJobResult {
     failureReason: null,
     durationMs: Date.now() - startedAt,
   };
-}
-
-/**
- * Bound the whole job, not each navigation.
- *
- * Playwright's per-action timeouts add up: a form with twelve controls could spend twelve
- * navigation timeouts failing slowly, long after the gateway gave up waiting for a result and the
- * tester saw an error. One ceiling over the whole job is what the gateway's own wait is sized
- * against.
- */
-async function withDeadline(
-  deadlineMs: number,
-  work: Promise<SeedJobResult>,
-  onTimeout: () => SeedJobResult,
-): Promise<SeedJobResult> {
-  let timer: NodeJS.Timeout | undefined;
-  const expiry = new Promise<SeedJobResult>((resolve) => {
-    timer = setTimeout(() => {
-      resolve(onTimeout());
-    }, deadlineMs);
-  });
-
-  try {
-    return await Promise.race([work, expiry]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-async function defaultAddressLookup(hostname: string): Promise<readonly string[]> {
-  const { lookup } = await import('node:dns/promises');
-  const records = await lookup(hostname, { all: true });
-  return records.map((record) => record.address);
-}
-
-function describe(error: unknown): string {
-  if (error instanceof SeedError) return error.message;
-  if (error instanceof Error) return error.message.split('\n')[0] ?? error.message;
-  return 'unknown error';
 }

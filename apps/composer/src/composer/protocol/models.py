@@ -5433,6 +5433,10 @@ class DriftReport(BaseModel):
     memory_version_id: Annotated[
         UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
     ]
+    candidate_memory_version_id: Annotated[
+        UUID | None,
+        Field(alias="candidateMemoryVersionId", description="UUID identifier.", title="Uuid"),
+    ]
     screen_id: Annotated[
         UUID, Field(alias="screenId", description="UUID identifier.", title="Uuid")
     ]
@@ -5443,6 +5447,15 @@ class DriftReport(BaseModel):
             description="Route with dynamic segments generalised, e.g. /orders/:id.",
             pattern="^\\/[^\\s]*$",
             title="RoutePattern",
+        ),
+    ]
+    observed_route: Annotated[
+        str,
+        Field(
+            alias="observedRoute",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
         ),
     ]
     state_fingerprint: Annotated[

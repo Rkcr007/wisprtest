@@ -58,6 +58,7 @@ New decisions from here on get an ADR **before** the code, not after.
 | [0013](0013-ci-is-the-merge-gate.md) | CI is the merge gate, and coverage thresholds are a ratchet | Accepted | 2026-08-01 |
 | [0014](0014-benchmarks-report-only-in-ci.md) | The performance budgets are measured in CI and enforced by `make bench` | Accepted | 2026-08-02 |
 | [0015](0015-codeql-and-the-ruleset-split.md) | Code scanning is scoped to `main`; everything else applies to every branch | Accepted | 2026-08-02 |
+| [0016](0016-writes-go-through-the-indexer.md) | Every write to the app under test goes through the indexer, not the gateway | Accepted | 2026-08-05 |
 
 ---
 
@@ -86,6 +87,17 @@ Recording these here rather than quietly writing the ADRs around them.
   `CLAUDE.md § "Performance budgets"` calls these tests rather than aspirations, and CI measures
   them without blocking. Between manual `make bench` runs, nothing stops a regression reaching
   `main`. See [ADR 0014](0014-benchmarks-report-only-in-ci.md).
+- **The API materializer cannot run against a token-authenticated application.** A bearer token
+  lives in the application's own JavaScript and is never captured, so the replay in
+  [ADR 0016](0016-writes-go-through-the-indexer.md) has no way to present it. The chain refuses
+  with a reason and falls through to the UI adapter, which is correct and also means the fast path
+  is unavailable for a large share of real applications.
+- **A failed materializer is demoted but no re-observation is queued.** `BUILD-PLAN.md` Phase 16
+  asks for both. The demotion is real — `verified_at` is cleared and the ordering rule reads it —
+  but nothing schedules the re-crawl that would restore it, because crawl bounds are supplied per
+  request and are not stored per application, and `drift_reports` requires a screen and structural
+  hashes that an API failure does not have. Recovery is a human starting a crawl. See
+  [ADR 0016](0016-writes-go-through-the-indexer.md).
 - **`docs/BUILD-PLAN.md` describes a scheduling model that has been replaced.** Its *How to run a
   session* section is the Phases 0–14 protocol; `CLAUDE.md § "Parallel tracks"` is current. The
   file has been annotated rather than rewritten — the phase prompts below that section are

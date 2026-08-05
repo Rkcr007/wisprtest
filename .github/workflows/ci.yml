@@ -110,7 +110,10 @@ jobs:
       - name: gateway — seed plan, approve and revert
         run: pnpm --filter gateway test:seed
 
-      - name: indexer — crawl, observers and the UI materializer against the fixture app
+      - name: gateway — the fallback chain, and the adapter that failed being demoted
+        run: pnpm --filter gateway test:fallback-chain
+
+      - name: indexer — crawl, observers and all three materializers against the fixture app
         run: |
           pnpm --filter indexer exec playwright install --with-deps chromium
           pnpm --filter indexer test:e2e

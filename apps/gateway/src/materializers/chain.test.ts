@@ -1,7 +1,13 @@
-import type { MaterializerDescriptor } from 'protocol';
+import type {
+  CompositionPlan,
+  EntitySchema,
+  MaterializerDescriptor,
+  MaterializerKind,
+} from 'protocol';
 import { describe, expect, it } from 'vitest';
 
-import { isStale, orderDescriptors } from './chain.js';
+import { isStale, orderDescriptors, runChain, type ChainOptions } from './chain.js';
+import type { Materializer } from './types.js';
 
 /**
  * The chain's ordering rules.
@@ -50,6 +56,13 @@ function descriptor(
     verificationTtlHours: 168,
     ...overrides,
   };
+}
+
+/** An API materializer the crawl never saw a detail read for, so it can never verify itself. */
+function apiWithoutReadBack(): MaterializerDescriptor {
+  const base = descriptor('api');
+  if (base.spec.kind !== 'api') throw new Error('expected an api descriptor');
+  return { ...base, spec: { ...base.spec, readBackPath: null } };
 }
 
 function kinds(descriptors: readonly MaterializerDescriptor[]): string[] {
@@ -111,5 +124,197 @@ describe('ordering', () => {
   it('leaves a single materializer alone', () => {
     expect(kinds(orderDescriptors([descriptor('ui')], NOW))).toEqual(['ui']);
     expect(orderDescriptors([], NOW)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ the fallback chain ------ */
+
+const PLAN: CompositionPlan = {
+  id: '9c5b94b1-35ad-49bb-b118-8e8fc24abf80',
+  tenantId: SCHEMA_ID,
+  sessionId: SCHEMA_ID,
+  memoryVersionId: SCHEMA_ID,
+  nodes: [
+    {
+      nodeId: 'order-1',
+      entity: 'Order',
+      entitySchemaId: SCHEMA_ID,
+      mode: 'create',
+      existingExternalRef: null,
+      fields: { customer: 'Acme Industrial' },
+      provenance: [],
+    },
+  ],
+  edges: [],
+  rootNodeId: 'order-1',
+  materializationOrder: ['order-1'],
+  constraintSet: {
+    entity: 'Order',
+    constraints: [{ kind: 'equals', field: 'status', value: 'pending' }],
+    confidence: 0.96,
+    unparsedFragments: [],
+  },
+  createdAt: NOW.toISOString(),
+};
+
+function schema(materializers: readonly MaterializerDescriptor[]): EntitySchema {
+  return {
+    id: SCHEMA_ID,
+    memoryVersionId: SCHEMA_ID,
+    entityName: 'Order',
+    fields: [],
+    materializers: [...materializers],
+    predicates: [],
+    observedCount: 50,
+    confidence: 0.92,
+    createdAt: NOW.toISOString(),
+  };
+}
+
+/** An adapter that always succeeds, or always fails, and records that it was asked. */
+function adapter(
+  kind: MaterializerKind,
+  behaviour: 'succeeds' | 'fails' | 'declines',
+): Materializer {
+  return {
+    kind,
+    canHandle: () => (behaviour === 'declines' ? { reason: `${kind} declined` } : null),
+    materialize: async () =>
+      await Promise.resolve(
+        behaviour === 'succeeds'
+          ? {
+              ok: true as const,
+              record: {
+                externalRef: `${kind}-4903`,
+                payload: {},
+                inverseOp: { kind: 'none' as const, reason: 'no delete path' },
+              },
+            }
+          : { ok: false as const, failure: { reason: `${kind} failed` } },
+      ),
+    revert: async () => await Promise.resolve(null),
+  };
+}
+
+function options(
+  materializers: readonly Materializer[],
+  descriptors: readonly MaterializerDescriptor[],
+): ChainOptions {
+  return {
+    materializers,
+    schemas: new Map([[SCHEMA_ID, schema(descriptors)]]),
+    tenantId: SCHEMA_ID,
+    sessionId: SCHEMA_ID,
+    applicationId: SCHEMA_ID,
+    memoryVersionId: SCHEMA_ID,
+    nodeDeadlineMs: 5_000,
+    now: NOW,
+  };
+}
+
+describe('falling through the chain', () => {
+  it('records the failed rung and the one that worked, in order', async () => {
+    // The chaos case in miniature, and the property § 4 turns on: "Never silently degrade... If
+    // the API adapter created the record, client-side validation was never exercised, and the
+    // tester needs to know that." Here it did not create it, and that has to be just as visible.
+    const outcome = await runChain(
+      PLAN,
+      options(
+        [adapter('api', 'fails'), adapter('ui', 'succeeds')],
+        [descriptor('api'), descriptor('ui')],
+      ),
+    );
+
+    expect(outcome.result.outcome).toBe('created');
+    expect(outcome.result.adapterUsed).toBe('ui');
+    expect(outcome.result.attempts.map((attempt) => [attempt.adapter, attempt.outcome])).toEqual([
+      ['api', 'failed'],
+      ['ui', 'succeeded'],
+    ]);
+    expect(outcome.result.attempts[0]?.reason).toBe('api failed');
+    expect(outcome.records[0]?.record.externalRef).toBe('ui-4903');
+  });
+
+  it('fails the node with the last concrete reason when nothing could create it', async () => {
+    const outcome = await runChain(
+      PLAN,
+      options(
+        [adapter('api', 'fails'), adapter('ui', 'fails')],
+        [descriptor('api'), descriptor('ui')],
+      ),
+    );
+
+    expect(outcome.result.outcome).toBe('failed');
+    expect(outcome.result.failureReason).toBe('ui failed');
+    expect(outcome.records).toEqual([]);
+    // A failed materialization has no verified time, whatever the attempts say.
+    expect(outcome.result.verifiedAt).toBeNull();
+  });
+});
+
+describe('what an attempt proves about its materializer', () => {
+  it('clears a replay that failed, so it stops being tried first', async () => {
+    const outcome = await runChain(
+      PLAN,
+      options(
+        [adapter('api', 'fails'), adapter('ui', 'succeeds')],
+        [descriptor('api'), descriptor('ui')],
+      ),
+    );
+
+    expect(outcome.verifications).toEqual([
+      {
+        materializerId: SCHEMA_ID,
+        kind: 'api',
+        entity: 'Order',
+        verified: false,
+        reason: 'api failed',
+      },
+    ]);
+  });
+
+  it('verifies a replay that was read back afterwards', async () => {
+    const outcome = await runChain(
+      PLAN,
+      options([adapter('api', 'succeeds')], [descriptor('api')]),
+    );
+
+    expect(outcome.verifications).toEqual([
+      { materializerId: SCHEMA_ID, kind: 'api', entity: 'Order', verified: true, reason: null },
+    ]);
+  });
+
+  it('proves nothing for a replay with no observed read-back', async () => {
+    // It ran, and it was accepted by something. Being accepted is not the same as having created
+    // a record, so this must not promote the materializer to the front of the chain.
+    const outcome = await runChain(
+      PLAN,
+      options([adapter('api', 'succeeds')], [apiWithoutReadBack()]),
+    );
+
+    expect(outcome.result.outcome).toBe('created');
+    expect(outcome.verifications).toEqual([]);
+  });
+
+  it('never records a verification for the UI adapter', async () => {
+    // Nothing to verify: driving the real form is the proof, re-established on every run.
+    const outcome = await runChain(PLAN, options([adapter('ui', 'succeeds')], [descriptor('ui')]));
+
+    expect(outcome.verifications).toEqual([]);
+  });
+
+  it('does not judge an adapter that was never asked to run', async () => {
+    const outcome = await runChain(
+      PLAN,
+      options(
+        [adapter('api', 'declines'), adapter('ui', 'succeeds')],
+        [descriptor('api'), descriptor('ui')],
+      ),
+    );
+
+    expect(outcome.result.attempts[0]).toMatchObject({ adapter: 'api', outcome: 'skipped' });
+    // A refusal is about the *plan*, not about whether the endpoint works. Clearing verification
+    // here would demote a perfectly good materializer because one record did not suit it.
+    expect(outcome.verifications).toEqual([]);
   });
 });

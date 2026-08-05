@@ -9,6 +9,8 @@ import {
   type SeedLedgerEntry,
   type SeedNodePreview,
   type SeedPlanResponse,
+  type MaterializerDescriptor,
+  type MaterializerKind,
   type SeedRevertOutcome,
   type SeedRevertResponse,
 } from 'protocol';
@@ -25,10 +27,14 @@ import {
   loadEntitySchemas,
   markReverted,
   recordAudit,
+  setMaterializerVerification,
+  type LoadedSchemas,
   type SessionScope,
 } from '../db/seed-repository.js';
 import { GatewayError } from '../errors.js';
-import { orderDescriptors, runChain } from '../materializers/chain.js';
+import { createApiMaterializer, type HttpCreateReversal } from '../materializers/api.js';
+import { isStale, orderDescriptors, runChain, stalenessReason } from '../materializers/chain.js';
+import { createFixtureMaterializer } from '../materializers/fixture.js';
 import { createUiMaterializer } from '../materializers/ui.js';
 import type { Materializer } from '../materializers/types.js';
 import type { SeedJobDispatcher, SeedPlanStore } from '../redis/seed-queue.js';
@@ -241,7 +247,7 @@ export function registerSeedRoutes(app: FastifyInstance, options: SeedRoutesOpti
     const response: SeedPlanResponse = {
       composition,
       planId: plan.id,
-      preview: previewFor(plan, loaded.schemas, loaded.deleteFlows),
+      preview: previewFor(plan, loaded.schemas, loaded.deleteFlows, loaded.deleteFlowRoutes),
       expiresAt: new Date(Date.now() + config.SEED_PLAN_TTL_SECONDS * 1000).toISOString(),
     };
     return await reply.code(200).send(response);
@@ -289,16 +295,8 @@ export function registerSeedRoutes(app: FastifyInstance, options: SeedRoutesOpti
       );
       const schemasById = new Map(loaded.schemas.map((schema) => [schema.id, schema]));
 
-      const materializers: Materializer[] = [
-        createUiMaterializer({
-          dispatcher,
-          schemas: schemasById,
-          deleteFlows: loaded.deleteFlows,
-        }),
-      ];
-
       const outcome = await runChain(plan, {
-        materializers,
+        materializers: adaptersFor(loaded, dispatcher),
         schemas: schemasById,
         tenantId,
         sessionId: scope.sessionId,
@@ -331,6 +329,43 @@ export function registerSeedRoutes(app: FastifyInstance, options: SeedRoutesOpti
               inverseOp: created.record.inverseOp,
             }),
           );
+        }
+
+        // § 4's TTL rule needs something to move the column `orderDescriptors` reads. A replay
+        // that was read back afterwards keeps its place at the front of the chain; one that
+        // answered 4xx or 5xx loses it and sorts behind the UI adapter on the next plan, without
+        // anyone having decided to disable it.
+        //
+        // Written in the same transaction as the ledger on purpose. These two facts are one
+        // event — "the API adapter failed and the UI adapter created the record" — and a crash
+        // between them would leave a chain that keeps trying an endpoint the ledger already shows
+        // failing, which is the state this rule exists to prevent.
+        for (const verification of outcome.verifications) {
+          const stamped = await setMaterializerVerification(
+            db,
+            verification.materializerId,
+            verification.verified ? new Date() : null,
+          );
+
+          // A missing row means a re-index replaced the materializer between planning and now.
+          // Nothing to record: the descriptor this judgement is about no longer exists.
+          if (!stamped) continue;
+
+          await recordAudit(db, {
+            tenantId,
+            actor: userId,
+            action: verification.verified ? 'materializer-verified' : 'materializer-unverified',
+            target: verification.materializerId,
+            metadata: {
+              sessionId: scope.sessionId,
+              applicationId: scope.applicationId,
+              entity: verification.entity,
+              adapter: verification.kind,
+              // The adapter's own sentence, which carries a status and an endpoint and never a
+              // response body — see `apps/indexer/src/seed/http.ts`.
+              reason: verification.reason,
+            },
+          });
         }
 
         await recordAudit(db, {
@@ -400,17 +435,13 @@ export function registerSeedRoutes(app: FastifyInstance, options: SeedRoutesOpti
     const loaded = await database.withTenant('seed-schemas', (db) =>
       loadEntitySchemas(db, scope.memoryVersionId),
     );
-    const ui = createUiMaterializer({
-      dispatcher,
-      schemas: new Map(loaded.schemas.map((schema) => [schema.id, schema])),
-      deleteFlows: loaded.deleteFlows,
-    });
+    const adapters = adaptersFor(loaded, dispatcher);
 
     const outcomes: SeedRevertOutcome[] = [];
     for (const entry of entries) {
       outcomes.push(
         await revertOne(entry, {
-          ui,
+          adapters,
           tenantId,
           applicationId: scope.applicationId,
           memoryVersionId: scope.memoryVersionId,
@@ -439,8 +470,112 @@ export function registerSeedRoutes(app: FastifyInstance, options: SeedRoutesOpti
   });
 }
 
+/**
+ * The three adapters, in one place, built from one memory version's knowledge.
+ *
+ * Both routes that touch the application under test build the same set: `execute` so the chain can
+ * fall through them in order, `revert` so an entry can be undone by whichever adapter its inverse
+ * operation names. Building them differently in the two places is how a record becomes creatable
+ * and not undoable.
+ */
+function adaptersFor(loaded: LoadedSchemas, dispatcher: SeedJobDispatcher): Materializer[] {
+  const schemasById = new Map(loaded.schemas.map((schema) => [schema.id, schema]));
+
+  return [
+    createFixtureMaterializer({
+      dispatcher,
+      // A teardown is the same configured endpoint with `/teardown` appended only if a customer
+      // says so, and nothing says so yet: there is no console surface for configuring a fixture
+      // materializer, so no application has one. Returning null means a fixture-created record
+      // reports `none` with its reason in the preview, which is § 5's honest answer rather than a
+      // guessed URL posted at a customer's infrastructure.
+      teardownFor: () => null,
+    }),
+    createApiMaterializer({
+      dispatcher,
+      reversalFor: (entity, externalRef) =>
+        reversalForHttpCreate(entity, externalRef, loaded.deleteFlows, loaded.deleteFlowRoutes),
+    }),
+    createUiMaterializer({
+      dispatcher,
+      schemas: schemasById,
+      deleteFlows: loaded.deleteFlows,
+    }),
+  ];
+}
+
+/**
+ * How a record created without a browser gets removed.
+ *
+ * The hard part is not which adapter deletes it — it is that a UI delete has to be *aimed*. The UI
+ * adapter gets the record's own path for free by being a browser that ended up somewhere after
+ * submitting; an API or fixture replay learns an identifier and nothing about where the record is
+ * rendered. So the path has to be reconstructed, and it can only be reconstructed honestly in one
+ * shape:
+ *
+ * - The delete control sits on a **detail route** (`/orders/:id`) — one dynamic segment, which the
+ *   identifier fills. The record's page is `/orders/4903`, and that is where the control is.
+ * - The delete control sits on a **list route** (`/orders`) — no dynamic segment, so there is
+ *   nothing to substitute. The control is one of many identical row buttons, and the only thing
+ *   that distinguishes the right one is the row linking to the record's own path, which is exactly
+ *   what is unknown here. Guessing it would delete whichever row matched best.
+ *
+ * The second case reports `none`, and § 5 requires that to appear in the preview *before* the
+ * record is created. Recording the entity's detail route at index time would close it — the
+ * observers already learn the route patterns — and that belongs with whoever owns the indexer.
+ */
+export function reversalForHttpCreate(
+  entity: string,
+  externalRef: string,
+  deleteFlows: ReadonlyMap<string, string>,
+  deleteFlowRoutes: ReadonlyMap<string, string>,
+): HttpCreateReversal {
+  const flow = deleteFlows.get(entity);
+  if (flow === undefined) {
+    return {
+      inverseOp: {
+        kind: 'none',
+        reason: `no delete control for ${entity} was found when this application was indexed`,
+      },
+      detailPath: null,
+    };
+  }
+
+  const detailPath = detailPathFor(deleteFlowRoutes.get(entity), externalRef);
+  if (detailPath === null) {
+    return {
+      inverseOp: {
+        kind: 'none',
+        reason:
+          `${entity} is deleted from a list rather than from the record's own page, and a record ` +
+          'created through the API has no page for this gateway to point that row at — remove it ' +
+          'by hand, or create it through the form instead',
+      },
+      detailPath: null,
+    };
+  }
+
+  return { inverseOp: { kind: 'ui', flow }, detailPath };
+}
+
+/** A record's own path, when the delete control's route has exactly one identifier to fill. */
+export function detailPathFor(
+  routePattern: string | undefined,
+  externalRef: string,
+): string | null {
+  if (routePattern === undefined) return null;
+
+  const segments = routePattern.split('/');
+  const dynamic = segments.filter((segment) => segment.startsWith(':'));
+  if (dynamic.length !== 1) return null;
+
+  return segments
+    .map((segment) => (segment.startsWith(':') ? encodeURIComponent(externalRef) : segment))
+    .join('/');
+}
+
 interface RevertDependencies {
-  readonly ui: Materializer;
+  readonly adapters: readonly Materializer[];
   readonly tenantId: string;
   readonly applicationId: string;
   readonly memoryVersionId: string;
@@ -478,7 +613,20 @@ async function revertOne(
     return { ...identity, outcome: 'not_revertible', reason: entry.inverseOp.reason };
   }
 
-  const failure = await deps.ui.revert(entry.inverseOp, {
+  // The adapter named by the inverse operation, which is not always the one that created the
+  // record. An API-created order whose application only offers a delete *button* is removed
+  // through the UI, and the ledger says so because the inverse was decided at creation time from
+  // what the application actually offers.
+  const adapter = deps.adapters.find((candidate) => candidate.kind === entry.inverseOp.kind);
+  if (adapter === undefined) {
+    return {
+      ...identity,
+      outcome: 'failed',
+      reason: `this gateway has no ${entry.inverseOp.kind} adapter to undo the record with`,
+    };
+  }
+
+  const failure = await adapter.revert(entry.inverseOp, {
     tenantId: deps.tenantId,
     applicationId: deps.applicationId,
     memoryVersionId: deps.memoryVersionId,
@@ -523,6 +671,7 @@ function previewFor(
   plan: CompositionPlan,
   schemas: readonly EntitySchema[],
   deleteFlows: ReadonlyMap<string, string>,
+  deleteFlowRoutes: ReadonlyMap<string, string>,
 ): SeedNodePreview[] {
   const now = new Date();
 
@@ -551,7 +700,6 @@ function previewFor(
     const schema = schemas.find((candidate) => candidate.id === node.entitySchemaId);
     const descriptors = orderDescriptors(schema?.materializers ?? [], now);
     const chosen = descriptors[0];
-    const flow = deleteFlows.get(node.entity);
 
     return [
       {
@@ -565,25 +713,97 @@ function previewFor(
         adapterReason:
           chosen === undefined
             ? `${node.entity} has no materializer — nothing in this application creates one`
-            : reasonFor(chosen.spec.kind, descriptors.length),
-        revert:
-          flow === undefined
-            ? {
-                revertible: false,
-                kind: 'none' as const,
-                detail: `no delete control for ${node.entity} was found when this application was indexed, so this record will remain`,
-              }
-            : {
-                revertible: true,
-                kind: 'ui' as const,
-                detail: `the indexed delete flow ${flow} will remove it`,
-              },
+            : reasonFor(descriptors, now),
+        revert: revertPlanFor(
+          node.entity,
+          chosen?.spec.kind ?? 'ui',
+          deleteFlows,
+          deleteFlowRoutes,
+        ),
       },
     ];
   });
 }
 
-function reasonFor(kind: string, available: number): string {
-  if (available === 1) return `the ${kind} materializer is the only one this application has`;
+/**
+ * What the preview promises about undoing a record, per the adapter that will create it.
+ *
+ * § 5 is explicit that this has to be right *before* the write: "When `inverseOp` is `none`, say
+ * so in the preview before creating. A tester deciding whether to seed a record that cannot be
+ * removed deserves to know that up front." Which means this cannot be the old blanket "there is a
+ * delete flow, so it is revertible" — that answer is true for the UI adapter and false for the
+ * API adapter on the very same entity, because one of them ends up on the record's page and the
+ * other never does.
+ *
+ * So it asks the same function the adapter will ask, with a placeholder identifier. The identifier
+ * does not change the *shape* of the answer — only whether a path can be built at all — so a
+ * stand-in is enough to decide revertibility, and the real one is used when the record exists.
+ */
+function revertPlanFor(
+  entity: string,
+  adapter: MaterializerKind,
+  deleteFlows: ReadonlyMap<string, string>,
+  deleteFlowRoutes: ReadonlyMap<string, string>,
+): SeedNodePreview['revert'] {
+  if (adapter === 'ui') {
+    const flow = deleteFlows.get(entity);
+    return flow === undefined
+      ? {
+          revertible: false,
+          kind: 'none',
+          detail: `no delete control for ${entity} was found when this application was indexed, so this record will remain`,
+        }
+      : { revertible: true, kind: 'ui', detail: `the indexed delete flow ${flow} will remove it` };
+  }
+
+  const reversal = reversalForHttpCreate(entity, PREVIEW_REF, deleteFlows, deleteFlowRoutes);
+  return reversal.inverseOp.kind === 'none'
+    ? { revertible: false, kind: 'none', detail: reversal.inverseOp.reason }
+    : {
+        revertible: true,
+        kind: reversal.inverseOp.kind,
+        detail: `the indexed delete flow ${deleteFlows.get(entity) ?? ''} will remove it`.trim(),
+      };
+}
+
+/**
+ * Stands in for the identifier a record does not have yet.
+ *
+ * Only ever substituted into a route pattern to find out whether one *can* be built. It never
+ * reaches an application: the preview writes nothing, and the record's real identifier is what the
+ * adapter uses once it exists.
+ */
+const PREVIEW_REF = 'preview';
+
+/**
+ * Why this adapter and not another — the sentence the preview card shows verbatim.
+ *
+ * The demotion case is the one that earns this function. When an API materializer goes stale the
+ * chosen adapter becomes the UI one, which is never stale — so asking whether the *chosen*
+ * descriptor is stale answers nothing. What the tester needs to know is why the faster adapter is
+ * not running, and that fact lives on the descriptor now sorted behind it.
+ *
+ * `SeedNodePreview.adapterReason` in `packages/protocol` gives the shape: "the API materializer
+ * has not been verified in 9 days, so the UI form will run instead". A preview that just said
+ * "ui" would leave the tester believing this application has no API path at all, when what it has
+ * is one that stopped being trustworthy last week.
+ */
+function reasonFor(ordered: readonly MaterializerDescriptor[], now: Date): string {
+  const [chosen, ...rest] = ordered;
+  if (chosen === undefined) return 'this application has no materializer for this entity';
+
+  const kind = chosen.spec.kind;
+  const demoted = rest.find((descriptor) => isStale(descriptor, now));
+  if (demoted !== undefined) {
+    return `${stalenessReason(demoted, now)}, so the ${kind} materializer will run instead`;
+  }
+
+  // The chosen adapter is itself unverified, which happens when every adapter is: it still runs,
+  // because a stale replay is better than no record at all, and the tester should know.
+  if (isStale(chosen, now)) {
+    return `${stalenessReason(chosen, now)}, and it is the only adapter this entity has`;
+  }
+
+  if (ordered.length === 1) return `the ${kind} materializer is the only one this application has`;
   return `the ${kind} materializer is first in the fallback chain for this entity`;
 }

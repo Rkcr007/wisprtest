@@ -71,6 +71,19 @@ const indexerEnvSchema = z.object({
    */
   INDEXER_SEED_RESULT_TTL_SECONDS: z.coerce.number().int().min(10).max(3600),
 
+  // ── Drift reconcile jobs ─────────────────────────────────────────────────────────────────────
+  /**
+   * Redis stream the gateway enqueues `DriftReconcileJob`s on. Must equal its `DRIFT_JOB_STREAM`.
+   *
+   * A third stream for the third reason the two existing ones are separate: a reconcile has
+   * nobody waiting on it — the tester was told about the drift immediately and carried on in
+   * degraded mode — so it is the *least* urgent work this service does. Sharing the seed stream
+   * would put a tester's held-open request behind a background re-crawl of somebody else's screen.
+   */
+  INDEXER_DRIFT_STREAM: z.string().min(1),
+  /** Consumer group for the drift stream, shared by every worker replica. */
+  INDEXER_DRIFT_CONSUMER_GROUP: z.string().min(1),
+
   // ── Browser ──────────────────────────────────────────────────────────────────────────────────
   /** Headless everywhere except when a developer is watching a crawl to debug it. */
   INDEXER_HEADLESS: z.enum(['true', 'false']).transform((value) => value === 'true'),

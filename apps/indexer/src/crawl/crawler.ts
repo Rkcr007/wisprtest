@@ -9,6 +9,7 @@ import type {
   CollectedPage,
   CollectOptions,
 } from './collected.js';
+import { confidenceOf, populationOf } from './confidence.js';
 import { ElementKeyMinter } from './element-key.js';
 import { BUNDLE_GLOBAL, MARKER_ATTRIBUTE } from './fingerprint-bundle.js';
 import type { RateLimiter } from './rate-limiter.js';
@@ -522,33 +523,16 @@ async function stampMarkers(page: Page): Promise<number> {
 /**
  * Turn collected fingerprints into elements with keys and confidence.
  *
- * Confidence answers one question: how sure is the indexer that this fingerprint identifies this
- * element *uniquely on this screen*? It is derived, not assumed:
- *
- * - Elements sharing a role, an accessible name and a landmark path are genuinely ambiguous, and
- *   each takes a proportional share of the confidence. Ten identical "View" links score 0.1 —
- *   which is correct, and which is why the resolver escalates to an ordinal rather than guessing.
- * - A stable attribute that is unique on the screen settles it: `data-testid` is "near-decisive"
- *   in ARCHITECTURE § 2, and an element carrying a unique one is unambiguous whatever else it
- *   shares.
- * - An element with neither a name nor a stable attribute is capped: it is identified only by
- *   position and role, which is the weak end of the signal table.
+ * The confidence itself comes from `confidence.ts`, which the drift reconcile shares: it rewrites
+ * elements onto screens this function first wrote, and two scales for the same number would be
+ * compared against each other by the resolver as though they were one.
  */
 function describeElements(
   collected: CollectedPage,
   routePattern: string,
 ): { elements: IndexedElement[]; elementKeys: string[] } {
   const minter = new ElementKeyMinter(routePattern);
-
-  const identityCounts = new Map<string, number>();
-  const attributeCounts = new Map<string, number>();
-  for (const element of collected.elements) {
-    const identity = identityOf(element.fingerprint);
-    identityCounts.set(identity, (identityCounts.get(identity) ?? 0) + 1);
-    for (const attribute of stableAttributePairs(element.fingerprint)) {
-      attributeCounts.set(attribute, (attributeCounts.get(attribute) ?? 0) + 1);
-    }
-  }
+  const population = populationOf(collected.elements.map((element) => element.fingerprint));
 
   const elements: IndexedElement[] = [];
   const elementKeys: string[] = [];
@@ -559,50 +543,11 @@ function describeElements(
     elements.push({
       elementKey: key,
       fingerprint: element.fingerprint,
-      confidence: confidenceFor(element, identityCounts, attributeCounts),
+      confidence: confidenceOf(element.fingerprint, population),
     });
   }
 
   return { elements, elementKeys };
-}
-
-function confidenceFor(
-  element: CollectedElement,
-  identityCounts: ReadonlyMap<string, number>,
-  attributeCounts: ReadonlyMap<string, number>,
-): number {
-  const { fingerprint } = element;
-
-  const hasUniqueAttribute = stableAttributePairs(fingerprint).some(
-    (attribute) => (attributeCounts.get(attribute) ?? 0) === 1,
-  );
-  if (hasUniqueAttribute) return 1;
-
-  const duplicates = identityCounts.get(identityOf(fingerprint)) ?? 1;
-  const shared = 1 / duplicates;
-
-  const hasName = fingerprint.accessibleNameRedacted.trim() !== '';
-  const ceiling = hasName ? 1 : 0.5;
-
-  return round(Math.min(shared, ceiling));
-}
-
-/** What makes two elements interchangeable to a tester: same role, same name, same place. */
-function identityOf(fingerprint: ElementFingerprint): string {
-  return [
-    fingerprint.role,
-    fingerprint.accessibleNameHash,
-    fingerprint.landmarkPath.join('>'),
-  ].join('|');
-}
-
-function stableAttributePairs(fingerprint: ElementFingerprint): string[] {
-  return Object.entries(fingerprint.stableAttributes).map(([name, value]) => `${name}=${value}`);
-}
-
-/** Two decimal places: `numeric` in Postgres, and a confidence of 0.3333… reads as false precision. */
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 interface ObserveOptions {

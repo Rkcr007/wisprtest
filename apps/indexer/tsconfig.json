@@ -3,6 +3,25 @@
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": ["node"],
+    // Typecheck against the workspace packages' *source*, the way `apps/gateway`,
+    // `apps/extension` and `packages/fingerprint` all do. Without this, `protocol` resolves
+    // through its package entry to `dist/` — so a local checkout whose `dist` predates a contract
+    // change typechecks green against a stale contract, and only CI (which rebuilds the packages
+    // before every job) sees the real one. That is a silent disagreement between the two, in the
+    // one place CLAUDE.md rule #3 says there must be a single source of truth.
+    //
+    // Typecheck only. `tsconfig.build.json` overrides nothing here but emits to `dist`, and the
+    // runtime still resolves the built package — this changes what tsc reads, not what runs.
+    //
+    // `protocol` only, deliberately. `fingerprint`'s *source* needs DOM types, and this project
+    // is Node-typed on purpose so that a stray `document` in a worker module fails to compile
+    // rather than at runtime. Mapping it here would pull `Element` and friends into a project
+    // that must not have them — which is the same separation `src/crawl/in-page/tsconfig.json`
+    // exists to maintain. The indexer consumes `fingerprint` through its built types, and the
+    // in-page bundle is compiled by esbuild against the package directly.
+    "paths": {
+      "protocol": ["../../packages/protocol/src/index.ts"]
+    },
     // Typecheck-only config: it covers tooling configs and tests as well as src, so it declares
     // no rootDir. Emit is configured by tsconfig.build.json.
     "noEmit": true

@@ -35,6 +35,17 @@ export { collectForms } from './forms.js';
 export { locateControls, locateRecordControl, locateSubmit } from './seed.js';
 
 /**
+ * The drift matcher rides along on the same bundle, for the third time and the same reason.
+ *
+ * A reconcile runs {@link collect} and then asks which of the elements memory remembers are still
+ * here. That second question needs `scoreCandidate` against live nodes, so it has to happen in the
+ * page — and it has to happen against the markers this collector just stamped, because scoring an
+ * element whose fingerprint was computed in a *different* pass would compare against geometry that
+ * no longer describes it.
+ */
+export { matchStored } from './drift.js';
+
+/**
  * The collector, which runs inside the page under test.
  *
  * This file is bundled by esbuild and injected into every crawled document (see

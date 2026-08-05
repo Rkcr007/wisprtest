@@ -1,6 +1,6 @@
 import type { Browser, Page } from 'playwright';
 import { pathOf, toRoutePattern } from 'fingerprint';
-import type { UiSeedJob, UiSeedResult } from 'protocol';
+import type { SeedJob, SeedJobResult } from 'protocol';
 
 import { applyFormLogin, prepareAuth } from '../crawl/auth.js';
 import { openSession, type SessionBounds } from '../crawl/browser.js';
@@ -48,6 +48,16 @@ import { findSeedApplication, loadIndexedElements, type SeedApplication } from '
  * a human has approved a preview (§ 6) and the environment has been checked. This code's only
  * judgement is whether the form it was sent to is still the form memory recorded.
  */
+
+/**
+ * The two operations this module runs.
+ *
+ * `SeedJob` covers every adapter, and the worker routes on its discriminant. Narrowing here
+ * rather than accepting the whole union is what keeps this file honest: it drives a browser at a
+ * form, and there is nothing it could sensibly do with an API replay.
+ */
+export type UiJob<Operation extends 'ui_create' | 'ui_revert' = 'ui_create' | 'ui_revert'> =
+  Extract<SeedJob, { operation: Operation }>;
 
 /** Attribute the locator stamps. Distinct from the crawl's so the two passes cannot collide. */
 const SEED_MARKER_ATTRIBUTE = 'data-wispr-seed';
@@ -116,9 +126,9 @@ export interface MaterializerDependencies {
  * resolve at all — is exceptional, and even that is caught at the boundary and returned.
  */
 export async function materialize(
-  job: UiSeedJob,
+  job: UiJob,
   deps: MaterializerDependencies,
-): Promise<UiSeedResult> {
+): Promise<SeedJobResult> {
   const startedAt = Date.now();
 
   try {
@@ -131,10 +141,10 @@ export async function materialize(
 }
 
 async function run(
-  job: UiSeedJob,
+  job: UiJob,
   deps: MaterializerDependencies,
   startedAt: number,
-): Promise<UiSeedResult> {
+): Promise<SeedJobResult> {
   const context = await loadContext(job, deps);
   const bounds: SessionBounds = {
     viewport: SEED_VIEWPORT,
@@ -154,7 +164,7 @@ async function run(
       resolver: deps.secrets,
     });
 
-    return job.operation === 'create'
+    return job.operation === 'ui_create'
       ? await create(job, context, session.page, startedAt)
       : await revert(job, context, session.page, startedAt);
   } finally {
@@ -171,9 +181,9 @@ interface JobContext {
   readonly entryPath: string;
 }
 
-async function loadContext(job: UiSeedJob, deps: MaterializerDependencies): Promise<JobContext> {
+async function loadContext(job: UiJob, deps: MaterializerDependencies): Promise<JobContext> {
   const elementKeys =
-    job.operation === 'create' ? job.values.map((value) => value.controlElementKey) : [job.flow];
+    job.operation === 'ui_create' ? job.values.map((value) => value.controlElementKey) : [job.flow];
 
   const loaded = await deps.database.withTenant(job.tenantId, async (db) => {
     const application = await findSeedApplication(db, job.applicationId);
@@ -194,7 +204,7 @@ async function loadContext(job: UiSeedJob, deps: MaterializerDependencies): Prom
   }
 
   const targets: SeedTarget[] =
-    job.operation === 'create'
+    job.operation === 'ui_create'
       ? job.values.map((value) => ({
           field: value.field,
           elementKey: value.controlElementKey,
@@ -212,7 +222,7 @@ async function loadContext(job: UiSeedJob, deps: MaterializerDependencies): Prom
   // by substituting its identifier; on a list route it is the list, and the record's own path is
   // what picks its row out once the page is open.
   const entryPath =
-    job.operation === 'create'
+    job.operation === 'ui_create'
       ? job.route
       : flowPath(element(loaded.elements, job.flow).routePattern, job.detailPath);
 
@@ -234,11 +244,11 @@ async function loadContext(job: UiSeedJob, deps: MaterializerDependencies): Prom
 /* -------------------------------------------------------------------------------- create ---- */
 
 async function create(
-  job: Extract<UiSeedJob, { operation: 'create' }>,
+  job: UiJob<'ui_create'>,
   context: JobContext,
   page: Page,
   startedAt: number,
-): Promise<UiSeedResult> {
+): Promise<SeedJobResult> {
   const formUrl = await context.policy.assertAllowed(
     context.entryPath,
     context.application.baseUrl,
@@ -324,7 +334,7 @@ async function create(
 
   return {
     jobId: job.jobId,
-    operation: 'create',
+    operation: 'ui_create',
     outcome: 'succeeded',
     externalRef,
     detailPath: landed,
@@ -336,11 +346,11 @@ async function create(
 /* -------------------------------------------------------------------------------- revert ---- */
 
 async function revert(
-  job: Extract<UiSeedJob, { operation: 'revert' }>,
+  job: UiJob<'ui_revert'>,
   context: JobContext,
   page: Page,
   startedAt: number,
-): Promise<UiSeedResult> {
+): Promise<SeedJobResult> {
   const recordUrl = await context.policy.assertAllowed(job.detailPath, context.application.baseUrl);
   const flowUrl = await context.policy.assertAllowed(
     context.entryPath,
@@ -580,7 +590,7 @@ function listFields(controls: readonly LocatedControl[]): string {
   return controls.map((control) => control.field).join(', ');
 }
 
-function failed(job: UiSeedJob, startedAt: number, reason: string): UiSeedResult {
+function failed(job: UiJob, startedAt: number, reason: string): SeedJobResult {
   return {
     jobId: job.jobId,
     operation: job.operation,
@@ -592,10 +602,10 @@ function failed(job: UiSeedJob, startedAt: number, reason: string): UiSeedResult
   };
 }
 
-function reverted(job: UiSeedJob, startedAt: number): UiSeedResult {
+function reverted(job: UiJob, startedAt: number): SeedJobResult {
   return {
     jobId: job.jobId,
-    operation: 'revert',
+    operation: 'ui_revert',
     outcome: 'succeeded',
     externalRef: null,
     detailPath: null,
@@ -614,11 +624,11 @@ function reverted(job: UiSeedJob, startedAt: number): UiSeedResult {
  */
 async function withDeadline(
   deadlineMs: number,
-  work: Promise<UiSeedResult>,
-  onTimeout: () => UiSeedResult,
-): Promise<UiSeedResult> {
+  work: Promise<SeedJobResult>,
+  onTimeout: () => SeedJobResult,
+): Promise<SeedJobResult> {
   let timer: NodeJS.Timeout | undefined;
-  const expiry = new Promise<UiSeedResult>((resolve) => {
+  const expiry = new Promise<SeedJobResult>((resolve) => {
     timer = setTimeout(() => {
       resolve(onTimeout());
     }, deadlineMs);

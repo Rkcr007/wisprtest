@@ -502,8 +502,7 @@ const UI_SEED_FIELD_VALUE = {
   value: 'Pending approval',
 };
 
-const UI_SEED_CREATE_JOB = {
-  operation: 'create',
+const SEED_CREATE_IDENTITY = {
   jobId: UUID_A,
   tenantId: UUID_B,
   applicationId: UUID_C,
@@ -512,15 +511,65 @@ const UI_SEED_CREATE_JOB = {
   planId: UUID_C,
   nodeId: 'order-1',
   entity: 'Order',
+  deadlineMs: 30000,
+};
+
+const SEED_REVERT_IDENTITY = {
+  jobId: UUID_A,
+  tenantId: UUID_B,
+  applicationId: UUID_C,
+  memoryVersionId: UUID_D,
+  entity: 'Order',
+  externalRef: 'ORD-4903',
+  deadlineMs: 30000,
+};
+
+const UI_SEED_CREATE_JOB = {
+  ...SEED_CREATE_IDENTITY,
+  operation: 'ui_create',
   form: 'orders-new.create-order',
   route: '/orders/new',
   values: [UI_SEED_FIELD_VALUE],
-  deadlineMs: 30000,
+};
+
+const UI_SEED_REVERT_JOB = {
+  ...SEED_REVERT_IDENTITY,
+  operation: 'ui_revert',
+  flow: 'orders.order.delete',
+  detailPath: '/orders/4903',
+};
+
+const API_SEED_CREATE_JOB = {
+  ...SEED_CREATE_IDENTITY,
+  operation: 'api_create',
+  method: 'POST',
+  path: '/api/orders',
+  payload: { status: 'pending', accountId: 'ACC-118', lines: [{ sku: 'W-1', quantity: 3 }] },
+  readBackPath: '/api/orders/:id',
+};
+
+const API_SEED_REVERT_JOB = {
+  ...SEED_REVERT_IDENTITY,
+  operation: 'api_revert',
+  path: '/api/orders/4903',
+};
+
+const FIXTURE_SEED_CREATE_JOB = {
+  ...SEED_CREATE_IDENTITY,
+  operation: 'fixture_create',
+  command: 'https://staging.example.com/__seed/orders',
+  payload: { status: 'pending', accountId: 'ACC-118' },
+};
+
+const FIXTURE_SEED_REVERT_JOB = {
+  ...SEED_REVERT_IDENTITY,
+  operation: 'fixture_revert',
+  command: 'https://staging.example.com/__seed/orders/teardown',
 };
 
 const UI_SEED_RESULT = {
   jobId: UUID_A,
-  operation: 'create',
+  operation: 'ui_create',
   outcome: 'succeeded',
   externalRef: 'ORD-4903',
   detailPath: '/orders/4903',
@@ -2641,22 +2690,33 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       },
     ],
   },
-  UiSeedJob: {
-    schema: p.UiSeedJob,
+  SeedJobOperation: {
+    schema: p.SeedJobOperation,
+    valid: [
+      'ui_create',
+      'ui_revert',
+      'api_create',
+      'api_revert',
+      'fixture_create',
+      'fixture_revert',
+    ],
+    invalid: [
+      { why: 'an adapter with no operation', value: 'api' },
+      { why: 'the pre-Phase-16 spelling, which named no adapter', value: 'create' },
+    ],
+  },
+  SeedJob: {
+    schema: p.SeedJob,
     valid: [
       UI_SEED_CREATE_JOB,
-      {
-        operation: 'revert',
-        jobId: UUID_A,
-        tenantId: UUID_B,
-        applicationId: UUID_C,
-        memoryVersionId: UUID_D,
-        entity: 'Order',
-        flow: 'orders.order.delete',
-        externalRef: 'ORD-4903',
-        detailPath: '/orders/4903',
-        deadlineMs: 30000,
-      },
+      UI_SEED_REVERT_JOB,
+      API_SEED_CREATE_JOB,
+      // An API materializer the crawl never saw a detail read for. It can still run; it can
+      // never verify itself, so the chain keeps it behind the UI adapter.
+      { ...API_SEED_CREATE_JOB, readBackPath: null },
+      API_SEED_REVERT_JOB,
+      FIXTURE_SEED_CREATE_JOB,
+      FIXTURE_SEED_REVERT_JOB,
     ],
     invalid: [
       {
@@ -2665,37 +2725,72 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       },
       {
         why: 'unknown operation',
-        value: withField(UI_SEED_CREATE_JOB, 'operation', 'update'),
+        value: withField(UI_SEED_CREATE_JOB, 'operation', 'ui_update'),
+      },
+      {
+        why: 'a UI revert with no path, so the delete control could not be aimed at a record',
+        value: without(UI_SEED_REVERT_JOB, 'detailPath'),
+      },
+      {
+        why: 'an API replay with a method that does not create anything',
+        value: withField(API_SEED_CREATE_JOB, 'method', 'GET'),
+      },
+      {
+        why: 'a UI create wearing the API adapter’s discriminant',
+        value: withField(UI_SEED_CREATE_JOB, 'operation', 'api_create'),
       },
     ],
   },
-  UiSeedResult: {
-    schema: p.UiSeedResult,
+  SeedJobResult: {
+    schema: p.SeedJobResult,
     valid: [
       UI_SEED_RESULT,
       {
         jobId: UUID_A,
-        operation: 'revert',
+        operation: 'ui_revert',
         outcome: 'succeeded',
         externalRef: null,
         detailPath: null,
         failureReason: null,
         durationMs: 2800,
       },
+      // An API replay knows the identifier and nothing about where the record is rendered.
       {
         jobId: UUID_A,
-        operation: 'create',
+        operation: 'api_create',
+        outcome: 'succeeded',
+        externalRef: 'ORD-4903',
+        detailPath: null,
+        failureReason: null,
+        durationMs: 180,
+      },
+      {
+        jobId: UUID_A,
+        operation: 'ui_create',
         outcome: 'failed',
         externalRef: null,
         detailPath: null,
         failureReason: 'the form rejected the amount: "must be at least 1"',
         durationMs: 5100,
       },
+      {
+        jobId: UUID_A,
+        operation: 'api_create',
+        outcome: 'failed',
+        externalRef: null,
+        detailPath: null,
+        failureReason: 'POST /api/orders answered 422',
+        durationMs: 140,
+      },
     ],
     invalid: [
       {
         why: 'a create that succeeded without reading back an identifier — nothing could revert it',
         value: withField(UI_SEED_RESULT, 'externalRef', null),
+      },
+      {
+        why: 'a UI create that succeeded without landing anywhere a delete could be aimed at',
+        value: withField(UI_SEED_RESULT, 'detailPath', null),
       },
       {
         why: 'a failure with nothing to tell the tester',

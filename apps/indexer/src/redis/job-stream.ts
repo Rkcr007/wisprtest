@@ -21,7 +21,7 @@ import { namespacedKey } from './client.js';
  *
  * ## Why this is generic in its payload
  *
- * Two kinds of work arrive this way: `CrawlJob`s for the indexing loop, and `UiSeedJob`s for the
+ * Two kinds of work arrive this way: `CrawlJob`s for the indexing loop, and `SeedJob`s for the
  * UI materializer. They differ only in what the JSON means. Everything else — the consumer group,
  * the pending-entries list that makes a dead worker's job reclaimable, the poisoned-message
  * handling — is identical, and a second copy of it would be a second place for the acknowledgement

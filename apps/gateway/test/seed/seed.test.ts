@@ -392,8 +392,8 @@ describe('approving a plan', () => {
     // The job that actually went to the worker, off the real stream.
     expect(worker.jobs).toHaveLength(1);
     const [job] = worker.jobs;
-    expect(job?.operation).toBe('create');
-    if (job?.operation === 'create') {
+    expect(job?.operation).toBe('ui_create');
+    if (job?.operation === 'ui_create') {
       expect(job.form).toBe('orders-new.create-order');
       // Fields resolved to the controls the form observer indexed, not to selectors.
       expect(job.values.map((value) => value.controlElementKey).sort()).toEqual([
@@ -532,8 +532,8 @@ describe('reverting', () => {
 
     // The delete flow was aimed using the record's own path, read back when it was created.
     const [job] = worker.jobs;
-    expect(job?.operation).toBe('revert');
-    if (job?.operation === 'revert') {
+    expect(job?.operation).toBe('ui_revert');
+    if (job?.operation === 'ui_revert') {
       expect(job.flow).toBe('orders.form.order-delete');
       expect(job.detailPath).toBe(`/orders/${entry.externalRef}`);
     }

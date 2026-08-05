@@ -1,5 +1,5 @@
 import { Redis } from 'ioredis';
-import { UiSeedJob, type UiSeedResult } from 'protocol';
+import { SeedJob, type SeedJobResult } from 'protocol';
 
 /**
  * A seed worker that answers over the real Redis, without a browser.
@@ -11,16 +11,16 @@ import { UiSeedJob, type UiSeedResult } from 'protocol';
  *
  * What this covers instead is the part that is genuinely the gateway's, and that a mock of the
  * dispatcher would skip entirely: the job is encoded, written to the stream the indexer reads,
- * validated against `UiSeedJob` on the way out, and the result comes back on the key the indexer
+ * validated against `SeedJob` on the way out, and the result comes back on the key the indexer
  * would write it to. That pairing is the thing most likely to be wrong — the two services derive
  * the namespace differently, and a mismatch fails silently on both sides.
  */
 
 export interface FakeSeedWorker {
   /** Every job the gateway published, parsed against the contract. */
-  readonly jobs: UiSeedJob[];
+  readonly jobs: SeedJob[];
   /** Decide what to answer. Called per job; return null to answer nothing and force a timeout. */
-  respondWith(handler: (job: UiSeedJob) => UiSeedResult | null): void;
+  respondWith(handler: (job: SeedJob) => SeedJobResult | null): void;
   stop(): Promise<void>;
 }
 
@@ -39,8 +39,8 @@ export interface FakeSeedWorkerOptions {
  * group membership left behind would change how the next run's messages are delivered.
  */
 export function startFakeSeedWorker(options: FakeSeedWorkerOptions): FakeSeedWorker {
-  const jobs: UiSeedJob[] = [];
-  let handler: (job: UiSeedJob) => UiSeedResult | null = () => null;
+  const jobs: SeedJob[] = [];
+  let handler: (job: SeedJob) => SeedJobResult | null = () => null;
   let running = true;
 
   // Its own connection, with **no `keyPrefix`** — because that is how the indexer's client is
@@ -72,7 +72,7 @@ export function startFakeSeedWorker(options: FakeSeedWorkerOptions): FakeSeedWor
         const raw = index === -1 ? undefined : fields[index + 1];
         if (raw === undefined) continue;
 
-        const job = UiSeedJob.parse(JSON.parse(raw));
+        const job = SeedJob.parse(JSON.parse(raw));
         jobs.push(job);
 
         const result = handler(job);
@@ -88,7 +88,7 @@ export function startFakeSeedWorker(options: FakeSeedWorkerOptions): FakeSeedWor
 
   return {
     jobs,
-    respondWith(next: (job: UiSeedJob) => UiSeedResult | null): void {
+    respondWith(next: (job: SeedJob) => SeedJobResult | null): void {
       handler = next;
     },
     async stop(): Promise<void> {
@@ -99,24 +99,30 @@ export function startFakeSeedWorker(options: FakeSeedWorkerOptions): FakeSeedWor
   };
 }
 
-/** A successful create, as the indexer's materializer would report one. */
-export function createdResult(job: UiSeedJob, externalRef: string): UiSeedResult {
+/**
+ * A successful create, as the indexer's worker would report one.
+ *
+ * `detailPath` is populated only for the UI adapter, matching what the real worker can know: a
+ * browser that submitted a form ended up somewhere, and an API replay learned an identifier and
+ * nothing about where the record is rendered.
+ */
+export function createdResult(job: SeedJob, externalRef: string): SeedJobResult {
   return {
     jobId: job.jobId,
-    operation: 'create',
+    operation: job.operation,
     outcome: 'succeeded',
     externalRef,
-    detailPath: `/orders/${externalRef}`,
+    detailPath: job.operation === 'ui_create' ? `/orders/${externalRef}` : null,
     failureReason: null,
     durationMs: 4200,
   };
 }
 
 /** A successful revert. */
-export function revertedResult(job: UiSeedJob): UiSeedResult {
+export function revertedResult(job: SeedJob): SeedJobResult {
   return {
     jobId: job.jobId,
-    operation: 'revert',
+    operation: job.operation,
     outcome: 'succeeded',
     externalRef: null,
     detailPath: null,
@@ -126,7 +132,7 @@ export function revertedResult(job: UiSeedJob): UiSeedResult {
 }
 
 /** A failure, with the concrete reason the tester ends up reading. */
-export function failedResult(job: UiSeedJob, reason: string): UiSeedResult {
+export function failedResult(job: SeedJob, reason: string): SeedJobResult {
   return {
     jobId: job.jobId,
     operation: job.operation,

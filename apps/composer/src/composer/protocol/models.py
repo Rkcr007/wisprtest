@@ -695,7 +695,25 @@ class SecretRef(BaseModel):
     ]
 
 
+class SeedJobOperation(StrEnum):
+    """
+    Which adapter runs a seed job, and whether it creates or removes a record.
+    """
+
+    UI_CREATE = "ui_create"
+    UI_REVERT = "ui_revert"
+    API_CREATE = "api_create"
+    API_REVERT = "api_revert"
+    FIXTURE_CREATE = "fixture_create"
+    FIXTURE_REVERT = "fixture_revert"
+
+
 class Outcome2(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class Outcome3(StrEnum):
     REVERTED = "reverted"
     FAILED = "failed"
     NOT_REVERTIBLE = "not_revertible"
@@ -866,16 +884,6 @@ class UiSeedFieldValue(BaseModel):
         ),
     ]
     value: Annotated[Any, Field(description="Arbitrary JSON value; not modelled further.")]
-
-
-class Operation(StrEnum):
-    CREATE = "create"
-    REVERT = "revert"
-
-
-class Outcome3(StrEnum):
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
 
 
 class ValidationIssue(BaseModel):
@@ -4114,6 +4122,457 @@ class SeedExecuteRequest(BaseModel):
     ]
 
 
+class UiSeedCreateJob(BaseModel):
+    """
+    Fill and submit the real create form, then verify the record is reachable.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
+    node_id: Annotated[
+        str,
+        Field(
+            alias="nodeId",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["ui_create"]
+    form: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    route: Annotated[
+        str,
+        Field(
+            description="Route with dynamic segments generalised, e.g. /orders/:id.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePattern",
+        ),
+    ]
+    values: Annotated[list[UiSeedFieldValue], Field(min_length=1)]
+
+
+class UiSeedRevertJob(BaseModel):
+    """
+    Drive the indexed delete flow for one seeded record.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["ui_revert"]
+    flow: Annotated[
+        str,
+        Field(
+            description="Stable element identifier in the form screen.component.element.",
+            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
+            title="ElementKey",
+        ),
+    ]
+    detail_path: Annotated[
+        str,
+        Field(
+            alias="detailPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+
+
+class ApiSeedCreateJob(BaseModel):
+    """
+    Replay the observed create request, then read the record back to verify.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
+    node_id: Annotated[
+        str,
+        Field(
+            alias="nodeId",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["api_create"]
+    method: Method
+    path: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    payload: Annotated[Any, Field(description="Arbitrary JSON value; not modelled further.")]
+    read_back_path: Annotated[
+        str | None,
+        Field(
+            alias="readBackPath",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class ApiSeedRevertJob(BaseModel):
+    """
+    DELETE the record through the API that created it.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["api_revert"]
+    path: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class FixtureSeedCreateJob(BaseModel):
+    """
+    Post the composed record to the customer's sanctioned seeding endpoint.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
+    node_id: Annotated[
+        str,
+        Field(
+            alias="nodeId",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["fixture_create"]
+    command: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    payload: Annotated[Any, Field(description="Arbitrary JSON value; not modelled further.")]
+
+
+class FixtureSeedRevertJob(BaseModel):
+    """
+    Run the customer's configured teardown for one seeded record.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    entity: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    external_ref: Annotated[
+        str,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    operation: Literal["fixture_revert"]
+    command: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class SeedJob(
+    RootModel[
+        UiSeedCreateJob
+        | UiSeedRevertJob
+        | ApiSeedCreateJob
+        | ApiSeedRevertJob
+        | FixtureSeedCreateJob
+        | FixtureSeedRevertJob
+    ]
+):
+    root: Annotated[
+        UiSeedCreateJob
+        | UiSeedRevertJob
+        | ApiSeedCreateJob
+        | ApiSeedRevertJob
+        | FixtureSeedCreateJob
+        | FixtureSeedRevertJob,
+        Field(
+            description="One write to the application under test, for whichever adapter the chain chose."
+        ),
+    ]
+
+
+class SeedJobResult(BaseModel):
+    """
+    The outcome of one seed job, with the identifier it read back.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    operation: SeedJobOperation
+    outcome: Outcome2
+    external_ref: Annotated[
+        str | None,
+        Field(
+            alias="externalRef",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    detail_path: Annotated[
+        str | None,
+        Field(
+            alias="detailPath",
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    failure_reason: Annotated[
+        str | None,
+        Field(
+            alias="failureReason",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+    duration_ms: Annotated[
+        float,
+        Field(
+            alias="durationMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+
+
 class SeedLedgerEntry(BaseModel):
     """
     Ledger record of one seeded entity, with its provenance and inverse operation.
@@ -4285,7 +4744,7 @@ class SeedRevertOutcome(BaseModel):
             title="NonEmptyString",
         ),
     ]
-    outcome: Outcome2
+    outcome: Outcome3
     reason: Annotated[
         str | None,
         Field(
@@ -4523,199 +4982,6 @@ class StructuralDiff(BaseModel):
     moved: list[ElementMove]
     renamed: list[ElementRename]
     schema_changes: Annotated[list[SchemaChange], Field(alias="schemaChanges")]
-
-
-class UiSeedCreateJob(BaseModel):
-    """
-    Fill and submit the real create form, then verify the record is reachable.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    operation: Literal["create"]
-    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
-    tenant_id: Annotated[
-        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
-    ]
-    application_id: Annotated[
-        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
-    ]
-    memory_version_id: Annotated[
-        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
-    ]
-    session_id: Annotated[
-        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
-    ]
-    plan_id: Annotated[UUID, Field(alias="planId", description="UUID identifier.", title="Uuid")]
-    node_id: Annotated[
-        str,
-        Field(
-            alias="nodeId",
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    entity: Annotated[
-        str,
-        Field(
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    form: Annotated[
-        str,
-        Field(
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    route: Annotated[
-        str,
-        Field(
-            description="Route with dynamic segments generalised, e.g. /orders/:id.",
-            pattern="^\\/[^\\s]*$",
-            title="RoutePattern",
-        ),
-    ]
-    values: Annotated[list[UiSeedFieldValue], Field(min_length=1)]
-    deadline_ms: Annotated[
-        float,
-        Field(
-            alias="deadlineMs",
-            description="Elapsed wall-clock time in milliseconds.",
-            ge=0.0,
-            title="LatencyMs",
-        ),
-    ]
-
-
-class UiSeedRevertJob(BaseModel):
-    """
-    Drive the indexed delete flow for one seeded record.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    operation: Literal["revert"]
-    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
-    tenant_id: Annotated[
-        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
-    ]
-    application_id: Annotated[
-        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
-    ]
-    memory_version_id: Annotated[
-        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
-    ]
-    entity: Annotated[
-        str,
-        Field(
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    flow: Annotated[
-        str,
-        Field(
-            description="Stable element identifier in the form screen.component.element.",
-            pattern="^[a-z0-9]+(?:[_-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[_-][a-z0-9]+)*){2}$",
-            title="ElementKey",
-        ),
-    ]
-    external_ref: Annotated[
-        str,
-        Field(
-            alias="externalRef",
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    detail_path: Annotated[
-        str,
-        Field(
-            alias="detailPath",
-            description="Absolute URL path of the app under test, without origin.",
-            pattern="^\\/[^\\s]*$",
-            title="RoutePath",
-        ),
-    ]
-    deadline_ms: Annotated[
-        float,
-        Field(
-            alias="deadlineMs",
-            description="Elapsed wall-clock time in milliseconds.",
-            ge=0.0,
-            title="LatencyMs",
-        ),
-    ]
-
-
-class UiSeedJob(RootModel[UiSeedCreateJob | UiSeedRevertJob]):
-    root: Annotated[
-        UiSeedCreateJob | UiSeedRevertJob,
-        Field(
-            description="A UI adapter job: create a record through the real form, or delete one."
-        ),
-    ]
-
-
-class UiSeedResult(BaseModel):
-    """
-    The outcome of one UI adapter job, with the identifier it read back.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
-    operation: Operation
-    outcome: Outcome3
-    external_ref: Annotated[
-        str | None,
-        Field(
-            alias="externalRef",
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    detail_path: Annotated[
-        str | None,
-        Field(
-            alias="detailPath",
-            description="Absolute URL path of the app under test, without origin.",
-            pattern="^\\/[^\\s]*$",
-            title="RoutePath",
-        ),
-    ]
-    failure_reason: Annotated[
-        str | None,
-        Field(
-            alias="failureReason",
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
-        ),
-    ]
-    duration_ms: Annotated[
-        float,
-        Field(
-            alias="durationMs",
-            description="Elapsed wall-clock time in milliseconds.",
-            ge=0.0,
-            title="LatencyMs",
-        ),
-    ]
 
 
 class ActionResult(BaseModel):

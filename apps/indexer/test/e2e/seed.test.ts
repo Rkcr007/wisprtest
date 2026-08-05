@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { pino } from 'pino';
 import type { Browser } from 'playwright';
-import type { UiSeedJob } from 'protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
@@ -11,7 +10,7 @@ import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob } from '../../src/job-runner.js';
 import { createRedis } from '../../src/redis/client.js';
-import type { MaterializerDependencies } from '../../src/seed/materializer.js';
+import type { MaterializerDependencies, UiJob } from '../../src/seed/materializer.js';
 import { materialize } from '../../src/seed/materializer.js';
 import { createMetrics } from '../../src/telemetry/metrics.js';
 import { startFixtureApp, type FixtureApp } from '../fixture-app/server.js';
@@ -91,11 +90,9 @@ function controlFor(field: string): string {
  * A composed plan reaches the same place from the other direction: the solver fills
  * required-but-unspecified fields precisely so the application accepts the record.
  */
-function createJob(
-  overrides: Partial<Extract<UiSeedJob, { operation: 'create' }>> = {},
-): UiSeedJob {
+function createJob(overrides: Partial<UiJob<'ui_create'>> = {}): UiJob {
   return {
-    operation: 'create',
+    operation: 'ui_create',
     jobId: randomUUID(),
     tenantId: fixture.tenantId,
     applicationId: fixture.applicationId,
@@ -113,10 +110,7 @@ function createJob(
 }
 
 /** Values for every required control, with the account reference resolved to a real record. */
-function requiredValues(
-  customer: string,
-  poNumber: string,
-): Extract<UiSeedJob, { operation: 'create' }>['values'] {
+function requiredValues(customer: string, poNumber: string): UiJob<'ui_create'>['values'] {
   return [
     { field: 'customer', controlElementKey: controlFor('customer'), value: customer },
     { field: 'accountId', controlElementKey: controlFor('accountId'), value: accountId },
@@ -289,7 +283,7 @@ describe('reverting through the indexed delete flow', () => {
 
     const result = await materialize(
       {
-        operation: 'revert',
+        operation: 'ui_revert',
         jobId: randomUUID(),
         tenantId: fixture.tenantId,
         applicationId: fixture.applicationId,
@@ -317,8 +311,8 @@ describe('reverting through the indexed delete flow', () => {
     const created = await materialize(createJob(), dependencies());
     expect(created.outcome).toBe('succeeded');
 
-    const revertJob: UiSeedJob = {
-      operation: 'revert',
+    const revertJob: UiJob = {
+      operation: 'ui_revert',
       jobId: randomUUID(),
       tenantId: fixture.tenantId,
       applicationId: fixture.applicationId,

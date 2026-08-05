@@ -123,7 +123,7 @@ export class CancelledError extends IndexerError {
  *
  * Its own code rather than one of the `IndexFailureCode`s above, because a seed job has no memory
  * version to be recorded against and must never mark one failed: the memory is fine, the form
- * moved. The message is the one the gateway puts in `UiSeedResult.failureReason` and the tester
+ * moved. The message is the one the gateway puts in `SeedJobResult.failureReason` and the tester
  * eventually reads, so it states what could not be done, not merely that something could not.
  */
 export class SeedError extends IndexerError {

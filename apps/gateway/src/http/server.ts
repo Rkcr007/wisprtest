@@ -12,11 +12,13 @@ import { createS3EvidenceStore } from '../storage/s3-evidence-store.js';
 import type { EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 import { registerCrawlRoutes } from '../routes/crawl.js';
-import { registerMemoryRoutes } from '../routes/memory.js';
+import { registerDriftRoutes } from '../routes/drift.js';
+import { registerMemoryRoutes, snapshotKey } from '../routes/memory.js';
 import { registerResolveRoutes } from '../routes/resolve.js';
 import { registerSeedRoutes } from '../routes/seed.js';
 import { registerSessionRoutes } from '../routes/sessions.js';
 import { createComposerClient, type ComposerClient } from '../composer/client.js';
+import { createDriftJobDispatcher } from '../redis/drift-queue.js';
 import { createSeedJobDispatcher, createSeedPlanStore } from '../redis/seed-queue.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
@@ -126,6 +128,16 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       }),
     plans: createSeedPlanStore(options.redis),
     dispatcher: createSeedJobDispatcher(options.redis, config.SEED_JOB_STREAM),
+  });
+
+  registerDriftRoutes(app, {
+    config,
+    database: options.database,
+    metrics,
+    dispatcher: createDriftJobDispatcher(options.redis, config.DRIFT_JOB_STREAM),
+    invalidateSnapshot: async (tenantId, applicationId, version) => {
+      await options.redis.del(snapshotKey(tenantId, applicationId, version));
+    },
   });
 
   app.addHook('onResponse', (request, reply, done) => {

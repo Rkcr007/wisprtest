@@ -30,6 +30,8 @@ const validEnv = {
   MODEL_TIMEOUT_MS: '800',
   INDEXER_JOB_STREAM: 'indexer:jobs',
   SEED_JOB_STREAM: 'indexer:seed',
+  DRIFT_JOB_STREAM: 'indexer:drift',
+  DRIFT_RECONCILE_TIMEOUT_MS: '120000',
   COMPOSER_URL: 'http://127.0.0.1:8090',
   COMPOSER_TIMEOUT_MS: '1200',
   SEED_PLAN_TTL_SECONDS: '300',

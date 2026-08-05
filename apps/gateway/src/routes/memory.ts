@@ -54,7 +54,14 @@ function gzipAsync(input: Buffer): Promise<Buffer> {
   });
 }
 
-function snapshotKey(tenantId: string, applicationId: string, version: number): string {
+/**
+ * Where a version's assembled snapshot is cached.
+ *
+ * Exported because drift approval has to drop it too, and a second copy of this expression is a
+ * second chance to get it wrong — an invalidation that computes a key nothing was written under
+ * fails silently and leaves testers resolving against superseded memory.
+ */
+export function snapshotKey(tenantId: string, applicationId: string, version: number): string {
   return tenantKey(tenantId, 'memory', applicationId, `v${String(version)}`);
 }
 

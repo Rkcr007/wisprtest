@@ -1,11 +1,11 @@
 import type { Redis } from 'ioredis';
-import { CompositionPlan, UiSeedJob, UiSeedResult } from 'protocol';
+import { CompositionPlan, SeedJob, SeedJobResult } from 'protocol';
 
 import { DependencyUnavailableError, GatewayError } from '../errors.js';
 import { tenantKey } from './client.js';
 
 /**
- * The gateway's two Redis uses for seeding: holding a composed plan, and dispatching a UI job.
+ * The gateway's two Redis uses for seeding: holding a composed plan, and dispatching a seed job.
  *
  * ## Why the plan is held here rather than returned
  *
@@ -110,19 +110,44 @@ export function createSeedPlanStore(redis: Redis): SeedPlanStore {
 
 export interface SeedJobDispatcher {
   /**
-   * Send one job to the indexer's UI materializer and wait for its result.
+   * Send one job to the indexer's seed worker and wait for its result.
    *
    * @throws {GatewayError} `materialization_failed` when no result arrives inside `timeoutMs`.
    *   A timeout is not a failed materialization — the worker may have created the record and
    *   failed to report it — so the caller has to treat it as an unknown rather than as a no-op.
    */
-  run(job: UiSeedJob, timeoutMs: number): Promise<UiSeedResult>;
+  run(job: SeedJob, timeoutMs: number): Promise<SeedJobResult>;
+}
+
+/** The adapter half of a job's operation, for the error a timeout has to attribute to something. */
+function adapterOf(operation: SeedJob['operation']): 'ui' | 'api' | 'fixture' {
+  if (operation.startsWith('api_')) return 'api';
+  if (operation.startsWith('fixture_')) return 'fixture';
+  return 'ui';
+}
+
+/**
+ * What a timed-out job was working on: the plan it belongs to, or its own id when reverting.
+ *
+ * Spelled as an exhaustive comparison rather than `operation.endsWith('_create')` because only
+ * the former narrows the union — `planId` does not exist on the revert variants, and a predicate
+ * TypeScript cannot follow would have to be papered over with a cast.
+ */
+function subjectOf(job: SeedJob): string {
+  switch (job.operation) {
+    case 'ui_create':
+    case 'api_create':
+    case 'fixture_create':
+      return job.planId;
+    default:
+      return job.jobId;
+  }
 }
 
 export function createSeedJobDispatcher(redis: Redis, stream: string): SeedJobDispatcher {
   return {
-    async run(job: UiSeedJob, timeoutMs: number): Promise<UiSeedResult> {
-      const parsed = UiSeedJob.parse(job);
+    async run(job: SeedJob, timeoutMs: number): Promise<SeedJobResult> {
+      const parsed = SeedJob.parse(job);
 
       let messageId: string | null;
       try {
@@ -156,15 +181,16 @@ export function createSeedJobDispatcher(redis: Redis, stream: string): SeedJobDi
         const popped = await waiter.blpop(resultKey(parsed.jobId), seconds);
 
         if (popped === null) {
+          const adapter = adapterOf(parsed.operation);
           throw new GatewayError(
             'materialization_failed',
-            `the UI materializer did not report back within ${String(timeoutMs)}ms`,
-            { planId: parsed.operation === 'create' ? parsed.planId : parsed.jobId, adapter: 'ui' },
+            `the ${adapter} materializer did not report back within ${String(timeoutMs)}ms`,
+            { planId: subjectOf(parsed), adapter },
           );
         }
 
         const [, raw] = popped;
-        const result = UiSeedResult.safeParse(JSON.parse(raw));
+        const result = SeedJobResult.safeParse(JSON.parse(raw));
         if (!result.success) {
           throw new GatewayError('validation_failed', 'the seed worker answered off-contract', {
             issues: result.error.issues.map((issue) => ({

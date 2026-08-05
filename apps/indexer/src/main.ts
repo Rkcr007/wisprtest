@@ -1,4 +1,4 @@
-import { CrawlJob, UiSeedJob } from 'protocol';
+import { CrawlJob, SeedJob } from 'protocol';
 
 import { loadConfig } from './config.js';
 import { launchBrowser } from './crawl/browser.js';
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   // consume loop against its own stream. One process, two queues: a worker that could crawl but
   // not seed would leave every UI materialization waiting on a deployment that has both.
   const seedWorker = createSeedWorker({
-    stream: createJobStream(redis, UiSeedJob, {
+    stream: createJobStream(redis, SeedJob, {
       stream: config.INDEXER_SEED_STREAM,
       group: config.INDEXER_SEED_CONSUMER_GROUP,
       consumer: config.INDEXER_WORKER_ID,

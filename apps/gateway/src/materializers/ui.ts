@@ -117,7 +117,7 @@ export function createUiMaterializer(options: UiMaterializerOptions): Materializ
 
       const result = await options.dispatcher.run(
         {
-          operation: 'create',
+          operation: 'ui_create',
           jobId: randomUUID(),
           tenantId: context.tenantId,
           applicationId: context.applicationId,
@@ -176,7 +176,7 @@ export function createUiMaterializer(options: UiMaterializerOptions): Materializ
 
       const result = await options.dispatcher.run(
         {
-          operation: 'revert',
+          operation: 'ui_revert',
           jobId: randomUUID(),
           tenantId: context.tenantId,
           applicationId: context.applicationId,

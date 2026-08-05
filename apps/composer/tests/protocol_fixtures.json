@@ -2756,6 +2756,185 @@
       "ledger": []
     }
   ],
+  "SeedJob": [
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "nodeId": "order-1",
+      "entity": "Order",
+      "deadlineMs": 30000,
+      "operation": "ui_create",
+      "form": "orders-new.create-order",
+      "route": "/orders/new",
+      "values": [
+        {
+          "field": "status",
+          "controlElementKey": "orders-new.create-order.status",
+          "value": "Pending approval"
+        }
+      ]
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "deadlineMs": 30000,
+      "operation": "ui_revert",
+      "flow": "orders.order.delete",
+      "detailPath": "/orders/4903"
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "nodeId": "order-1",
+      "entity": "Order",
+      "deadlineMs": 30000,
+      "operation": "api_create",
+      "method": "POST",
+      "path": "/api/orders",
+      "payload": {
+        "status": "pending",
+        "accountId": "ACC-118",
+        "lines": [
+          {
+            "sku": "W-1",
+            "quantity": 3
+          }
+        ]
+      },
+      "readBackPath": "/api/orders/:id"
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "nodeId": "order-1",
+      "entity": "Order",
+      "deadlineMs": 30000,
+      "operation": "api_create",
+      "method": "POST",
+      "path": "/api/orders",
+      "payload": {
+        "status": "pending",
+        "accountId": "ACC-118",
+        "lines": [
+          {
+            "sku": "W-1",
+            "quantity": 3
+          }
+        ]
+      },
+      "readBackPath": null
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "deadlineMs": 30000,
+      "operation": "api_revert",
+      "path": "/api/orders/4903"
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "nodeId": "order-1",
+      "entity": "Order",
+      "deadlineMs": 30000,
+      "operation": "fixture_create",
+      "command": "https://staging.example.com/__seed/orders",
+      "payload": {
+        "status": "pending",
+        "accountId": "ACC-118"
+      }
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "entity": "Order",
+      "externalRef": "ORD-4903",
+      "deadlineMs": 30000,
+      "operation": "fixture_revert",
+      "command": "https://staging.example.com/__seed/orders/teardown"
+    }
+  ],
+  "SeedJobOperation": [
+    "ui_create",
+    "ui_revert",
+    "api_create",
+    "api_revert",
+    "fixture_create",
+    "fixture_revert"
+  ],
+  "SeedJobResult": [
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "ui_create",
+      "outcome": "succeeded",
+      "externalRef": "ORD-4903",
+      "detailPath": "/orders/4903",
+      "failureReason": null,
+      "durationMs": 4200
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "ui_revert",
+      "outcome": "succeeded",
+      "externalRef": null,
+      "detailPath": null,
+      "failureReason": null,
+      "durationMs": 2800
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "api_create",
+      "outcome": "succeeded",
+      "externalRef": "ORD-4903",
+      "detailPath": null,
+      "failureReason": null,
+      "durationMs": 180
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "ui_create",
+      "outcome": "failed",
+      "externalRef": null,
+      "detailPath": null,
+      "failureReason": "the form rejected the amount: \"must be at least 1\"",
+      "durationMs": 5100
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "operation": "api_create",
+      "outcome": "failed",
+      "externalRef": null,
+      "detailPath": null,
+      "failureReason": "POST /api/orders answered 422",
+      "durationMs": 140
+    }
+  ],
   "SeedLedgerEntry": [
     {
       "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
@@ -3674,70 +3853,6 @@
       "field": "status",
       "controlElementKey": "orders-new.create-order.status",
       "value": null
-    }
-  ],
-  "UiSeedJob": [
-    {
-      "operation": "create",
-      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
-      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
-      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
-      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
-      "planId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
-      "nodeId": "order-1",
-      "entity": "Order",
-      "form": "orders-new.create-order",
-      "route": "/orders/new",
-      "values": [
-        {
-          "field": "status",
-          "controlElementKey": "orders-new.create-order.status",
-          "value": "Pending approval"
-        }
-      ],
-      "deadlineMs": 30000
-    },
-    {
-      "operation": "revert",
-      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
-      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
-      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
-      "entity": "Order",
-      "flow": "orders.order.delete",
-      "externalRef": "ORD-4903",
-      "detailPath": "/orders/4903",
-      "deadlineMs": 30000
-    }
-  ],
-  "UiSeedResult": [
-    {
-      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-      "operation": "create",
-      "outcome": "succeeded",
-      "externalRef": "ORD-4903",
-      "detailPath": "/orders/4903",
-      "failureReason": null,
-      "durationMs": 4200
-    },
-    {
-      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-      "operation": "revert",
-      "outcome": "succeeded",
-      "externalRef": null,
-      "detailPath": null,
-      "failureReason": null,
-      "durationMs": 2800
-    },
-    {
-      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-      "operation": "create",
-      "outcome": "failed",
-      "externalRef": null,
-      "detailPath": null,
-      "failureReason": "the form rejected the amount: \"must be at least 1\"",
-      "durationMs": 5100
     }
   ],
   "Uuid": [

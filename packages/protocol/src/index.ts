@@ -15,7 +15,7 @@
  * | Resolution | `ScopedQuery`, `ResolutionResult`, `Tier`, `ResolutionCandidate`, `QueryConstraint` |
  * | Runtime    | `RuntimeState`, `StateFingerprint`, `ActionClass`, `ActionRequest`, `ActionResult`, `SessionStep` |
  * | Data       | `EntitySchema`, `FieldSpec`, `Constraint`, `ConstraintSet`, `CompositionPlan`, `ProvenanceEntry`, `MaterializationResult`, `InverseOperation`, `SeedLedgerEntry` |
- * | Seeding    | `SeedPlanRequest`, `SeedPlanResponse`, `SeedNodePreview`, `SeedExecuteRequest`, `SeedRevertRequest`, `UiSeedJob`, `UiSeedResult` |
+ * | Seeding    | `SeedPlanRequest`, `SeedPlanResponse`, `SeedNodePreview`, `SeedExecuteRequest`, `SeedRevertRequest`, `SeedJob`, `SeedJobResult` |
  * | Drift      | `DriftReport`, `StructuralDiff` |
  * | Errors     | `WisprError`, `WisprErrorCode`, `Result<T>` |
  *

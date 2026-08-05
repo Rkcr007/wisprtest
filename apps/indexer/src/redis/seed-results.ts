@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis';
-import { UiSeedResult } from 'protocol';
+import { SeedJobResult } from 'protocol';
 
 import { namespacedKey } from './client.js';
 
@@ -43,12 +43,12 @@ export function seedResultKey(jobId: string): string {
 
 export interface SeedResultChannel {
   /** Hand the result to whoever is waiting for this job. */
-  publish(result: UiSeedResult, ttlSeconds: number): Promise<void>;
+  publish(result: SeedJobResult, ttlSeconds: number): Promise<void>;
 }
 
 export function createSeedResultChannel(redis: Redis): SeedResultChannel {
   return {
-    async publish(result: UiSeedResult, ttlSeconds: number): Promise<void> {
+    async publish(result: SeedJobResult, ttlSeconds: number): Promise<void> {
       const key = seedResultKey(result.jobId);
       // Pushed and expired in one round trip. Two commands would leave a window in which a crash
       // between them strands the key with no TTL, which is the leak this exists to prevent.

@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import type { UiSeedJob } from 'protocol';
+import type { SeedJob, SeedJobResult } from 'protocol';
 
 import { isPoisoned, type JobStream } from '../redis/job-stream.js';
 import type { SeedResultChannel } from '../redis/seed-results.js';
@@ -28,7 +28,7 @@ import { materialize, type MaterializerDependencies } from './materializer.js';
  */
 
 export interface SeedWorkerOptions {
-  readonly stream: JobStream<UiSeedJob>;
+  readonly stream: JobStream<SeedJob>;
   readonly results: SeedResultChannel;
   readonly materializer: MaterializerDependencies;
   readonly logger: Logger;
@@ -81,7 +81,7 @@ export function createSeedWorker(options: SeedWorkerOptions): SeedWorker {
               message_id: delivery.messageId,
               issues: delivery.issues,
             },
-            'discarding a job that does not match the UiSeedJob contract',
+            'discarding a job that does not match the SeedJob contract',
           );
           await options.stream.ack(delivery.messageId);
           continue;
@@ -90,7 +90,7 @@ export function createSeedWorker(options: SeedWorkerOptions): SeedWorker {
         const { job } = delivery;
         busy = true;
         try {
-          const result = await materialize(job, options.materializer);
+          const result = await run(job, options.materializer);
 
           options.logger.info(
             {
@@ -124,6 +124,31 @@ export function createSeedWorker(options: SeedWorkerOptions): SeedWorker {
 
       options.logger.info({ event: 'seed_worker.stopped' }, 'seed job loop wound down');
     },
+  };
+}
+
+/**
+ * Route a job to the adapter that runs it.
+ *
+ * The API and fixture adapters are not in this build yet — Phase 16 lands them next — and an
+ * unsupported operation is answered rather than dropped. The gateway is blocked on a result for
+ * every job it enqueues, so silence would cost the tester a full materialization timeout to learn
+ * something this worker knows immediately. The chain reads the refusal as a failed attempt and
+ * falls through to the UI adapter, which is exactly the behaviour § 4 asks for.
+ */
+async function run(job: SeedJob, deps: MaterializerDependencies): Promise<SeedJobResult> {
+  if (job.operation === 'ui_create' || job.operation === 'ui_revert') {
+    return await materialize(job, deps);
+  }
+
+  return {
+    jobId: job.jobId,
+    operation: job.operation,
+    outcome: 'failed',
+    externalRef: null,
+    detailPath: null,
+    failureReason: `this indexer build has no ${job.operation.split('_')[0] ?? ''} adapter`,
+    durationMs: 0,
   };
 }
 

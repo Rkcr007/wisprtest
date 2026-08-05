@@ -98,7 +98,7 @@ export interface RevertContext {
   readonly memoryVersionId: string;
   readonly entity: string;
   readonly externalRef: string;
-  /** Where the record lives, as read back when it was created. See `UiSeedJob`'s revert variant. */
+  /** Where the record lives, as read back when it was created. See `SeedJob`'s revert variant. */
   readonly detailPath: string | null;
   readonly deadlineMs: number;
 }

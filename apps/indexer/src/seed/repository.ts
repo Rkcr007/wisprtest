@@ -6,7 +6,7 @@ import { SeedError } from '../errors.js';
 /**
  * The reads the UI materializer performs before it opens a browser.
  *
- * A `UiSeedJob` carries ids, not data — element fingerprints and secret references have no
+ * A `SeedJob` carries ids, not data — element fingerprints and secret references have no
  * business sitting in a Redis stream, and a job that carried them would be a second copy of
  * memory that could disagree with the first. Everything the adapter needs is loaded here, scoped
  * by row-level security like every other read in the service.

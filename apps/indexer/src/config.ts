@@ -52,7 +52,7 @@ const indexerEnvSchema = z.object({
 
   // ── Seed jobs ────────────────────────────────────────────────────────────────────────────────
   /**
-   * Redis stream the gateway enqueues `UiSeedJob`s on. Separate from the crawl stream.
+   * Redis stream the gateway enqueues `SeedJob`s on. Separate from the crawl stream.
    *
    * Two streams rather than one, because the two kinds of work have opposite urgencies: a crawl
    * runs for minutes and nobody is waiting, a seed job has a tester's request held open behind it.

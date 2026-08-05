@@ -281,7 +281,7 @@ export const SeedRevertResponse = contract(
 export type SeedRevertResponse = z.infer<typeof SeedRevertResponse>;
 
 /* -------------------------------------------------------------------------------------------
- * Gateway ↔ indexer: the UI adapter's job boundary.
+ * Gateway ↔ indexer: the adapters' job boundary.
  * ---------------------------------------------------------------------------------------- */
 
 /**
@@ -306,38 +306,92 @@ export const UiSeedFieldValue = contract(
 export type UiSeedFieldValue = z.infer<typeof UiSeedFieldValue>;
 
 /**
- * Work for the indexer's seed worker: drive a real form, or drive a real delete flow.
+ * Which adapter a job is for, and whether it creates or removes.
  *
- * The UI adapter runs on the indexer rather than in the gateway because that is where the things
- * it needs already are — Playwright, `packages/fingerprint`, and the per-application auth profiles
- * a background browser has to apply to be logged in at all (docs/TEST-DATA-ENGINE.md § 4). The
- * gateway owns the chain, the policy and the ledger; it does not own a browser.
- *
- * Both variants carry ids rather than data. The worker loads the memory version's elements itself,
- * which keeps this message small and — more to the point — keeps element fingerprints out of a
- * Redis stream.
+ * Flat rather than a pair of `adapter` and `operation` fields because it is the discriminant of
+ * {@link SeedJob}, and a union discriminated on two keys at once is not a thing Zod can express.
+ * The flat form also reads better everywhere it ends up — a log line saying `api_revert` needs no
+ * second field to be understood.
  */
-export const UiSeedJob = contract(
-  'UiSeedJob',
+export const SeedJobOperation = contract(
+  'SeedJobOperation',
+  z
+    .enum([
+      'ui_create',
+      'ui_revert',
+      'api_create',
+      'api_revert',
+      'fixture_create',
+      'fixture_revert',
+    ])
+    .describe('Which adapter runs a seed job, and whether it creates or removes a record.'),
+);
+export type SeedJobOperation = z.infer<typeof SeedJobOperation>;
+
+/** Every seed job carries these, whichever adapter runs it. */
+const seedJobIdentity = {
+  jobId: Uuid,
+  tenantId: Uuid,
+  applicationId: Uuid,
+  memoryVersionId: Uuid,
+  /** Wall-clock ceiling. A UI materialization is seconds; an API replay is milliseconds. */
+  deadlineMs: LatencyMs,
+};
+
+/** A create job is one node of an approved plan, and says which. */
+const seedCreateIdentity = {
+  ...seedJobIdentity,
+  sessionId: Uuid,
+  planId: Uuid,
+  nodeId: NonEmptyString,
+  entity: NonEmptyString,
+};
+
+/** A revert job names the record it is removing, for the message a tester has to act on. */
+const seedRevertIdentity = {
+  ...seedJobIdentity,
+  entity: NonEmptyString,
+  externalRef: NonEmptyString,
+};
+
+/**
+ * Work for the indexer's seed worker: every write WisprTest makes to the app under test.
+ *
+ * All three adapters run on the indexer rather than in the gateway, because that is where the
+ * things they need already are — Playwright, `packages/fingerprint`, the SSRF policy in
+ * `crawl/url-policy.ts`, and the per-application auth profiles a background browser has to apply
+ * to be logged in at all (docs/TEST-DATA-ENGINE.md § 4). The gateway owns the chain, the policy
+ * and the ledger; it does not own a browser, and it must never hold a customer's credential.
+ *
+ * That is also how the API adapter satisfies § 4's "reuse the tester's live session": the replay
+ * is issued from inside the authenticated browser context, sharing its cookie jar, so no
+ * credential is copied anywhere to make the request. See ADR 0013.
+ *
+ * ## The gateway fills the payload; the worker only sends it
+ *
+ * `MaterializerSpec` for the API adapter holds a `payloadTemplate` with slots. Filling those from
+ * the composed record is the gateway's job, because the gateway is what holds the plan — by the
+ * time a job reaches this contract the payload is concrete. The same split as the UI adapter,
+ * which arrives with values already chosen and only has to find the controls.
+ *
+ * ## Jobs carry ids, not data
+ *
+ * The worker loads the memory version's elements itself, which keeps this message small and —
+ * more to the point — keeps element fingerprints out of a Redis stream. The API and fixture
+ * payloads are the exception and unavoidably so: they *are* the record being written.
+ */
+export const SeedJob = contract(
+  'SeedJob',
   z
     .discriminatedUnion('operation', [
       z
         .strictObject({
-          operation: z.literal('create'),
-          jobId: Uuid,
-          tenantId: Uuid,
-          applicationId: Uuid,
-          memoryVersionId: Uuid,
-          sessionId: Uuid,
-          planId: Uuid,
-          nodeId: NonEmptyString,
-          entity: NonEmptyString,
+          ...seedCreateIdentity,
+          operation: z.literal('ui_create'),
           /** The indexed form, `screen.component`, whose controls share its key prefix. */
           form: NonEmptyString,
           route: RoutePattern,
           values: z.array(UiSeedFieldValue).min(1),
-          /** Wall-clock ceiling. A UI materialization is seconds, not minutes. */
-          deadlineMs: LatencyMs,
         })
         .meta({
           title: 'UiSeedCreateJob',
@@ -345,16 +399,10 @@ export const UiSeedJob = contract(
         }),
       z
         .strictObject({
-          operation: z.literal('revert'),
-          jobId: Uuid,
-          tenantId: Uuid,
-          applicationId: Uuid,
-          memoryVersionId: Uuid,
-          entity: NonEmptyString,
+          ...seedRevertIdentity,
+          operation: z.literal('ui_revert'),
           /** The indexed delete control, whose screen supplies the route it was seen on. */
           flow: ElementKey,
-          /** The record's own identifier, for the failure message a tester has to act on. */
-          externalRef: NonEmptyString,
           /**
            * Where the record lives, as read back when it was created.
            *
@@ -369,36 +417,97 @@ export const UiSeedJob = contract(
            * page the worker navigates to.
            */
           detailPath: RoutePath,
-          deadlineMs: LatencyMs,
         })
         .meta({
           title: 'UiSeedRevertJob',
           description: 'Drive the indexed delete flow for one seeded record.',
         }),
+      z
+        .strictObject({
+          ...seedCreateIdentity,
+          operation: z.literal('api_create'),
+          method: z.enum(['POST', 'PUT', 'PATCH']),
+          /** The observed create path, from `MaterializerSpec`. Resolved against the app's origin. */
+          path: NonEmptyString,
+          /** The observed template with every slot filled from the composed record. */
+          payload: JsonPayload,
+          /**
+           * The observed detail read, used to prove the record exists.
+           *
+           * Null when the crawl never saw one, and then the replay cannot verify itself. A
+           * materializer that cannot verify never earns a `verifiedAt`, so the chain's staleness
+           * rule keeps it behind the UI adapter permanently — which is the honest outcome, not a
+           * gap: an unverifiable create is one that may have silently created nothing.
+           */
+          readBackPath: NonEmptyString.nullable(),
+        })
+        .meta({
+          title: 'ApiSeedCreateJob',
+          description: 'Replay the observed create request, then read the record back to verify.',
+        }),
+      z
+        .strictObject({
+          ...seedRevertIdentity,
+          operation: z.literal('api_revert'),
+          /** Concrete, not a pattern: an inverse operation is decided once the id is known. */
+          path: NonEmptyString,
+        })
+        .meta({
+          title: 'ApiSeedRevertJob',
+          description: 'DELETE the record through the API that created it.',
+        }),
+      z
+        .strictObject({
+          ...seedCreateIdentity,
+          operation: z.literal('fixture_create'),
+          /** The customer's configured seeding endpoint, per `MaterializerSpec`'s fixture variant. */
+          command: NonEmptyString,
+          payload: JsonPayload,
+        })
+        .meta({
+          title: 'FixtureSeedCreateJob',
+          description: "Post the composed record to the customer's sanctioned seeding endpoint.",
+        }),
+      z
+        .strictObject({
+          ...seedRevertIdentity,
+          operation: z.literal('fixture_revert'),
+          command: NonEmptyString,
+        })
+        .meta({
+          title: 'FixtureSeedRevertJob',
+          description: "Run the customer's configured teardown for one seeded record.",
+        }),
     ])
-    .describe('A UI adapter job: create a record through the real form, or delete one.'),
+    .describe('One write to the application under test, for whichever adapter the chain chose.'),
 );
-export type UiSeedJob = z.infer<typeof UiSeedJob>;
+export type SeedJob = z.infer<typeof SeedJob>;
 
 /**
  * What the worker did.
  *
- * `externalRef` is read back from where the application landed after submit — the identifier
- * segment of the detail route it redirected to. That is both the verification § 4 asks for
- * ("post-submit assertion on the resulting detail route") and the only handle the ledger will
- * have on the record, so a create that cannot produce one is a failure even if the form accepted
- * it: a record nobody can name is a record nobody can revert.
+ * `externalRef` is the only handle the ledger will ever have on the record, so a create that
+ * cannot produce one is a failure even when the write itself was accepted: a record nobody can
+ * name is a record nobody can revert. Where it comes from differs by adapter — the identifier
+ * segment of the detail route the UI landed on, or the identifier in the API's response body or
+ * `Location` header — but the requirement does not.
+ *
+ * `detailPath` is required only of the UI adapter, which gets it for free by being a browser that
+ * ended up somewhere. An API or fixture replay learns an identifier and nothing about where the
+ * record is *rendered*; the gateway derives that from the indexed delete flow's route when it
+ * needs one, and records `none` when it cannot. Demanding it here would force the worker to
+ * invent a path, which is the one thing a delete must never be aimed with.
  */
-export const UiSeedResult = contract(
-  'UiSeedResult',
+export const SeedJobResult = contract(
+  'SeedJobResult',
   z
     .strictObject({
       jobId: Uuid,
-      operation: z.enum(['create', 'revert']),
+      operation: SeedJobOperation,
       outcome: z.enum(['succeeded', 'failed']),
       /** The created record's identifier. Null on failure, and on every revert. */
       externalRef: NonEmptyString.nullable(),
-      /** Where the application landed after submitting. Null on failure, and on every revert. */
+      /** Where the application landed after submitting. Null outside a successful `ui_create`. */
       detailPath: RoutePath.nullable(),
       /** Concrete, and populated exactly when the job failed. */
       failureReason: NonEmptyString.nullable(),
@@ -410,14 +519,24 @@ export const UiSeedResult = contract(
     })
     .refine(
       (result) =>
-        result.operation !== 'create' ||
+        !result.operation.endsWith('_create') ||
         result.outcome !== 'succeeded' ||
-        (result.externalRef !== null && result.detailPath !== null),
+        result.externalRef !== null,
       {
-        error: 'a created record must be identifiable and reachable, or it cannot be reverted',
+        error: 'a created record must be identifiable, or nothing can ever revert it',
         path: ['externalRef'],
       },
     )
-    .describe('The outcome of one UI adapter job, with the identifier it read back.'),
+    .refine(
+      (result) =>
+        result.operation !== 'ui_create' ||
+        result.outcome !== 'succeeded' ||
+        result.detailPath !== null,
+      {
+        error: 'a record created through the UI must be reachable at the path it landed on',
+        path: ['detailPath'],
+      },
+    )
+    .describe('The outcome of one seed job, with the identifier it read back.'),
 );
-export type UiSeedResult = z.infer<typeof UiSeedResult>;
+export type SeedJobResult = z.infer<typeof SeedJobResult>;

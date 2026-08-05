@@ -77,7 +77,7 @@ const gatewayEnvSchema = z.object({
   INDEXER_JOB_STREAM: z.string().min(1),
 
   /**
-   * Redis stream `UiSeedJob`s are enqueued on. Must match the indexer's `INDEXER_SEED_STREAM`.
+   * Redis stream `SeedJob`s are enqueued on. Must match the indexer's `INDEXER_SEED_STREAM`.
    *
    * Separate from the crawl stream for the reason stated there: a seed job has a tester's request
    * held open behind it, and queueing one behind a multi-minute crawl would time the request out.

@@ -178,6 +178,10 @@ export interface MemoryVersion {
   createdAt: Generated<Timestamp>;
   failureReason: string | null;
   id: Generated<string>;
+  /**
+   * What produced this version: a crawl, or a drift reconcile. Read by openMemoryVersion so a crawl only ever resumes another crawl — a reconcile's candidate is a reviewed proposal and must not be written into by anything else before a human sees it.
+   */
+  origin: Generated<string>;
   status: string;
   tenantId: string;
   updatedAt: Generated<Timestamp>;

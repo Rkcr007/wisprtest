@@ -22,6 +22,8 @@
     "vitest.config.ts",
     "vitest.crawl.config.ts",
     "vitest.db.config.ts",
+    "vitest.fallback-chain.config.ts",
+    "vitest.materializers.config.ts",
     "vitest.memory.config.ts",
     "vitest.resolve.config.ts",
     "vitest.seed.config.ts",

@@ -61,10 +61,34 @@ export interface ChainRecord {
   readonly record: MaterializedNode;
 }
 
+/**
+ * What one attempt proved about the materializer behind it.
+ *
+ * The other half of § 4's TTL rule. Demotion is only useful if something ever changes the column
+ * it reads, and these are the two moments that do: a replay that was read back afterwards has
+ * earned its place at the front of the chain, and one that answered 4xx or 5xx has lost it.
+ *
+ * Only adapters whose correctness is a claim about the *application* appear here. The UI adapter
+ * never does: there is nothing to verify, because driving the real form is the proof, every time.
+ * An API create with no observed read-back never does either — it ran, but it proved nothing, and
+ * recording a verification for it would promote a materializer that may have created nothing.
+ */
+export interface MaterializerVerification {
+  readonly materializerId: string;
+  readonly kind: MaterializerKind;
+  readonly entity: string;
+  /** True to stamp `verified_at`; false to clear it and drop the materializer behind the UI. */
+  readonly verified: boolean;
+  /** Why it was cleared. Null on a verification. */
+  readonly reason: string | null;
+}
+
 export interface ChainOutcome {
   readonly result: MaterializationResult;
   /** In materialization order. Empty when the chain failed before creating anything. */
   readonly records: readonly ChainRecord[];
+  /** Verification-state changes the route should persist. Often empty. */
+  readonly verifications: readonly MaterializerVerification[];
 }
 
 /**
@@ -110,7 +134,7 @@ function effectivePriority(
 }
 
 /** Why a stale descriptor was demoted, in the words the ledger and the HUD will show. */
-function stalenessReason(descriptor: MaterializerDescriptor, now: Date): string {
+export function stalenessReason(descriptor: MaterializerDescriptor, now: Date): string {
   if (descriptor.verifiedAt === null) {
     return `the ${descriptor.spec.kind} materializer has never been verified`;
   }
@@ -133,6 +157,7 @@ export async function runChain(
   const startedAt = Date.now();
   const attempts: MaterializationAttempt[] = [];
   const records: ChainRecord[] = [];
+  const verifications: MaterializerVerification[] = [];
   const created = new Map<string, string>();
   const materialized: MaterializedRecord[] = [];
 
@@ -155,6 +180,7 @@ export async function runChain(
 
     const outcome = await materializeNode(node, options, { plan, created });
     attempts.push(...outcome.attempts);
+    verifications.push(...outcome.verifications);
 
     if (outcome.record === null) {
       failureReason =
@@ -178,6 +204,7 @@ export async function runChain(
 
   return {
     records,
+    verifications,
     result: {
       planId: plan.id,
       outcome: succeeded ? 'created' : 'failed',
@@ -208,9 +235,48 @@ export async function runChain(
 
 interface NodeOutcome {
   readonly attempts: readonly MaterializationAttempt[];
+  readonly verifications: readonly MaterializerVerification[];
   readonly record: MaterializedNode | null;
   readonly adapter: MaterializerKind;
   readonly reason: string | null;
+}
+
+/**
+ * What an attempt proved, or null when it proved nothing either way.
+ *
+ * The asymmetry is deliberate. A *failure* is always evidence — the endpoint answered 4xx, or the
+ * seeding route is gone — so it always clears. A *success* is only evidence when the adapter
+ * actually checked: an API create with no observed read-back was accepted by something, and being
+ * accepted is not the same as having created a record.
+ */
+function verificationFor(
+  descriptor: MaterializerDescriptor,
+  entity: string,
+  succeeded: boolean,
+  reason: string | null,
+): MaterializerVerification | null {
+  // Nothing to verify: driving the real form is the proof, and it is re-established every run.
+  if (descriptor.spec.kind === 'ui') return null;
+
+  if (!succeeded) {
+    return {
+      materializerId: descriptor.id,
+      kind: descriptor.spec.kind,
+      entity,
+      verified: false,
+      reason: reason ?? `the ${descriptor.spec.kind} materializer for ${entity} failed`,
+    };
+  }
+
+  if (descriptor.spec.kind === 'api' && descriptor.spec.readBackPath === null) return null;
+
+  return {
+    materializerId: descriptor.id,
+    kind: descriptor.spec.kind,
+    entity,
+    verified: true,
+    reason: null,
+  };
 }
 
 async function materializeNode(
@@ -219,11 +285,13 @@ async function materializeNode(
   state: { readonly plan: CompositionPlan; readonly created: ReadonlyMap<string, string> },
 ): Promise<NodeOutcome> {
   const attempts: MaterializationAttempt[] = [];
+  const verifications: MaterializerVerification[] = [];
   const schema = options.schemas.get(node.entitySchemaId);
 
   if (schema === undefined) {
     return {
       attempts,
+      verifications,
       record: null,
       adapter: 'ui',
       reason: `no learned schema for ${node.entity} in this memory version`,
@@ -234,6 +302,7 @@ async function materializeNode(
   if (descriptors.length === 0) {
     return {
       attempts,
+      verifications,
       record: null,
       adapter: 'ui',
       reason: `${node.entity} has no materializer — nothing in this application creates one`,
@@ -298,7 +367,15 @@ async function materializeNode(
         reason: null,
         durationMs,
       });
-      return { attempts, record: outcome.record, adapter: adapter.kind, reason: null };
+      const proof = verificationFor(descriptor, node.entity, true, null);
+      if (proof !== null) verifications.push(proof);
+      return {
+        attempts,
+        verifications,
+        record: outcome.record,
+        adapter: adapter.kind,
+        reason: null,
+      };
     }
 
     attempts.push({
@@ -307,11 +384,17 @@ async function materializeNode(
       reason: outcome.failure.reason,
       durationMs,
     });
+
+    // The materializer that just failed stops being tried first. § 4's demotion rule needs
+    // something to actually clear the column it reads, and this is the moment that does.
+    const demotion = verificationFor(descriptor, node.entity, false, outcome.failure.reason);
+    if (demotion !== null) verifications.push(demotion);
   }
 
   const last = attempts.at(-1);
   return {
     attempts,
+    verifications,
     record: null,
     adapter: 'ui',
     reason:

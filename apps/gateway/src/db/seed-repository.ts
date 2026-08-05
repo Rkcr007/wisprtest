@@ -75,6 +75,16 @@ export interface LoadedSchemas {
    * per-application knowledge the adapter builds one from.
    */
   readonly deleteFlows: ReadonlyMap<string, string>;
+  /**
+   * The route the delete control was indexed on, per entity name.
+   *
+   * Needed only by the adapters that do not end up on a page. A UI create reads the record's own
+   * path off wherever the application landed after submit; an API or fixture replay learns an
+   * identifier and nothing about where the record is *rendered*, so the only way it can offer a
+   * UI-driven revert is to reconstruct that path from the route the delete control lives on. See
+   * `detailPathFor` in `routes/seed.ts` for what is and is not reconstructable.
+   */
+  readonly deleteFlowRoutes: ReadonlyMap<string, string>;
 }
 
 export async function loadEntitySchemas(
@@ -96,7 +106,9 @@ export async function loadEntitySchemas(
     .orderBy('entityName')
     .execute();
 
-  if (entities.length === 0) return { schemas: [], deleteFlows: new Map() };
+  if (entities.length === 0) {
+    return { schemas: [], deleteFlows: new Map(), deleteFlowRoutes: new Map() };
+  }
 
   const entityIds = entities.map((entity) => entity.id);
 
@@ -118,6 +130,27 @@ export async function loadEntitySchemas(
   for (const entity of entities) {
     if (entity.deleteFlowElementKey !== null) {
       deleteFlows.set(entity.entityName, entity.deleteFlowElementKey);
+    }
+  }
+
+  // The screens those delete controls were seen on. One query for all of them rather than one per
+  // entity, and scoped to this memory version — the same element key exists in every version with
+  // a different fingerprint, and reading the wrong version's route would aim a delete at a page
+  // that no longer holds the control.
+  const deleteFlowRoutes = new Map<string, string>();
+  if (deleteFlows.size > 0) {
+    const rows = await db
+      .selectFrom('elements')
+      .innerJoin('screens', 'screens.id', 'elements.screenId')
+      .select(['elements.elementKey', 'screens.routePattern'])
+      .where('screens.memoryVersionId', '=', memoryVersionId)
+      .where('elements.elementKey', 'in', [...deleteFlows.values()])
+      .execute();
+
+    const routeByKey = new Map(rows.map((row) => [row.elementKey, row.routePattern]));
+    for (const [entityName, elementKey] of deleteFlows) {
+      const route = routeByKey.get(elementKey);
+      if (route !== undefined) deleteFlowRoutes.set(entityName, route);
     }
   }
 
@@ -182,7 +215,38 @@ export async function loadEntitySchemas(
     return parsed.data;
   });
 
-  return { schemas, deleteFlows };
+  return { schemas, deleteFlows, deleteFlowRoutes };
+}
+
+/**
+ * Record that a materializer proved itself, or that it stopped working.
+ *
+ * docs/TEST-DATA-ENGINE.md § 4: "Materializer verification has a TTL; an unverified-in-N-days API
+ * materializer drops below UI in priority until re-verified." Both directions of that sentence are
+ * here, and both are a single column.
+ *
+ * The demotion is what makes clearing it meaningful rather than bookkeeping: `orderDescriptors`
+ * reads `verified_at` on the next plan, finds it null, and sorts the materializer behind the UI
+ * adapter — so an endpoint that has started answering 500 stops being tried first, without anyone
+ * deciding to disable it. Setting it is the same rule in reverse: a replay that was read back
+ * afterwards has earned its place at the front of the chain until the TTL lapses.
+ *
+ * Returns whether a row was touched, which is false when the materializer was deleted by a
+ * re-index between the plan and the write. That is not an error — the chain already did its work
+ * against the descriptor it had, and there is nothing left to stamp.
+ */
+export async function setMaterializerVerification(
+  db: ScopedDatabase,
+  materializerId: string,
+  verifiedAt: Date | null,
+): Promise<boolean> {
+  const result = await db
+    .updateTable('materializers')
+    .set({ verifiedAt })
+    .where('id', '=', materializerId)
+    .executeTakeFirst();
+
+  return Number(result.numUpdatedRows) > 0;
 }
 
 /** What a session is allowed to seed against: its application, and the memory it resolved with. */

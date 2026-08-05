@@ -349,11 +349,10 @@ timeline
         Backend : DB + RLS : Gateway : Indexer
         Extension : HUD + design system : Runtime state engine : T0/T1 resolution : Voice pipeline : Speculation + CDP
         Learning : T2 write-back : Sessions
-        Data engine : Schema observation : Composer : Seed preview + approval + ledger
+        Data engine : Schema observation : Composer : Seed preview + approval + ledger : Materializer chain
     section 🚧 Partly landed
         Product : Console — 2 of 8 screens : Hardening — CI + runbooks
     section 🔜 Planned
-        Data engine : Materializer chain
         Learning : Drift detection + relearn
         Product : Remaining console screens : Helm / Terraform / load test
 ```
@@ -367,14 +366,15 @@ timeline
 | 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
 |  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
 |  15   | Seed plan, approve, revert · UI materializer · ledger  |           ✅            |
-| 16–17 | Materializer chain (API, fixture) · Drift              |       ⬜ planned        |
+|  16   | Materializer chain — API + fixture, verification TTL   |           ✅            |
+|  17   | Drift detection and relearn                            |       ⬜ planned        |
 |  18   | Console — Connect + Indexing screens                   |    🚧 2 of 8 screens    |
 |  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
 
 > **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
 > progress) are built and tested, so an application can be indexed without touching a
-> terminal. The other six screens depend on Phase 17 and the materializer chain, and are not
-> started.
+> terminal. Of the other six, the Data screen now has a materializer chain to configure and a
+> ledger to show; the rest still depend on Phase 17.
 >
 > **Phase 15** landed as two PRs, as Phase 14 did. The gateway half is the three seed routes, the
 > fallback chain, the ledger, the audited production policy, and the UI materializer that drives a
@@ -382,6 +382,19 @@ timeline
 > preview card — every field with the reason it holds its value, the adapter that will run, and
 > whether the record can be removed — behind an approval gate that is the only path to a write, and
 > the class-S wiring that keeps seeding off the speculative path entirely.
+>
+> **Phase 16** landed as three PRs. The contract went first and alone, because
+> `packages/protocol` is what every other module is checked against. Then the indexer gained the
+> API and fixture adapters, which issue their requests from inside the browser context that is
+> already logged in — so a replay carries the session the application itself established, and no
+> credential is stored anywhere. Then the gateway gained the chain that orders all three and the
+> verification lifecycle that demotes one that stopped working, so a broken endpoint stops being
+> tried first without anyone deciding to disable it.
+>
+> Two limits are deliberate and recorded in
+> [ADR 0016](docs/adr/0016-writes-go-through-the-indexer.md): an API observed behind a bearer token
+> cannot be replayed, because the token was never captured; and a failed materializer is demoted
+> but no re-crawl is queued, because crawl bounds are not stored per application.
 >
 > **Phase 19** landed out of order — the CI pipeline and all four operational runbooks are
 > in, while the Helm charts, Terraform, Grafana dashboards and load test are not.

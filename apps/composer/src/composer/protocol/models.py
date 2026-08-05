@@ -303,6 +303,18 @@ class DistributionTemporal(BaseModel):
     max_offset_days: Annotated[float, Field(alias="maxOffsetDays")]
 
 
+class DriftApproval(BaseModel):
+    """
+    Apply the diff, increment the memory version, and migrate what survives.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    decision: Literal["approve"]
+
+
 class DriftDetector(StrEnum):
     """
     Which component observed the structural mismatch.
@@ -1849,6 +1861,23 @@ class Alias(BaseModel):
     ]
 
 
+class AliasMigrationSummary(BaseModel):
+    """
+    How much of a screen's learned vocabulary survived a memory change.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    migrated: Annotated[int, Field(ge=0, le=9007199254740991)]
+    dropped: Annotated[int, Field(ge=0, le=9007199254740991)]
+    rate: Annotated[
+        float,
+        Field(description="Score in the closed range [0, 1].", ge=0.0, le=1.0, title="Confidence"),
+    ]
+
+
 class AliasWriteback(BaseModel):
     """
     A single phrase → element mapping to persist as an alias.
@@ -2514,6 +2543,163 @@ class DerivedRuleConcat(BaseModel):
     kind: Literal["concat"]
     fields: Annotated[list[NonEmptyStringModel], Field(min_length=2)]
     separator: str
+
+
+class DriftRejection(BaseModel):
+    """
+    Leave memory as it is, and record why.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    decision: Literal["reject"]
+    reason: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class DriftDecisionRequest(RootModel[DriftApproval | DriftRejection]):
+    root: Annotated[
+        DriftApproval | DriftRejection,
+        Field(description="A human approving or rejecting a proposed memory change."),
+    ]
+
+
+class DriftRaiseRequest(BaseModel):
+    """
+    The extension reporting that a screen no longer matches memory. Blocks nothing.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    screen_id: Annotated[
+        UUID, Field(alias="screenId", description="UUID identifier.", title="Uuid")
+    ]
+    route_pattern: Annotated[
+        str,
+        Field(
+            alias="routePattern",
+            description="Route with dynamic segments generalised, e.g. /orders/:id.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePattern",
+        ),
+    ]
+    route: Annotated[
+        str,
+        Field(
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    state_fingerprint: Annotated[
+        str,
+        Field(
+            alias="stateFingerprint",
+            description="SHA-256 over route pattern, modal stack and focused landmark; identifies a runtime state.",
+            pattern="^[0-9a-f]{64}$",
+            title="StateFingerprint",
+        ),
+    ]
+    expected_structural_hash: Annotated[
+        str,
+        Field(
+            alias="expectedStructuralHash",
+            description="SHA-256 over DOM structure, excluding text content and volatile attributes.",
+            pattern="^[0-9a-f]{64}$",
+            title="StructuralHash",
+        ),
+    ]
+    observed_structural_hash: Annotated[
+        str,
+        Field(
+            alias="observedStructuralHash",
+            description="SHA-256 over DOM structure, excluding text content and volatile attributes.",
+            pattern="^[0-9a-f]{64}$",
+            title="StructuralHash",
+        ),
+    ]
+    observed_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="observedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+
+
+class DriftReconcileJob(BaseModel):
+    """
+    Re-crawl one drifted screen, without interacting with it, and diff the result.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    job_id: Annotated[UUID, Field(alias="jobId", description="UUID identifier.", title="Uuid")]
+    tenant_id: Annotated[
+        UUID, Field(alias="tenantId", description="UUID identifier.", title="Uuid")
+    ]
+    application_id: Annotated[
+        UUID, Field(alias="applicationId", description="UUID identifier.", title="Uuid")
+    ]
+    memory_version_id: Annotated[
+        UUID, Field(alias="memoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    drift_report_id: Annotated[
+        UUID, Field(alias="driftReportId", description="UUID identifier.", title="Uuid")
+    ]
+    screen_id: Annotated[
+        UUID, Field(alias="screenId", description="UUID identifier.", title="Uuid")
+    ]
+    route_pattern: Annotated[
+        str,
+        Field(
+            alias="routePattern",
+            description="Route with dynamic segments generalised, e.g. /orders/:id.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePattern",
+        ),
+    ]
+    route: Annotated[
+        str,
+        Field(
+            description="Absolute URL path of the app under test, without origin.",
+            pattern="^\\/[^\\s]*$",
+            title="RoutePath",
+        ),
+    ]
+    deadline_ms: Annotated[
+        float,
+        Field(
+            alias="deadlineMs",
+            description="Elapsed wall-clock time in milliseconds.",
+            ge=0.0,
+            title="LatencyMs",
+        ),
+    ]
+    traceparent: Annotated[
+        str | None,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
 
 
 class ElementAddition(BaseModel):
@@ -5571,6 +5757,48 @@ class CompositionResponse(BaseModel):
     ]
     parse_tier: Annotated[ParseTier, Field(alias="parseTier")]
     duration_ms: Annotated[float, Field(alias="durationMs", ge=0.0)]
+
+
+class DriftDecisionResponse(BaseModel):
+    """
+    What a human's decision did to memory.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    report: DriftReport
+    new_memory_version_id: Annotated[
+        UUID | None, Field(alias="newMemoryVersionId", description="UUID identifier.", title="Uuid")
+    ]
+    alias_migration: Annotated[AliasMigrationSummary | None, Field(alias="aliasMigration")]
+
+
+class DriftListResponse(BaseModel):
+    """
+    Pending drift reports for one application.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    reports: list[DriftReport]
+    total: Annotated[int, Field(ge=0, le=9007199254740991)]
+
+
+class DriftRaiseResponse(BaseModel):
+    """
+    The report this observation belongs to, whether or not it created one.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    report: DriftReport
+    created: bool
 
 
 class EntitySchema(BaseModel):

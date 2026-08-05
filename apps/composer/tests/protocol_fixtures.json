@@ -142,6 +142,18 @@
       "createdAt": "2026-07-25T09:30:00.000Z"
     }
   ],
+  "AliasMigrationSummary": [
+    {
+      "migrated": 33,
+      "dropped": 7,
+      "rate": 0.825
+    },
+    {
+      "migrated": 0,
+      "dropped": 0,
+      "rate": 1
+    }
+  ],
   "AliasSource": [
     "indexed",
     "t2_writeback",
@@ -1393,9 +1405,429 @@
       "maxOffsetDays": 90
     }
   ],
+  "DriftDecisionRequest": [
+    {
+      "decision": "approve"
+    },
+    {
+      "decision": "reject",
+      "reason": "the create form was mid-deploy; re-index instead"
+    }
+  ],
+  "DriftDecisionResponse": [
+    {
+      "report": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "routePattern": "/orders/:id",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "diff": {
+          "added": [
+            {
+              "elementKey": "orders.filter.archived",
+              "role": "button",
+              "accessibleNameRedacted": "Archived",
+              "landmarkPath": [
+                "main",
+                "region:orders"
+              ]
+            }
+          ],
+          "removed": [
+            {
+              "elementKey": "orders.filter.draft",
+              "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "role": "button"
+            }
+          ],
+          "moved": [
+            {
+              "elementKey": "orders.detail.approve",
+              "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "fromLandmarkPath": [
+                "main"
+              ],
+              "toLandmarkPath": [
+                "main",
+                "region:actions"
+              ],
+              "matchConfidence": 0.82
+            }
+          ],
+          "renamed": [
+            {
+              "elementKey": "orders.filter.pending",
+              "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "toNameRedacted": "Awaiting approval",
+              "matchConfidence": 0.79
+            }
+          ],
+          "schemaChanges": [
+            {
+              "entity": "Order",
+              "kind": "enum_values_changed",
+              "field": "status",
+              "detail": "status gained the value \"Archived\""
+            }
+          ]
+        },
+        "status": "diffed",
+        "detectedBy": "extension",
+        "aliasMigrationRate": 0.82,
+        "approvedBy": null,
+        "createdAt": "2026-07-25T09:30:00.000Z",
+        "resolvedAt": null
+      },
+      "newMemoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "aliasMigration": {
+        "migrated": 33,
+        "dropped": 7,
+        "rate": 0.825
+      }
+    },
+    {
+      "report": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "routePattern": "/orders/:id",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "diff": {
+          "added": [
+            {
+              "elementKey": "orders.filter.archived",
+              "role": "button",
+              "accessibleNameRedacted": "Archived",
+              "landmarkPath": [
+                "main",
+                "region:orders"
+              ]
+            }
+          ],
+          "removed": [
+            {
+              "elementKey": "orders.filter.draft",
+              "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "role": "button"
+            }
+          ],
+          "moved": [
+            {
+              "elementKey": "orders.detail.approve",
+              "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "fromLandmarkPath": [
+                "main"
+              ],
+              "toLandmarkPath": [
+                "main",
+                "region:actions"
+              ],
+              "matchConfidence": 0.82
+            }
+          ],
+          "renamed": [
+            {
+              "elementKey": "orders.filter.pending",
+              "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "toNameRedacted": "Awaiting approval",
+              "matchConfidence": 0.79
+            }
+          ],
+          "schemaChanges": [
+            {
+              "entity": "Order",
+              "kind": "enum_values_changed",
+              "field": "status",
+              "detail": "status gained the value \"Archived\""
+            }
+          ]
+        },
+        "status": "diffed",
+        "detectedBy": "extension",
+        "aliasMigrationRate": 0.82,
+        "approvedBy": null,
+        "createdAt": "2026-07-25T09:30:00.000Z",
+        "resolvedAt": null
+      },
+      "newMemoryVersionId": null,
+      "aliasMigration": null
+    }
+  ],
   "DriftDetector": [
     "extension",
     "indexer"
+  ],
+  "DriftListResponse": [
+    {
+      "reports": [
+        {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+          "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+          "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+          "routePattern": "/orders/:id",
+          "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "diff": {
+            "added": [
+              {
+                "elementKey": "orders.filter.archived",
+                "role": "button",
+                "accessibleNameRedacted": "Archived",
+                "landmarkPath": [
+                  "main",
+                  "region:orders"
+                ]
+              }
+            ],
+            "removed": [
+              {
+                "elementKey": "orders.filter.draft",
+                "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "role": "button"
+              }
+            ],
+            "moved": [
+              {
+                "elementKey": "orders.detail.approve",
+                "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+                "fromLandmarkPath": [
+                  "main"
+                ],
+                "toLandmarkPath": [
+                  "main",
+                  "region:actions"
+                ],
+                "matchConfidence": 0.82
+              }
+            ],
+            "renamed": [
+              {
+                "elementKey": "orders.filter.pending",
+                "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+                "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "toNameRedacted": "Awaiting approval",
+                "matchConfidence": 0.79
+              }
+            ],
+            "schemaChanges": [
+              {
+                "entity": "Order",
+                "kind": "enum_values_changed",
+                "field": "status",
+                "detail": "status gained the value \"Archived\""
+              }
+            ]
+          },
+          "status": "diffed",
+          "detectedBy": "extension",
+          "aliasMigrationRate": 0.82,
+          "approvedBy": null,
+          "createdAt": "2026-07-25T09:30:00.000Z",
+          "resolvedAt": null
+        }
+      ],
+      "total": 1
+    },
+    {
+      "reports": [],
+      "total": 0
+    }
+  ],
+  "DriftRaiseRequest": [
+    {
+      "sessionId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "route": "/orders/4903",
+      "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "observedAt": "2026-07-25T09:30:00.000Z"
+    }
+  ],
+  "DriftRaiseResponse": [
+    {
+      "report": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "routePattern": "/orders/:id",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "diff": {
+          "added": [
+            {
+              "elementKey": "orders.filter.archived",
+              "role": "button",
+              "accessibleNameRedacted": "Archived",
+              "landmarkPath": [
+                "main",
+                "region:orders"
+              ]
+            }
+          ],
+          "removed": [
+            {
+              "elementKey": "orders.filter.draft",
+              "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "role": "button"
+            }
+          ],
+          "moved": [
+            {
+              "elementKey": "orders.detail.approve",
+              "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "fromLandmarkPath": [
+                "main"
+              ],
+              "toLandmarkPath": [
+                "main",
+                "region:actions"
+              ],
+              "matchConfidence": 0.82
+            }
+          ],
+          "renamed": [
+            {
+              "elementKey": "orders.filter.pending",
+              "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "toNameRedacted": "Awaiting approval",
+              "matchConfidence": 0.79
+            }
+          ],
+          "schemaChanges": [
+            {
+              "entity": "Order",
+              "kind": "enum_values_changed",
+              "field": "status",
+              "detail": "status gained the value \"Archived\""
+            }
+          ]
+        },
+        "status": "diffed",
+        "detectedBy": "extension",
+        "aliasMigrationRate": 0.82,
+        "approvedBy": null,
+        "createdAt": "2026-07-25T09:30:00.000Z",
+        "resolvedAt": null
+      },
+      "created": true
+    },
+    {
+      "report": {
+        "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+        "memoryVersionId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+        "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+        "routePattern": "/orders/:id",
+        "stateFingerprint": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "expectedStructuralHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedStructuralHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "diff": {
+          "added": [
+            {
+              "elementKey": "orders.filter.archived",
+              "role": "button",
+              "accessibleNameRedacted": "Archived",
+              "landmarkPath": [
+                "main",
+                "region:orders"
+              ]
+            }
+          ],
+          "removed": [
+            {
+              "elementKey": "orders.filter.draft",
+              "elementId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+              "role": "button"
+            }
+          ],
+          "moved": [
+            {
+              "elementKey": "orders.detail.approve",
+              "elementId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+              "fromLandmarkPath": [
+                "main"
+              ],
+              "toLandmarkPath": [
+                "main",
+                "region:actions"
+              ],
+              "matchConfidence": 0.82
+            }
+          ],
+          "renamed": [
+            {
+              "elementKey": "orders.filter.pending",
+              "elementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+              "fromNameHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "toNameHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "toNameRedacted": "Awaiting approval",
+              "matchConfidence": 0.79
+            }
+          ],
+          "schemaChanges": [
+            {
+              "entity": "Order",
+              "kind": "enum_values_changed",
+              "field": "status",
+              "detail": "status gained the value \"Archived\""
+            }
+          ]
+        },
+        "status": "diffed",
+        "detectedBy": "extension",
+        "aliasMigrationRate": 0.82,
+        "approvedBy": null,
+        "createdAt": "2026-07-25T09:30:00.000Z",
+        "resolvedAt": null
+      },
+      "created": false
+    }
+  ],
+  "DriftReconcileJob": [
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "driftReportId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "route": "/orders/4903",
+      "deadlineMs": 120000,
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    },
+    {
+      "jobId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "tenantId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "applicationId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "memoryVersionId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "driftReportId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "screenId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "routePattern": "/orders/:id",
+      "route": "/orders/4903",
+      "deadlineMs": 120000,
+      "traceparent": null
+    }
   ],
   "DriftReport": [
     {

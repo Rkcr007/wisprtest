@@ -577,6 +577,30 @@ const UI_SEED_RESULT = {
   durationMs: 4200,
 };
 
+const DRIFT_RAISE = {
+  sessionId: UUID_A,
+  screenId: UUID_D,
+  routePattern: '/orders/:id',
+  route: '/orders/4903',
+  stateFingerprint: HASH_C,
+  expectedStructuralHash: HASH_A,
+  observedStructuralHash: HASH_B,
+  observedAt: NOW,
+};
+
+const DRIFT_RECONCILE_JOB = {
+  jobId: UUID_A,
+  tenantId: UUID_B,
+  applicationId: UUID_C,
+  memoryVersionId: UUID_D,
+  driftReportId: UUID_A,
+  screenId: UUID_D,
+  routePattern: '/orders/:id',
+  route: '/orders/4903',
+  deadlineMs: 120000,
+  traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+};
+
 const STRUCTURAL_DIFF = {
   added: [
     {
@@ -614,6 +638,24 @@ const STRUCTURAL_DIFF = {
       detail: 'status gained the value "Archived"',
     },
   ],
+};
+
+const DRIFT_REPORT = {
+  id: UUID_A,
+  tenantId: UUID_B,
+  memoryVersionId: UUID_C,
+  screenId: UUID_D,
+  routePattern: '/orders/:id',
+  stateFingerprint: HASH_C,
+  expectedStructuralHash: HASH_A,
+  observedStructuralHash: HASH_B,
+  diff: STRUCTURAL_DIFF,
+  status: 'diffed',
+  detectedBy: 'extension',
+  aliasMigrationRate: 0.82,
+  approvedBy: null,
+  createdAt: NOW,
+  resolvedAt: null,
 };
 
 /** Build an object with one key removed, for "missing required field" fixtures. */
@@ -2946,6 +2988,112 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
           createdAt: NOW,
           resolvedAt: NOW,
         },
+      },
+    ],
+  },
+  DriftRaiseRequest: {
+    schema: p.DriftRaiseRequest,
+    valid: [DRIFT_RAISE],
+    invalid: [
+      {
+        why: 'the two hashes agree, so nothing drifted',
+        value: withField(DRIFT_RAISE, 'observedStructuralHash', HASH_A),
+      },
+      {
+        why: 'a route pattern where a visitable path belongs — a reconcile cannot navigate to it',
+        value: withField(DRIFT_RAISE, 'route', '/orders/:id'),
+      },
+      {
+        why: 'names the memory version, which is read from the session and never sent',
+        value: { ...DRIFT_RAISE, memoryVersionId: UUID_C },
+      },
+    ],
+  },
+  DriftRaiseResponse: {
+    schema: p.DriftRaiseResponse,
+    valid: [
+      { report: DRIFT_REPORT, created: true },
+      // The ordinary case: a tester settling repeatedly on a screen that is already reported.
+      { report: DRIFT_REPORT, created: false },
+    ],
+    invalid: [
+      {
+        why: 'no report to attach the observation to',
+        value: without({ report: DRIFT_REPORT, created: true }, 'report'),
+      },
+    ],
+  },
+  DriftListResponse: {
+    schema: p.DriftListResponse,
+    valid: [
+      { reports: [DRIFT_REPORT], total: 1 },
+      { reports: [], total: 0 },
+    ],
+    invalid: [{ why: 'a negative total', value: { reports: [], total: -1 } }],
+  },
+  DriftDecisionRequest: {
+    schema: p.DriftDecisionRequest,
+    valid: [
+      { decision: 'approve' },
+      { decision: 'reject', reason: 'the create form was mid-deploy; re-index instead' },
+    ],
+    invalid: [
+      { why: 'a rejection with nothing to tell the next reviewer', value: { decision: 'reject' } },
+      {
+        why: 'there is no auto-approve path, and adding one is forbidden even behind a flag',
+        value: { decision: 'auto_approve' },
+      },
+    ],
+  },
+  AliasMigrationSummary: {
+    schema: p.AliasMigrationSummary,
+    valid: [
+      { migrated: 33, dropped: 7, rate: 0.825 },
+      // A screen nobody had taught any vocabulary to. Nothing was lost, so the rate is 1.
+      { migrated: 0, dropped: 0, rate: 1 },
+    ],
+    invalid: [
+      { why: 'a rate outside 0..1', value: { migrated: 1, dropped: 0, rate: 1.4 } },
+      { why: 'a negative count of dropped aliases', value: { migrated: 1, dropped: -1, rate: 1 } },
+    ],
+  },
+  DriftDecisionResponse: {
+    schema: p.DriftDecisionResponse,
+    valid: [
+      {
+        report: DRIFT_REPORT,
+        newMemoryVersionId: UUID_D,
+        aliasMigration: { migrated: 33, dropped: 7, rate: 0.825 },
+      },
+      // A rejection moves nothing, so there is nothing to summarise.
+      { report: DRIFT_REPORT, newMemoryVersionId: null, aliasMigration: null },
+    ],
+    invalid: [
+      {
+        why: 'a new version with no account of what its aliases did',
+        value: { report: DRIFT_REPORT, newMemoryVersionId: UUID_D, aliasMigration: null },
+      },
+      {
+        why: 'an alias migration with no version for it to belong to',
+        value: {
+          report: DRIFT_REPORT,
+          newMemoryVersionId: null,
+          aliasMigration: { migrated: 1, dropped: 0, rate: 1 },
+        },
+      },
+    ],
+  },
+  DriftReconcileJob: {
+    schema: p.DriftReconcileJob,
+    valid: [DRIFT_RECONCILE_JOB, { ...DRIFT_RECONCILE_JOB, traceparent: null }],
+    invalid: [
+      {
+        why: 'carries crawl bounds — a reconcile never interacts, so there is nothing to bound',
+        value: { ...DRIFT_RECONCILE_JOB, bounds: { maxDepth: 0 } },
+      },
+      {
+        why: 'a pattern where the path to navigate to belongs',
+        value: withField(DRIFT_RECONCILE_JOB, 'route', '/orders/:id'),
       },
     ],
   },

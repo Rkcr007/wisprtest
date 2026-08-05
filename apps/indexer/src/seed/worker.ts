@@ -3,6 +3,7 @@ import type { SeedJob, SeedJobResult } from 'protocol';
 
 import { isPoisoned, type JobStream } from '../redis/job-stream.js';
 import type { SeedResultChannel } from '../redis/seed-results.js';
+import { materializeOverHttp } from './http.js';
 import { materialize, type MaterializerDependencies } from './materializer.js';
 
 /**
@@ -130,26 +131,15 @@ export function createSeedWorker(options: SeedWorkerOptions): SeedWorker {
 /**
  * Route a job to the adapter that runs it.
  *
- * The API and fixture adapters are not in this build yet — Phase 16 lands them next — and an
- * unsupported operation is answered rather than dropped. The gateway is blocked on a result for
- * every job it enqueues, so silence would cost the tester a full materialization timeout to learn
- * something this worker knows immediately. The chain reads the refusal as a failed attempt and
- * falls through to the UI adapter, which is exactly the behaviour § 4 asks for.
+ * Both adapters take the same dependencies and answer the same contract, so the split is only
+ * about *how* the write is made: a browser driving a form, or a request issued from inside that
+ * browser's session. Which one a job gets was decided by the gateway's fallback chain long before
+ * it reached this stream.
  */
 async function run(job: SeedJob, deps: MaterializerDependencies): Promise<SeedJobResult> {
-  if (job.operation === 'ui_create' || job.operation === 'ui_revert') {
-    return await materialize(job, deps);
-  }
-
-  return {
-    jobId: job.jobId,
-    operation: job.operation,
-    outcome: 'failed',
-    externalRef: null,
-    detailPath: null,
-    failureReason: `this indexer build has no ${job.operation.split('_')[0] ?? ''} adapter`,
-    durationMs: 0,
-  };
+  return job.operation === 'ui_create' || job.operation === 'ui_revert'
+    ? await materialize(job, deps)
+    : await materializeOverHttp(job, deps);
 }
 
 function sleep(ms: number): Promise<void> {

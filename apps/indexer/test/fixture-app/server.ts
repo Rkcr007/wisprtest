@@ -43,6 +43,16 @@ import {
  * | `GET /api/v2/orders`         | Fifty records: distributions, enums, ranges, derived rules |
  * | `GET /api/v2/accounts`       | The second collection a referential edge needs to point at |
  * | `POST /api/v2/orders`        | The create request, observable because `X-Dry-Run` makes it compute without writing |
+ *
+ * Phase 16 adds `POST /__seed/orders` and its teardown, for the fixture adapter. Nothing links to
+ * them and no page calls them: a fixture materializer is configured by a customer's platform team,
+ * never learned by crawling, and the fixture app should not pretend otherwise.
+ *
+ * Note what the dry-run header means for the API adapter. The only create request a crawl can
+ * observe here is the priced preview the form issues, so the API materializer it infers replays a
+ * request that, as observed, wrote nothing. The replay omits the header and does write — and the
+ * only thing that distinguishes those two outcomes is reading the record back afterwards. That is
+ * the case verification exists for, and this fixture is where it is actually exercised.
  */
 
 export interface FixtureApp {
@@ -208,6 +218,29 @@ export function buildApp(state: FixtureState): Express {
     const body = request.body as Record<string, string | undefined>;
     state.recordSettingsChange(body.digest ?? '');
     response.redirect(303, '/settings');
+  });
+
+  // ── The customer's sanctioned seeding endpoint ────────────────────────────────────────────
+  // Phase 16's fixture adapter. Deliberately *not* discoverable by crawling: nothing in the
+  // application links to it and no page calls it, which is exactly the point — a fixture
+  // materializer is configured by the customer's platform team, not learned by observation. It
+  // stands in for the seeding route a real staging deployment exposes for test data.
+
+  app.post('/__seed/orders', (request, response) => {
+    const payload = request.body as OrderPayload;
+    const order = state.create(
+      payload.customer ?? 'unnamed',
+      Number(priceOrder(payload).amount ?? 0),
+      payload.status ?? 'pending',
+    );
+    response.status(201).json({ data: order });
+  });
+
+  app.post('/__seed/orders/teardown', (request, response) => {
+    // The convention the adapter posts: which entity, and which record. See `seed/http.ts`.
+    const body = request.body as { entity?: string; externalRef?: string };
+    const removed = state.remove(Number(body.externalRef));
+    response.status(removed ? 204 : 404).end();
   });
 
   app.post('/settings/purge', (_request, response) => {

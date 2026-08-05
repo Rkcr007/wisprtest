@@ -174,9 +174,35 @@ export const DriftReport = contract(
     .strictObject({
       id: Uuid,
       tenantId: Uuid,
+      /** The version this report is *about* — the one the live page stopped matching. */
       memoryVersionId: Uuid,
+      /**
+       * The version a reconcile built, waiting for a human to activate it.
+       *
+       * This is where the loop's work actually lives, and why the gateway's approval is four
+       * status updates rather than a rewrite of memory. `StructuralDiff` cannot be applied by
+       * whoever approves it: {@link ElementAddition} carries a redacted name and a landmark path,
+       * which is what a human needs to read and nowhere near enough to write an `elements` row.
+       * The fingerprint does not belong in a diff either — it is machine data in a field whose
+       * whole purpose is being reviewable.
+       *
+       * So the indexer, which already knows how to write a memory version because that is what a
+       * crawl does, clones the active one, applies what it observed, and leaves it `building`.
+       * The diff stays the human-readable account of what changed. Approval flips a status.
+       *
+       * Null until reconciliation has produced one.
+       */
+      candidateMemoryVersionId: Uuid.nullable(),
       screenId: Uuid,
       routePattern: RoutePattern,
+      /**
+       * The concrete path the drift was seen at, kept so a reconcile can be retried.
+       *
+       * A pattern cannot be navigated to. The gateway enqueues the job when the report is raised
+       * and could pass the route straight through, but then a job lost to a Redis outage would
+       * strand the report `open` with nothing able to re-enqueue it.
+       */
+      observedRoute: RoutePath,
       stateFingerprint: StateFingerprint,
       expectedStructuralHash: StructuralHash,
       observedStructuralHash: StructuralHash,
@@ -190,6 +216,19 @@ export const DriftReport = contract(
       approvedBy: Uuid.nullable(),
       createdAt: IsoDateTime,
       resolvedAt: IsoDateTime.nullable(),
+    })
+    .refine(
+      (report) =>
+        (report.status !== 'open' && report.status !== 'reconciling') ||
+        report.candidateMemoryVersionId === null,
+      {
+        error: 'a report nobody has reconciled yet cannot already have built a candidate version',
+        path: ['candidateMemoryVersionId'],
+      },
+    )
+    .refine((report) => report.status !== 'diffed' || report.candidateMemoryVersionId !== null, {
+      error: 'a diffed report names the version approving it would activate',
+      path: ['candidateMemoryVersionId'],
     })
     .describe('A proposed memory change raised by a structural mismatch, pending human review.'),
 );

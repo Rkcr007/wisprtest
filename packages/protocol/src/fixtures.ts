@@ -644,6 +644,8 @@ const DRIFT_REPORT = {
   id: UUID_A,
   tenantId: UUID_B,
   memoryVersionId: UUID_C,
+  candidateMemoryVersionId: UUID_D,
+  observedRoute: '/orders/4903',
   screenId: UUID_D,
   routePattern: '/orders/:id',
   stateFingerprint: HASH_C,
@@ -2937,6 +2939,8 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
         id: UUID_A,
         tenantId: UUID_B,
         memoryVersionId: UUID_C,
+        candidateMemoryVersionId: UUID_D,
+        observedRoute: '/orders/4903',
         screenId: UUID_D,
         routePattern: '/orders/:id',
         stateFingerprint: HASH_C,
@@ -2954,6 +2958,8 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
         id: UUID_A,
         tenantId: UUID_B,
         memoryVersionId: UUID_C,
+        candidateMemoryVersionId: null,
+        observedRoute: '/orders/4903',
         screenId: UUID_D,
         routePattern: '/orders/:id',
         stateFingerprint: HASH_C,
@@ -2970,11 +2976,25 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
     ],
     invalid: [
       {
+        why: 'a report nobody has reconciled yet already names a candidate version',
+        value: { ...DRIFT_REPORT, status: 'open', diff: null },
+      },
+      {
+        why: 'a diffed report with nothing for an approval to activate',
+        value: withField(DRIFT_REPORT, 'candidateMemoryVersionId', null),
+      },
+      {
+        why: 'the route generalised to its pattern, which a reconcile could not navigate to',
+        value: without(DRIFT_REPORT, 'observedRoute'),
+      },
+      {
         why: 'approver recorded as a name rather than a user id',
         value: {
           id: UUID_A,
           tenantId: UUID_B,
           memoryVersionId: UUID_C,
+          candidateMemoryVersionId: UUID_D,
+          observedRoute: '/orders/4903',
           screenId: UUID_D,
           routePattern: '/orders/:id',
           stateFingerprint: HASH_C,

@@ -4,6 +4,10 @@ import { Client } from 'pg';
 import type { CrawlBounds, CrawlJob } from 'protocol';
 
 import { loadConfig, type IndexerConfig } from '../../src/config.js';
+import {
+  createSecretResolverFactory,
+  type SecretResolverFactory,
+} from '../../src/crawl/secrets.js';
 
 /**
  * Shared plumbing for the indexer's end-to-end suite.
@@ -34,6 +38,21 @@ export function databaseUrl(): string {
  * defaults are acceptable: they are the *test harness's* settings, not the service's, and the
  * service's own `loadConfig` still validates every one of them.
  */
+/**
+ * Where a tenant-scoped secret would live in the suite.
+ *
+ * Nothing under it exists, and nothing needs to: every fixture crawls with
+ * `authProfile: { kind: 'none' }`, so no reference is ever resolved. The path is here because the
+ * root is required config — a deployment that forgot it must fail at boot rather than resolve
+ * anything, which means the suite has to supply one too.
+ */
+export const TEST_SECRET_ROOT = '/tmp/wispr-test-secrets';
+
+/** A resolver factory for the suite. Scoping is unit-tested in `src/crawl/secrets.test.ts`. */
+export function testSecrets(): SecretResolverFactory {
+  return createSecretResolverFactory({ root: TEST_SECRET_ROOT });
+}
+
 export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): IndexerConfig {
   return loadConfig({
     NODE_ENV: 'test',
@@ -61,6 +80,7 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): IndexerC
     INDEXER_CLAIM_MIN_IDLE_MS: '1000',
     INDEXER_PROGRESS_MAXLEN: '1000',
     INDEXER_HEADLESS: 'true',
+    INDEXER_SECRET_ROOT: TEST_SECRET_ROOT,
     OTEL_SERVICE_NAME: 'wispr-indexer-test',
     SHUTDOWN_TIMEOUT_MS: '5000',
     ...overrides,

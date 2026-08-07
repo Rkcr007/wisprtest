@@ -6,7 +6,7 @@ import type { Browser } from 'playwright';
 import { runJob, type JobRunnerDependencies } from './job-runner.js';
 import { isPoisoned, type JobStream } from './redis/job-stream.js';
 import type { TenantDatabase } from './db/pool.js';
-import type { SecretResolver } from './crawl/secrets.js';
+import type { SecretResolverFactory } from './crawl/secrets.js';
 import type { IndexerMetrics } from './telemetry/metrics.js';
 
 /**
@@ -35,7 +35,8 @@ export interface WorkerOptions {
   readonly database: TenantDatabase;
   readonly redis: Redis;
   readonly browser: Browser;
-  readonly secrets: SecretResolver;
+  /** Bound to each job's own tenant by `runJob`. See `crawl/secrets.ts`. */
+  readonly secrets: SecretResolverFactory;
   readonly metrics: IndexerMetrics;
   readonly logger: Logger;
   readonly progressMaxLength: number;

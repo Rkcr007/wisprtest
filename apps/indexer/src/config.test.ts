@@ -23,6 +23,7 @@ const validEnv = {
   INDEXER_DRIFT_STREAM: 'wispr:indexer:drift',
   INDEXER_DRIFT_CONSUMER_GROUP: 'reconcilers',
   INDEXER_HEADLESS: 'true',
+  INDEXER_SECRET_ROOT: '/run/wispr/secrets',
   OTEL_SERVICE_NAME: 'wispr-indexer',
   SHUTDOWN_TIMEOUT_MS: '10000',
 } satisfies NodeJS.ProcessEnv;
@@ -74,6 +75,17 @@ describe('loadConfig', () => {
     // A truthiness coercion here would turn `INDEXER_HEADLESS=no` into a visible browser on a
     // machine with no display, which fails much later and much less clearly.
     expect(() => loadConfig({ ...validEnv, INDEXER_HEADLESS: 'no' })).toThrow(ConfigError);
+  });
+
+  it('refuses to boot without a secret root', () => {
+    // The fence that makes a `SecretRef` tenant-scoped. A default would be a security control
+    // that silently does nothing on a deployment nobody configured — see `crawl/secrets.ts`.
+    const { INDEXER_SECRET_ROOT: _omitted, ...withoutRoot } = validEnv;
+    expect(() => loadConfig(withoutRoot)).toThrow(ConfigError);
+  });
+
+  it('refuses a relative secret root, which would fence nothing', () => {
+    expect(() => loadConfig({ ...validEnv, INDEXER_SECRET_ROOT: 'secrets' })).toThrow(ConfigError);
   });
 
   it('treats a missing OTLP endpoint as "export nothing" rather than an error', () => {

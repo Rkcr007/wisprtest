@@ -4,7 +4,7 @@ import type { DriftReconcileJob, StructuralDiff } from 'protocol';
 import type { CollectedPage, CollectOptions } from '../crawl/collected.js';
 import { populationOf } from '../crawl/confidence.js';
 import { BUNDLE_GLOBAL, MARKER_ATTRIBUTE } from '../crawl/fingerprint-bundle.js';
-import type { SecretResolver } from '../crawl/secrets.js';
+import type { SecretResolverFactory } from '../crawl/secrets.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { failMemoryVersion } from '../db/memory-repository.js';
 import { NavigationError } from '../errors.js';
@@ -77,7 +77,8 @@ const TIMED_OUT = Symbol('reconcile-timed-out');
 export interface ReconcileDependencies {
   readonly database: TenantDatabase;
   readonly browser: Browser;
-  readonly secrets: SecretResolver;
+  /** Scoped to the job's own tenant before a reference is resolved. See `crawl/secrets.ts`. */
+  readonly secrets: SecretResolverFactory;
 }
 
 export type ReconcileOutcome = 'diffed' | 'skipped' | 'failed';
@@ -308,7 +309,7 @@ async function observePage(
       application: context.application,
       policy,
       browser: deps.browser,
-      secrets: deps.secrets,
+      secrets: deps.secrets.forTenant(job.tenantId),
       deadlineMs: job.deadlineMs,
       viewport: context.viewport,
     },

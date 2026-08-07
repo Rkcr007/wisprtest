@@ -6,7 +6,6 @@ import type { Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
-import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob } from '../../src/job-runner.js';
 import { createRedis } from '../../src/redis/client.js';
@@ -24,6 +23,7 @@ import {
   testConfig,
   type Fixture,
   type LearnedEntity,
+  testSecrets,
 } from '../support/harness.js';
 
 /**
@@ -79,7 +79,7 @@ let accountId: string;
 const logger = pino({ level: config.LOG_LEVEL });
 
 function dependencies(): MaterializerDependencies {
-  return { database, browser, secrets: createSecretResolver() };
+  return { database, browser, secrets: testSecrets() };
 }
 
 /** The element key of the control that edits one learned field. */
@@ -156,7 +156,7 @@ beforeAll(async () => {
       database,
       redis,
       browser,
-      secrets: createSecretResolver(),
+      secrets: testSecrets(),
       metrics: createMetrics(),
       logger,
       progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,

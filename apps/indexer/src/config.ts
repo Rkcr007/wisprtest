@@ -88,6 +88,25 @@ const indexerEnvSchema = z.object({
   /** Headless everywhere except when a developer is watching a crawl to debug it. */
   INDEXER_HEADLESS: z.enum(['true', 'false']).transform((value) => value === 'true'),
 
+  // ── Secrets ──────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Directory holding every tenant's projected secrets, one subdirectory per tenant id.
+   *
+   * The fence that makes a `SecretRef` tenant-scoped: a `file` reference must resolve — after
+   * symlinks — to something under `<root>/<tenant-id>/`, and an `env` reference must be named
+   * `WISPR_SECRET_<TENANT_ID>_*`. See `crawl/secrets.ts` for why an unscoped reference is an
+   * arbitrary-read primitive rather than a tidiness problem.
+   *
+   * Absolute, and required with no default. A default would be a security control that quietly
+   * does nothing on a deployment nobody configured.
+   */
+  INDEXER_SECRET_ROOT: z
+    .string()
+    .min(1)
+    .refine((value) => value.startsWith('/'), {
+      error: 'must be an absolute path',
+    }),
+
   // ── Observability ────────────────────────────────────────────────────────────────────────────
   OTEL_SERVICE_NAME: z.string().min(1),
   /** Absent means export nothing: the right local default, and it is reported at boot. */

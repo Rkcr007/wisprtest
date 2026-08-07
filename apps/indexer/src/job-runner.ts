@@ -15,7 +15,7 @@ import {
 } from './crawl/crawler.js';
 import { createRateLimiter } from './crawl/rate-limiter.js';
 import { createUrlPolicy, type AddressLookup } from './crawl/url-policy.js';
-import type { SecretResolver } from './crawl/secrets.js';
+import type { SecretResolverFactory } from './crawl/secrets.js';
 import type { TenantDatabase } from './db/pool.js';
 import {
   activateMemoryVersion,
@@ -77,7 +77,13 @@ export interface JobRunnerDependencies {
   readonly database: TenantDatabase;
   readonly redis: Redis;
   readonly browser: Browser;
-  readonly secrets: SecretResolver;
+  /**
+   * Scoped to the job's own tenant before a reference is resolved.
+   *
+   * A factory rather than a resolver, so a crawl physically cannot reach a secret belonging to
+   * anybody else — `crawl/secrets.ts` has why an unscoped one is an arbitrary-read primitive.
+   */
+  readonly secrets: SecretResolverFactory;
   readonly metrics: IndexerMetrics;
   readonly logger: Logger;
   readonly progressMaxLength: number;
@@ -169,7 +175,11 @@ export async function runJob(
       }),
     );
 
-    const auth = await prepareAuth(job.authProfile, deps.secrets);
+    // The one place a crawl's secrets are bound, from the job's own tenant id. Everything below
+    // takes the bound resolver; nothing downstream can widen it.
+    const secrets = deps.secrets.forTenant(job.tenantId);
+
+    const auth = await prepareAuth(job.authProfile, secrets);
     const session = await openSession({ browser: deps.browser, bounds: job.bounds, auth });
 
     const observedForms: ObservedForm[] = [];
@@ -192,7 +202,7 @@ export async function runJob(
         baseUrl: job.baseUrl,
         bounds: job.bounds,
         policy,
-        resolver: deps.secrets,
+        resolver: secrets,
       });
 
       // Attached *after* authentication, and deliberately. A form login posts the tenant's

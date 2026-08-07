@@ -5,7 +5,6 @@ import { DerivedRule, DistributionShape, FieldValueConstraints, MaterializerSpec
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
-import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob, type JobRunnerDependencies } from '../../src/job-runner.js';
 import type { EntitySchemaDraft } from '../../src/observers/consolidate.js';
@@ -23,6 +22,7 @@ import {
   type Fixture,
   type LearnedEntity,
   type LearnedField,
+  testSecrets,
 } from '../support/harness.js';
 
 /**
@@ -67,7 +67,7 @@ function dependencies(): JobRunnerDependencies {
     database,
     redis,
     browser,
-    secrets: createSecretResolver(),
+    secrets: testSecrets(),
     metrics: createMetrics(),
     logger,
     progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,

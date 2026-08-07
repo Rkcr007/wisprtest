@@ -2,7 +2,7 @@ import type { Browser, Page } from 'playwright';
 import { pathOf, toRoutePattern } from 'fingerprint';
 import type { SeedJob, SeedJobResult } from 'protocol';
 
-import type { SecretResolver } from '../crawl/secrets.js';
+import type { SecretResolverFactory } from '../crawl/secrets.js';
 import type { AddressLookup, UrlPolicy } from '../crawl/url-policy.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { SeedError } from '../errors.js';
@@ -109,7 +109,11 @@ const CONTROL_MATCH_THRESHOLD = 0.55;
 export interface MaterializerDependencies {
   readonly database: TenantDatabase;
   readonly browser: Browser;
-  readonly secrets: SecretResolver;
+  /**
+   * Scoped to the job's own tenant before a reference is resolved. A factory rather than a
+   * resolver so this module cannot hold one that reaches another tenant's secrets.
+   */
+  readonly secrets: SecretResolverFactory;
   readonly addressLookup?: AddressLookup;
 }
 
@@ -148,7 +152,9 @@ async function run(
       application: context.application,
       policy: context.policy,
       browser: deps.browser,
-      secrets: deps.secrets,
+      // Bound to the tenant this job belongs to, and to nothing else. The id comes off the job,
+      // which the gateway built from an authenticated request — never off a request body.
+      secrets: deps.secrets.forTenant(job.tenantId),
       deadlineMs: job.deadlineMs,
     },
     async (page) =>

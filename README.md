@@ -474,6 +474,8 @@ blocker, not a nice-to-have.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)         | System map, boundaries, extension internals, data model, security |
 | [`docs/TEST-DATA-ENGINE.md`](docs/TEST-DATA-ENGINE.md) | Generic vs per-app data engine, adapters, composition             |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md)             | The phased build plan, in order                                   |
+| [`docs/adr/`](docs/adr/README.md)                      | The decision log — what was decided, why, and what it cost        |
+| [`docs/runbooks/`](docs/runbooks/README.md)            | Four operational runbooks, plus what is and is not instrumented   |
 
 ---
 

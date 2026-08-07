@@ -5,40 +5,53 @@ producing them.
 
 ## What exists today
 
-**Phase 17 is unbuilt.** This is the runbook whose subject does not exist yet, and the honest
-version of it is more useful than a confident one.
-
-What is built:
+**Phase 17 is built, end to end.** Detection runs in the extension, the gateway raises and queues,
+the indexer reconciles, and a human decides. Every step below is live.
 
 | Piece | Where | State |
 |-------|-------|-------|
-| `drift_reports` table, with its constraints and the pending-review index | `db/migrations/20260725120000_core_schema.sql` | Exists, tested (`apps/gateway/test/db/schema.test.ts`), **nothing writes to it** |
-| `DriftReport`, `StructuralDiff`, `DriftStatus`, `DriftDetector` contracts | `packages/protocol/src/drift.ts` | Exist, round-trip tested, **no producer and no consumer** |
-| `structuralHash` computation on route settle | `apps/extension/src/runtime/state-engine.ts` | **Built and running.** The value is computed; nothing compares it to the snapshot |
-| Degraded-mode resolution against drifted elements | `apps/extension/src/resolver/tier0.ts`, `candidate-binder.ts` | **Built.** An alias whose bound element no longer matches its stored fingerprint is discounted, pushing toward disambiguation instead of a confident wrong hit |
-| `drift_approval_required` (409) | `apps/gateway/src/errors.ts` | In the taxonomy, never thrown |
-| A `drift` tone in the HUD | `apps/extension/src/content/Hud.tsx` | Exists, used today for voice failures |
+| `drift_reports` table, its constraints and the pending-review index | `db/migrations/20260725120000_core_schema.sql`, amended by `20260806120000_drift_decision_survives_user_deletion.sql` | Written by the gateway on every raise |
+| `DriftReport`, `StructuralDiff`, `DriftStatus`, `DriftDetector` contracts | `packages/protocol/src/drift.ts` | Producer and consumer both live |
+| Detection on route settle | `apps/extension/src/drift/detect.ts` | Compares the engine's structural hash against the snapshot's screen, by state fingerprint |
+| Raise, list, decide | `apps/gateway/src/routes/drift.ts` | `POST /v1/drift`, `GET /v1/drift/:appId`, `POST /v1/drift/:id/approve` |
+| Reconcile worker | `apps/indexer/src/drift/` | Clones the active version, re-crawls the one screen without interacting, diffs, leaves it `building` |
+| Degraded mode | `apps/extension/src/speculation/classify.ts` | A drifted screen classifies every resolution as `A` — pre-staged, explicit yes required |
+| Degraded resolution against drifted *elements* | `apps/extension/src/resolver/tier0.ts`, `candidate-binder.ts` | An alias whose bound element no longer matches its fingerprint is discounted, pushing toward disambiguation |
+| Metrics | `apps/gateway/src/telemetry/metrics.ts`, `apps/indexer/src/telemetry/metrics.ts` | `wispr_drift_reports_total{detected_by}`, `wispr_drift_decisions_total`, `wispr_indexer_drift_reconciles_total`, `wispr_indexer_drift_reconcile_duration_ms`, `wispr_indexer_drift_alias_migration_rate` |
+| A `drift` tone in the HUD | `apps/extension/src/content/Hud.tsx` | The non-blocking notice on a changed screen, and attach failures |
 
-What is not built: there is no `apps/extension/src/drift/`, no `apps/indexer/src/drift/`, and no
-`/v1/drift/*` route — `apps/gateway/src/routes/` contains `memory.ts`, `resolve.ts` and
-`sessions.ts` and nothing else. No `wispr_drift_open_total` metric exists.
+> ⚠️ **Two names in `docs/ARCHITECTURE.md § 7` do not exist.** The observability contract names
+> `wispr_drift_open_total` and `wispr_memory_staleness_hours`; what shipped is
+> `wispr_drift_reports_total` (a counter of raises, labelled `detected_by`, not a gauge of the open
+> queue) and no staleness metric at all. Neither is a gauge of *backlog depth*, which is the number
+> this runbook actually wants. Until one exists, use the SQL below — it is authoritative and the
+> metrics are not.
 
-**So the alert that opens this runbook cannot fire.** Until Phase 17 lands, drift is real and
-invisible: the application changes, memory does not, and the only signal is a tester saying
-resolution got worse. The sections below are written against what Phase 17 will produce, and every
-step that depends on it is marked. The parts that work **today** are the staleness query in
-*Confirm*, the memory-version and alias queries, and all of *Immediate mitigation*.
+> ⚠️ **`drift_approval_required` (409) is in the error taxonomy and is still never thrown.**
+> `apps/gateway/src/errors.ts` maps it; nothing raises it. A stale memory version does not block a
+> resolution by design, so there is no path that would.
+
+**The one gap that matters operationally:** there is no console screen for the review queue.
+`GET /v1/drift/:appId` returns the pending reports and `POST /v1/drift/:id/approve` records the
+decision, but a human has to reach both over the API. Phase 18's Drift screen is what closes this,
+and until it lands the *Immediate mitigation* section is where an operator actually works.
 
 ---
 
 ## Symptoms
 
-**Today, with Phase 17 unbuilt:**
-
-- Testers report that phrases which used to work now open a disambiguation list. This is
-  [ADR 0007](../adr/0007-human-approved-drift-only.md)'s degraded mode functioning correctly — the
-  resolver discounted an alias whose element no longer matches — and it is currently the *only*
-  drift signal the product produces.
+- `drift_reports` rows in `open`, `reconciling` or `diffed` accumulating with no `resolved_at`.
+- Reports whose `alias_migration_rate` is low — the tester's learned vocabulary is about to be
+  lost on approval, and that is the number the approval screen is specified to lead with.
+- The same `screen_id` producing repeated reports: the application is changing faster than anyone
+  reviews it.
+- **Testers saying every action now asks them to confirm.** This is degraded mode working as
+  designed, not a fault: a drifted screen classifies every resolution as class `A`
+  (`speculation/classify.ts`), so nothing runs on a partial hypothesis and everything needs an
+  explicit yes. It is also the loudest tester-facing symptom of an unreviewed backlog, and the one
+  most likely to arrive as a complaint rather than as a metric.
+- Testers reporting that phrases which used to work now open a disambiguation list — the resolver
+  discounting an alias whose element no longer matches its fingerprint.
 - `wispr_tier_total{tier="T2"}` climbing as a share of the total. The compounding loop runs
   backwards when the application changes: phrases that were T0 stop matching and escalate again.
   `docs/ARCHITECTURE.md § 6` names tier distribution as the best health metric for the product, and
@@ -47,22 +60,14 @@ step that depends on it is marked. The parts that work **today** are the stalene
   800 ms path instead of the 15 ms one.
 - The active `memory_version` for an application is weeks old while the customer deploys weekly.
 
-**Once Phase 17 exists, additionally:**
-
-- `drift_reports` rows in `open`, `reconciling` or `diffed` accumulating with no `resolved_at`.
-- Reports whose `alias_migration_rate` is low — the tester's learned vocabulary is about to be
-  lost on approval, and that is the number the approval screen is specified to lead with.
-- The same `screen_id` producing repeated reports: the application is changing faster than anyone
-  reviews it.
-
 ---
 
 ## Confirm
 
 ### 1. How stale is memory, per application?
 
-Works today. `wispr_memory_staleness_hours` is named in `docs/ARCHITECTURE.md § 7` and does not
-exist, but the underlying data does — `screens.indexed_at` and `memory_versions.created_at`:
+`wispr_memory_staleness_hours` is named in `docs/ARCHITECTURE.md § 7` and does not exist, but the
+underlying data does — `screens.indexed_at` and `memory_versions.created_at`:
 
 ```sql
 SELECT a.name,
@@ -83,8 +88,6 @@ alert on when there is something to alert with.
 
 ### 2. Is the backlog real, and how old?
 
-**Phase 17 required — this returns zero rows today.**
-
 ```sql
 SELECT dr.status,
        count(*) AS reports,
@@ -103,8 +106,8 @@ terminal, and unreachable without a human on the record.
 
 The distribution tells you which stage is stuck:
 
-- Piling up in **`open`** — nothing is picking reports up. The indexer side of Phase 17 is down or
-  not consuming.
+- Piling up in **`open`** — nothing is picking reports up. The indexer's reconcile worker is down
+  or not consuming its stream.
 - Piling up in **`reconciling`** — reconciliation crawls are failing. Cross-check against
   [indexer-failure.md](indexer-failure.md); a re-crawl is a crawl and fails the same ways.
 - Piling up in **`diffed`** — the system did its job and no human is reviewing. This is the
@@ -121,9 +124,18 @@ GROUP BY status, approved_by, resolved_at;
 ```
 
 `drift_reports_decision_needs_approver` makes it impossible for a row to be `approved` or
-`rejected` without both `approved_by` and `resolved_at`. If you find terminal rows with a null
-approver, the constraint has been dropped and that is a much larger incident than a backlog — see
-[ADR 0007](../adr/0007-human-approved-drift-only.md) on why that constraint is the decision.
+`rejected` without a `resolved_at`. **It does not require `approved_by`, and a terminal row with a
+null approver is normal** — the approver FK is `ON DELETE SET NULL`, so offboarding someone who once
+approved a report nulls the column rather than destroying the record of the decision. The constraint
+was narrowed to `resolved_at` in `20260806120000_drift_decision_survives_user_deletion.sql` for
+exactly that reason; the original demanded both, which made deleting such a user fail on a table
+nobody was touching.
+
+So do not read a null `approved_by` as tampering. The durable record of *who* decided is
+`audit_log` (`docs/ARCHITECTURE.md § 8`), which is not nulled by anything. What would be a much
+larger incident than a backlog is a terminal row with a null `resolved_at`, or an `approved` row
+with no corresponding `audit_log` entry — see
+[ADR 0007](../adr/0007-human-approved-drift-only.md) on why a human on the record is the decision.
 
 ### 4. What is the vocabulary loss going to be?
 
@@ -161,15 +173,21 @@ designed for it.**
 
 ### Confirm degraded mode is actually degrading gracefully
 
-This is the load-bearing behaviour, and it works today. `tier0.ts` discounts an alias or exact
-match whose bound element no longer matches its stored fingerprint, so a drifted screen produces a
-disambiguation list rather than a confident wrong click. If testers report *wrong* actions rather
-than *more questions*, that is not a drift backlog — that is a false execution, and it is a far
-more serious incident. See [ADR 0005](../adr/0005-reversibility-taxonomy.md).
+This is the load-bearing behaviour, and there are now two layers of it.
+
+At the **screen** level, `classify.ts` forces class `A` on any screen whose structural hash no
+longer matches memory: nothing executes from a partial hypothesis and every action needs an explicit
+yes, regardless of verb or confidence. At the **element** level, `tier0.ts` discounts an alias or
+exact match whose bound element no longer matches its stored fingerprint, producing a disambiguation
+list rather than a confident wrong hit.
+
+If testers report *wrong* actions rather than *more questions and more confirmations*, that is not a
+drift backlog — that is a false execution, and it is a far more serious incident. See
+[ADR 0005](../adr/0005-reversibility-taxonomy.md).
 
 ### Re-index rather than wait for the review queue
 
-The blunt instrument, available today and the only one available today: enqueue a full crawl. A new
+The blunt instrument: enqueue a full crawl. A new
 crawl writes a new `memory_version` with status `building` and flips it to `active` on completion.
 `memory_versions_one_active_per_application` is a partial unique index allowing one `active` row
 per application, so the flip is atomic and the previous version keeps serving until it happens.
@@ -224,7 +242,7 @@ implementation ([ADR 0002](../adr/0002-single-fingerprint-implementation.md)); a
 unstable across identical renders is a bug there and affects the indexer and the extension
 identically.
 
-**Staleness with no reports at all, once Phase 17 exists.** Detection is not running. Check that
+**Staleness with no reports at all.** Detection is not running. Check that
 the extension is attached and reaching route settle — `structuralHash` is recomputed there
 (`state-engine.ts`), and a screen no tester visits produces no detection. Screens covered only by
 the indexer's own re-crawls, not by live traffic, are a permanent blind spot in extension-side
@@ -240,11 +258,13 @@ consumers at once, so treat it as a fingerprint change and not as a drift fix.
 
 ## Prevention
 
-- **Build the alert when Phase 17 lands.** `wispr_drift_open_total` is named in
-  `docs/ARCHITECTURE.md § 7` and does not exist. Age matters more than count: a queue of forty
-  reviewed within a day is healthy, a queue of three untouched for two weeks is not.
+- **Build the backlog-depth alert.** `wispr_drift_reports_total` counts raises; it does not measure
+  how many are waiting, and a counter cannot answer the question this runbook opens with. Either add
+  the gauge `docs/ARCHITECTURE.md § 7` calls `wispr_drift_open_total`, or alert off the SQL in
+  *Confirm* step 2. Age matters more than count: a queue of forty reviewed within a day is healthy,
+  a queue of three untouched for two weeks is not.
 - **Alert on staleness now.** The SQL in *Confirm* step 1 runs today against a live database, and
-  it does not need Phase 17 or a metrics backend. Two days is the threshold Phase 19 names.
+  it does not need a metrics backend. Two days is the threshold Phase 19 names.
 - **Watch the tier distribution as the leading indicator.** `wispr_tier_total{tier}` is emitted by
   the gateway today (`apps/gateway/src/routes/sessions.ts`). A falling T0 share is the earliest
   signal that memory has fallen behind, and it precedes anybody filing a complaint.

@@ -88,6 +88,9 @@ export interface AuditLog {
 
 export interface DriftReport {
   aliasMigrationRate: Numeric | null;
+  /**
+   * The human who approved or rejected, nulled if that account is later deleted. The durable record of who decided is audit_log (ARCHITECTURE 8); resolved_at is what proves a decision was taken at all.
+   */
   approvedBy: string | null;
   /**
    * The building memory version a reconcile produced, which approving this report activates. Null until reconciliation has built one. Approval flips its status rather than editing memory in place, so a session resolving against the current version keeps working.
@@ -186,6 +189,14 @@ export interface MemoryVersion {
   tenantId: string;
   updatedAt: Generated<Timestamp>;
   version: number;
+  /**
+   * Height of the viewport this version's fingerprints were normalised against. Null exactly when viewport_width is.
+   */
+  viewportHeight: number | null;
+  /**
+   * Width of the viewport this version's fingerprints were normalised against, from CrawlBounds.viewport. Null for versions crawled before it was recorded; readers fall back to a fixed viewport and accept a degraded bbox signal.
+   */
+  viewportWidth: number | null;
 }
 
 export interface NavEdge {

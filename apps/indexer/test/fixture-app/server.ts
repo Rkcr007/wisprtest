@@ -16,6 +16,7 @@ import {
   notFoundPage,
   orderDetailPage,
   ordersPage,
+  resetNavLabels,
   settingsPage,
 } from './views.js';
 
@@ -257,6 +258,12 @@ export function buildApp(state: FixtureState): Express {
 
 /** Start the fixture on an ephemeral port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
+  // Nav labels are module state, so a suite that renamed one and then failed before cleaning up
+  // would hand the next file an application it never agreed to. Resetting on start rather than
+  // trusting every caller to reset on exit is what keeps that failure inside the suite that
+  // caused it.
+  resetNavLabels();
+
   const state = new FixtureState();
   const app = buildApp(state);
 

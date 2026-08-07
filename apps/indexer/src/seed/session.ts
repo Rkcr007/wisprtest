@@ -58,6 +58,16 @@ export interface AuthenticatedPageOptions {
   readonly browser: import('playwright').Browser;
   readonly secrets: import('../crawl/secrets.js').SecretResolver;
   readonly deadlineMs: number;
+  /**
+   * Viewport to open at. Defaults to {@link SEED_VIEWPORT}.
+   *
+   * Worth overriding whenever the caller knows the size the fingerprints it is about to compare
+   * against were normalised to — `memory_versions.viewport_width/height`, recorded since
+   * db/migrations/20260806130000_memory_version_viewport.sql. Matching it is what makes the bbox
+   * signal mean anything; the default is the honest fallback for a version crawled before that
+   * was recorded.
+   */
+  readonly viewport?: { readonly width: number; readonly height: number };
 }
 
 /**
@@ -72,7 +82,7 @@ export async function withAuthenticatedPage<T>(
   work: (page: Page) => Promise<T>,
 ): Promise<T> {
   const bounds: SessionBounds = {
-    viewport: SEED_VIEWPORT,
+    viewport: options.viewport ?? SEED_VIEWPORT,
     navigationTimeoutMs: Math.min(options.deadlineMs, 60_000),
   };
 

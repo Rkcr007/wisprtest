@@ -30,6 +30,62 @@ import { RECENT_ORDER_COUNT, type Order } from './data.js';
  *   proving it can really create a record is Phase 15's job.
  */
 
+/**
+ * The primary navigation, and the one thing about this fixture a test can change underneath it.
+ *
+ * Drift is a *relabelled application*, so exercising it needs markup that can be relabelled
+ * between a crawl and a reconcile. These four links are the place to do it, because of an
+ * asymmetry in how the two halves of the system read an element:
+ *
+ * - `id` is a stable attribute for *scoring* (`fingerprint/config.ts` → `stableAttributeNames`),
+ *   so a renamed link still scores well above the match floor and is recognised as the same
+ *   element. Measured at 0.68 against a floor of 0.55; without the `id` it is 0.60, and the
+ *   margin is carried by text width, which differs between the fonts on a laptop and on CI.
+ * - `id` is *not* one of the names an element key is minted from (`crawl/element-key.ts` →
+ *   `elementSegment` reads `data-testid`, `data-test-id`, `data-qa`, `name`). So the key stays
+ *   derived from the accessible name and *does* change when the label changes.
+ *
+ * That combination is what makes the rename assertion meaningful: the element key changes, so a
+ * matcher that went by key would report a removal plus an addition, while the score-based matcher
+ * these ids protect reports the rename it actually is.
+ *
+ * `id` is absent from `structuralAttributeNames`, so adding these changed no structural hash and
+ * no element key anywhere in the existing suites.
+ */
+const NAV_LINKS: readonly { href: string; id: string; label: string }[] = [
+  { href: '/', id: 'nav-home', label: 'Home' },
+  { href: '/orders', id: 'nav-orders', label: 'Orders' },
+  { href: '/orders/new', id: 'nav-orders-new', label: 'New order' },
+  { href: '/settings', id: 'nav-settings', label: 'Settings' },
+];
+
+const navOverrides = new Map<string, string>();
+
+/** Relabel one nav link, standing in for the application shipping a copy change. */
+export function renameNavLink(href: string, label: string): void {
+  navOverrides.set(href, label);
+}
+
+/**
+ * Put every nav label back.
+ *
+ * Called by `startFixtureApp`, not only by whoever renamed something. A test that renamed a link
+ * and then failed before cleaning up would otherwise hand the *next file* an application whose
+ * labels it never agreed to — and that suite would fail for a reason nothing in it explains.
+ */
+export function resetNavLabels(): void {
+  navOverrides.clear();
+}
+
+function navigation(): string {
+  const links = NAV_LINKS.map(
+    (link) =>
+      `      <a id="${link.id}" href="${link.href}">${navOverrides.get(link.href) ?? link.label}</a>`,
+  ).join('\n');
+
+  return `    <nav aria-label="Primary">\n${links}\n    </nav>`;
+}
+
 function layout(title: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -48,12 +104,7 @@ function layout(title: string, body: string): string {
     </style>
   </head>
   <body>
-    <nav aria-label="Primary">
-      <a href="/">Home</a>
-      <a href="/orders">Orders</a>
-      <a href="/orders/new">New order</a>
-      <a href="/settings">Settings</a>
-    </nav>
+${navigation()}
     <main>${body}</main>
   </body>
 </html>`;

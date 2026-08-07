@@ -52,6 +52,10 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): IndexerC
     INDEXER_SEED_STREAM: `indexer:test:seed:${randomUUID()}`,
     INDEXER_SEED_CONSUMER_GROUP: 'seeders',
     INDEXER_SEED_RESULT_TTL_SECONDS: '120',
+    // Per-run stream names, so two suites against the same Compose Redis cannot consume each
+    // other's jobs — the same reason the crawl and seed streams are generated above.
+    INDEXER_DRIFT_STREAM: `indexer:test:drift:${randomUUID()}`,
+    INDEXER_DRIFT_CONSUMER_GROUP: 'reconcilers',
     INDEXER_CONSUMER_GROUP: 'indexers',
     INDEXER_BLOCK_MS: '250',
     INDEXER_CLAIM_MIN_IDLE_MS: '1000',
@@ -107,7 +111,13 @@ export async function createFixture(baseUrl: string): Promise<Fixture> {
     applicationId,
     client,
     async drop(): Promise<void> {
-      // Everything hangs off the tenant by a cascading foreign key.
+      // Drift reports go first, and not because they would otherwise be left behind — they
+      // cascade with the tenant like everything else. `drift_reports.approved_by` is
+      // `ON DELETE SET NULL`, so deleting the tenant's users nulls the approver on any decided
+      // report, which violates `drift_reports_decision_needs_approver` and fails the whole drop.
+      // A suite that reached a decided report could not clean up after itself at all.
+      await client.query('DELETE FROM drift_reports WHERE tenant_id = $1', [tenantId]);
+      // Everything else hangs off the tenant by a cascading foreign key.
       await client.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
       await client.end();
     },

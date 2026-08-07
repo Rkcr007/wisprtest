@@ -136,7 +136,7 @@ export async function runJob(
     await policy.assertAllowed(job.baseUrl);
 
     const version = await deps.database.withTenant(job.tenantId, (db) =>
-      openMemoryVersion(db, job.tenantId, job.applicationId),
+      openMemoryVersion(db, job.tenantId, job.applicationId, job.bounds.viewport),
     );
     memoryVersionId = version.id;
 

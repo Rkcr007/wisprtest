@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:observers": "vitest run --config vitest.e2e.config.ts test/e2e/observers.test.ts",
-    "test:seed": "vitest run --config vitest.e2e.config.ts test/e2e/seed.test.ts"
+    "test:seed": "vitest run --config vitest.e2e.config.ts test/e2e/seed.test.ts",
+    "test:drift": "vitest run --config vitest.e2e.config.ts test/e2e/drift.test.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",

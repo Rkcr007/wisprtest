@@ -13,7 +13,7 @@
 
 <br/>
 
-<img alt="Phase" src="https://img.shields.io/badge/build_plan-10%20%2F%2019%20phases-FFB454?style=flat-square" />
+<img alt="Phase" src="https://img.shields.io/badge/build_plan-18%20%2F%2020%20phases-FFB454?style=flat-square" />
 <img alt="Hot path" src="https://img.shields.io/badge/hot_path-in--browser,_no_network-52E0AC?style=flat-square" />
 <img alt="False execution" src="https://img.shields.io/badge/false_execution_rate-%3C%200.1%25%20(gated)-FF6B4A?style=flat-square" />
 <img alt="License" src="https://img.shields.io/badge/license-proprietary-7FA8FF?style=flat-square" />
@@ -139,12 +139,12 @@ flowchart TD
     SP -.on divergence.-> RB([↩ roll back])
 ```
 
-|       Class        | Meaning                                      |     Speculative?      | Confirmation                   |
-| :----------------: | -------------------------------------------- | :-------------------: | ------------------------------ |
-| **R** — Reversible | focus, hover, scroll, expand, read-only nav  | **Yes**, on a partial | No                             |
-| **C** — Committing | submit, delete, approve — any state mutation |       **Never**       | Yes — final + explicit _yes_   |
-| **A** — Ambiguous  | resolver confidence below threshold          |    Pre-stage only     | Yes                            |
-|  **S** — Seeding   | test-data creation                           |       **Never**       | Yes — preview before any write |
+|       Class        | Meaning                                         |     Speculative?      | Confirmation                   |
+| :----------------: | ----------------------------------------------- | :-------------------: | ------------------------------ |
+| **R** — Reversible | focus, hover, scroll, expand, read-only nav     | **Yes**, on a partial | No                             |
+| **C** — Committing | submit, delete, approve — any state mutation    |       **Never**       | Yes — final + explicit _yes_   |
+| **A** — Ambiguous  | confidence below threshold, or a drifted screen |    Pre-stage only     | Yes                            |
+|  **S** — Seeding   | test-data creation                              |       **Never**       | Yes — preview before any write |
 
 > ⚠️ Speculating on a Class **C** action is the single worst bug this product can have. A
 > confident wrong click costs more trust than any latency win gains. A release-gate test
@@ -208,6 +208,8 @@ flowchart TB
 
     RES -. snapshot / alias write-back .-> GW
     EXE -. session steps .-> GW
+    RT -. drift report · on hash mismatch .-> GW
+    GW -. reconcile job .-> IDX
     GW --> DB
     GW --> RD
     GW --> QD
@@ -326,6 +328,8 @@ pnpm --filter extension bench:scope              # scope recompute < 8 ms gate
 pnpm --filter console test                       # console: crawl bounds, SSE, auth, routes
 pnpm --filter gateway test:seed                  # seed plan, approve, revert, policy, ledger
 pnpm --filter indexer test:seed                  # UI materializer against the fixture app
+pnpm --filter gateway test:drift                 # drift raised, queued, decided by a human
+pnpm --filter indexer test:drift                 # reconcile a drifted screen into a candidate
 ```
 
 The composer is Python and runs under `uv`, with its 90% coverage gate wired into pytest:
@@ -339,7 +343,7 @@ cd apps/composer && uv run mypy --strict src && uv run pytest -q
 ## 📈 Build progress
 
 Built in the phased order defined in [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md).
-**Phases 0–14 shipped; 15, 18 and 19 partially landed.**
+**Phases 0–17 shipped; 18 and 19 partially landed.**
 
 ```mermaid
 timeline
@@ -348,33 +352,54 @@ timeline
         Foundations : Scaffold : Protocol : Fingerprint
         Backend : DB + RLS : Gateway : Indexer
         Extension : HUD + design system : Runtime state engine : T0/T1 resolution : Voice pipeline : Speculation + CDP
-        Learning : T2 write-back : Sessions
+        Learning : T2 write-back : Sessions : Drift detection + relearn
         Data engine : Schema observation : Composer : Seed preview + approval + ledger : Materializer chain
     section 🚧 Partly landed
         Product : Console — 2 of 8 screens : Hardening — CI + runbooks
     section 🔜 Planned
-        Learning : Drift detection + relearn
         Product : Remaining console screens : Helm / Terraform / load test
 ```
 
-|   #   | Phase                                                  |         Status          |
-| :---: | ------------------------------------------------------ | :---------------------: |
-|  0–2  | Scaffold · Protocol · Fingerprint                      |           ✅            |
-|  3–5  | DB + RLS · Gateway · Indexer                           |           ✅            |
-|  6–7  | Extension shell + HUD · Runtime state engine           |           ✅            |
-| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution |           ✅            |
-| 11–13 | T2 write-back · Sessions · Schema observation          |           ✅            |
-|  14   | Composer — contract, sampler, solver, provenance DAG   |           ✅            |
-|  15   | Seed plan, approve, revert · UI materializer · ledger  |           ✅            |
-|  16   | Materializer chain — API + fixture, verification TTL   |           ✅            |
-|  17   | Drift detection and relearn                            |       ⬜ planned        |
-|  18   | Console — Connect + Indexing screens                   |    🚧 2 of 8 screens    |
-|  19   | Production hardening — CI + runbooks landed early      | 🚧 `infra/` still empty |
+|   #   | Phase                                                   |         Status          |
+| :---: | ------------------------------------------------------- | :---------------------: |
+|  0–2  | Scaffold · Protocol · Fingerprint                       |           ✅            |
+|  3–5  | DB + RLS · Gateway · Indexer                            |           ✅            |
+|  6–7  | Extension shell + HUD · Runtime state engine            |           ✅            |
+| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution  |           ✅            |
+| 11–13 | T2 write-back · Sessions · Schema observation           |           ✅            |
+|  14   | Composer — contract, sampler, solver, provenance DAG    |           ✅            |
+|  15   | Seed plan, approve, revert · UI materializer · ledger   |           ✅            |
+|  16   | Materializer chain — API + fixture, verification TTL    |           ✅            |
+|  17   | Drift detection and relearn — the learning loop, closed |           ✅            |
+|  18   | Console — Connect + Indexing screens                    |    🚧 2 of 8 screens    |
+|  19   | Production hardening — CI + runbooks landed early       | 🚧 `infra/` still empty |
 
+> **Phase 17** closed the learning loop, across six PRs. The contract went first and alone. Then the
+> gateway learned to raise a report, queue a reconcile and record a human's decision. Then the
+> indexer gained the worker on the other side of that queue: it clones the active memory version,
+> re-crawls the one drifted screen _without ever interacting with it_, classifies what changed, and
+> leaves the result `building`. Then the extension gained the half that observes — a hash comparison
+> on route settle, costing two map lookups against a hash the state engine already computes.
+>
+> Nothing in it can change memory on its own. A reconcile proposes a candidate version; approving it
+> flips a status rather than editing the active one, so a session mid-flight keeps resolving and a
+> bad approval is a version to roll back rather than a change to reconstruct.
+> [ADR 0007](docs/adr/0007-human-approved-drift-only.md) has the argument: automatic self-healing is
+> what destroyed trust in the previous generation of QA tools, because it made tests pass that
+> should have failed.
+>
+> A drifted screen degrades rather than stopping. Every resolution on it is classified `A` —
+> pre-staged with a reticle, executed only on an explicit yes — regardless of verb or score.
+> Confidence cannot express staleness on its own: a T0 alias hit is _more_ confident, not less, when
+> it names an element that has since moved, because the score says the phrase matched what memory
+> holds and nothing about whether memory is still true. The tester keeps working; what stops is
+> unconfirmed action against memory known to be stale.
+>
 > **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
 > progress) are built and tested, so an application can be indexed without touching a
-> terminal. Of the other six, the Data screen now has a materializer chain to configure and a
-> ledger to show; the rest still depend on Phase 17.
+> terminal. Of the other six, the Data screen now has a materializer chain to configure and a ledger
+> to show, and Drift has a queue of pending reports with diffs to review — the loop runs end to end
+> in code, and the approve/reject decision is the one step that still has no screen to make it from.
 >
 > **Phase 15** landed as two PRs, as Phase 14 did. The gateway half is the three seed routes, the
 > fallback chain, the ledger, the audited production policy, and the UI materializer that drives a

@@ -24,6 +24,7 @@ import type { CdpDispatchService } from './cdp-dispatch.js';
 import { decodeBase64, type EvidenceUploader } from './evidence-uploader.js';
 import type { SessionClient } from './session-client.js';
 import type { AliasClient } from './alias-client.js';
+import type { DriftClient } from './drift-client.js';
 import type { EscalateClient } from './escalate-client.js';
 import type { MemoryClient } from './memory-client.js';
 import type { SeedClient } from './seed-client.js';
@@ -124,6 +125,13 @@ export interface AttachControllerOptions {
    * could not be reached — which is the honest degraded behaviour, and writes nothing.
    */
   readonly seeds?: SeedClient;
+  /**
+   * Raises drift reports. Optional so the attach lifecycle can be tested in isolation; without it a
+   * detected mismatch is dropped and the tester still sees the HUD's notice, because the notice is
+   * driven by the detection rather than by the gateway's answer. Losing the report costs the
+   * learning loop an observation, never the session.
+   */
+  readonly drifts?: DriftClient;
   /** How far before expiry to refresh. Also the margin that makes a token "not usable yet". */
   readonly refreshMarginMs?: number;
   readonly now?: () => number;
@@ -200,6 +208,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
     screenshots,
     evidence,
     seeds,
+    drifts,
     writebackIntervalMs = DEFAULT_WRITEBACK_INTERVAL_MS,
     stepIntervalMs = DEFAULT_STEP_INTERVAL_MS,
     refreshMarginMs = DEFAULT_REFRESH_MARGIN_MS,
@@ -557,6 +566,47 @@ export function createAttachController(options: AttachControllerOptions): Attach
   }
 
   /**
+   * Raise one drift observation with the gateway.
+   *
+   * Nothing is sent back to the content script, because nothing there is waiting: the HUD's notice
+   * is driven by the detection, so a tester on a changed screen is told immediately rather than
+   * after a round trip that may never complete. This adds the two things the page side is not
+   * allowed to hold — the session id and the token — and lets the report go.
+   *
+   * Every failure is swallowed into `onError`. A gateway that is down costs the learning loop one
+   * observation of a screen the tester is about to settle on again anyway.
+   */
+  async function raiseDrift(
+    session: Session,
+    observation: {
+      readonly screenId: string;
+      readonly routePattern: string;
+      readonly route: string;
+      readonly stateFingerprint: string;
+      readonly expectedStructuralHash: string;
+      readonly observedStructuralHash: string;
+      readonly observedAt: string;
+    },
+  ): Promise<void> {
+    const token = session.token?.token;
+    const sessionId = session.sessionId;
+
+    // Reporting needs a session, because the gateway reads the memory version from it — the version
+    // the report is about is the one this tab actually loaded, and nothing else can say which.
+    if (drifts === undefined || token === undefined || sessionId === null) return;
+    if (session.state !== 'attached') return;
+
+    try {
+      const outcome = await drifts.raise({ ...observation, sessionId, bearerToken: token });
+      if (!outcome.ok && outcome.reason !== 'duplicate') {
+        onError?.('drift.not_raised', new Error(outcome.reason));
+      }
+    } catch (error: unknown) {
+      onError?.('drift.raise_failed', error);
+    }
+  }
+
+  /**
    * Capture and store evidence for one step, and answer with what was recorded.
    *
    * Split the way the trust boundary is: the content script produced the redacted snapshot,
@@ -830,6 +880,18 @@ export function createAttachController(options: AttachControllerOptions): Attach
             session.steps?.add(parsed.data);
             return;
           }
+          case 'drift_raise':
+            // Not awaited, and not replied to. Phase 17: drift never blocks the tester.
+            void raiseDrift(session, {
+              screenId: request.screenId,
+              routePattern: request.routePattern,
+              route: request.route,
+              stateFingerprint: request.stateFingerprint,
+              expectedStructuralHash: request.expectedStructuralHash,
+              observedStructuralHash: request.observedStructuralHash,
+              observedAt: request.observedAt,
+            });
+            return;
           case 'capture_evidence':
             void captureEvidence(session, tabId, request.requestId, {
               stepOrdinal: request.stepOrdinal,

@@ -90,6 +90,25 @@ export function resolveClassifyConfig(overrides?: Partial<ClassifyConfig>): Clas
 }
 
 /**
+ * Conditions outside the resolution itself that bear on how safely it can be acted on.
+ *
+ * Empty in the ordinary case. Passing a record rather than a bare boolean keeps the call site
+ * readable and leaves room for the next such condition without another positional argument.
+ */
+export interface ClassifyContext {
+  /**
+   * The screen the tester is on no longer matches the structural hash memory holds for it.
+   *
+   * Detected in `drift/detect.ts` on route settle. Memory for this screen is known to describe a
+   * page that has changed, so a resolution against it is untrustworthy in a way confidence cannot
+   * express: a T0 alias hit is *more* confident, not less, when it names an element that has since
+   * moved or been removed. The score says the phrase matched what memory holds; it says nothing
+   * about whether memory is still true.
+   */
+  readonly screenDrifted?: boolean;
+}
+
+/**
  * Classify an action into its reversibility class.
  *
  * This is `classify(res.action)` from docs/ARCHITECTURE.md § 3, with the confidence gate folded in.
@@ -98,12 +117,27 @@ export function resolveClassifyConfig(overrides?: Partial<ClassifyConfig>): Clas
  * "approve" is therefore `A`, not `C`: still never executed, and surfaced for disambiguation rather
  * than silent confirmation. When confidence later clears the bar it becomes `C` and needs the
  * explicit yes.
+ *
+ * ## Drift is checked before confidence
+ *
+ * A drifted screen forces `A` regardless of verb *or* score, which is the degraded mode
+ * `BUILD-PLAN.md` Phase 17 asks for — "continue working in degraded mode. Never block the tester."
+ * `A` is precisely that: pre-staged with a reticle, surfaced, never executed without an explicit
+ * yes. The tester keeps working; nothing is blocked; the one thing that stops happening is
+ * unconfirmed action against memory known to be stale.
+ *
+ * This is the conservative reading of CLAUDE.md's taxonomy, and it is the one the release gate
+ * argues for: false execution rate is < 0.1% and gates every release, while the cost here is an
+ * extra confirmation on a screen with a drift report already pending. "A confident wrong click
+ * costs more trust than any latency win gains."
  */
 export function classifyAction(
   verb: ActionVerb,
   confidence: number,
   config: ClassifyConfig = DEFAULT_CLASSIFY_CONFIG,
+  context: ClassifyContext = {},
 ): ActionClass {
+  if (context.screenDrifted === true) return 'A';
   if (confidence < config.threshold) return 'A';
   return config.verbClasses[verb];
 }

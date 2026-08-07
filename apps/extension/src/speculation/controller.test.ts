@@ -48,11 +48,24 @@ function fakeLocator(map: Map<string, Element>): Locator {
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-function build(resolverMap: Record<string, ResolutionResult>, elements: Map<string, Element>) {
-  return buildWith(fakeResolver(resolverMap), elements);
+interface BuildOptions {
+  /** Phase 17's degraded mode: the screen no longer matches the hash memory holds for it. */
+  readonly screenDrifted?: () => boolean;
 }
 
-function buildWith(resolver: ResolverLike, elements: Map<string, Element>) {
+function build(
+  resolverMap: Record<string, ResolutionResult>,
+  elements: Map<string, Element>,
+  options: BuildOptions = {},
+) {
+  return buildWith(fakeResolver(resolverMap), elements, options);
+}
+
+function buildWith(
+  resolver: ResolverLike,
+  elements: Map<string, Element>,
+  options: BuildOptions = {},
+) {
   const requests: ActionRequest[] = [];
   const steps: SessionStep[] = [];
   const fake = createFakeDispatcher();
@@ -89,6 +102,7 @@ function buildWith(resolver: ResolverLike, elements: Map<string, Element>) {
       };
     },
     onStep: (s) => steps.push(s),
+    ...(options.screenDrifted === undefined ? {} : { screenDrifted: options.screenDrifted }),
   });
   return {
     requests,
@@ -199,6 +213,80 @@ describe('SpeculationController — class R speculation and rollback', () => {
     await h.controller.onFinal({ revision: 3, transcript: 'focus the results table' });
     expect(h.requests).toHaveLength(2);
     expect(h.controller.view.value.phase).toBe('executed');
+  });
+
+  it('does not speculate a reversible action on a screen that has drifted from memory', async () => {
+    // Phase 17's degraded mode. The same utterance that speculates above is staged here, because
+    // memory for this screen is known to describe a page that changed — and a T0 hit is *more*
+    // confident, not less, when it names an element that has since moved.
+    const search = document.createElement('input');
+    document.body.append(search);
+
+    const h = build(
+      { 'search box': resolved(SEARCH_KEY, ID(2)) },
+      new Map([[SEARCH_KEY, search]]),
+      { screenDrifted: () => true },
+    );
+    h.controller.onSpeechOnset();
+
+    await h.controller.onPartial({ revision: 1, transcript: 'focus the search box' });
+
+    expect(h.requests, 'speculated against stale memory').toHaveLength(0);
+    expect(h.fake.order, 'dispatched to the app from a drifted screen').toHaveLength(0);
+    expect(h.controller.view.value.phase).toBe('staged');
+    expect(h.controller.view.value.actionClass).toBe('A');
+  });
+
+  it('holds a drifted action at the final until an explicit confirmation, then executes it', async () => {
+    // "Never block the tester": degraded is not disabled. The action still runs — it just needs
+    // the yes that class A requires, rather than going through on a partial.
+    const search = document.createElement('input');
+    document.body.append(search);
+
+    const h = build(
+      { 'search box': resolved(SEARCH_KEY, ID(2)) },
+      new Map([[SEARCH_KEY, search]]),
+      { screenDrifted: () => true },
+    );
+    h.controller.onSpeechOnset();
+
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the search box' });
+    expect(h.controller.view.value.awaitingConfirmation).toBe(true);
+    expect(h.requests).toHaveLength(0);
+
+    h.controller.confirm();
+    h.runStability();
+    await flush();
+
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]).toMatchObject({ actionClass: 'A', speculative: false, confirmed: true });
+  });
+
+  it('re-reads drift per classification, so a mismatch found mid-session degrades at once', async () => {
+    // The predicate is read at classification time rather than captured when the controller is
+    // built: drift is discovered on route settle, which happens long after.
+    const search = document.createElement('input');
+    document.body.append(search);
+
+    let drifted = false;
+    const h = build(
+      { 'search box': resolved(SEARCH_KEY, ID(2)) },
+      new Map([[SEARCH_KEY, search]]),
+      {
+        screenDrifted: () => drifted,
+      },
+    );
+
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 1, transcript: 'focus the search box' });
+    expect(h.requests, 'should speculate while memory still matches').toHaveLength(1);
+
+    drifted = true;
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 1, transcript: 'focus the search box' });
+
+    expect(h.requests, 'speculated after drift was detected').toHaveLength(1);
+    expect(h.controller.view.value.actionClass).toBe('A');
   });
 
   it('stages an ambiguous (below-threshold) result and never executes it', async () => {

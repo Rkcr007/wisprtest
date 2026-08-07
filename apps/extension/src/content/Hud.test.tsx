@@ -153,3 +153,75 @@ describe('an application nobody has indexed', () => {
     expect(screen.getByText(/No application is registered/)).toBeTruthy();
   });
 });
+
+describe('the drift notice', () => {
+  /**
+   * Phase 17's non-blocking notice. Its job is to explain why the panel is suddenly asking for
+   * confirmations, without becoming the thing the tester has to deal with first.
+   */
+
+  function renderDrifted(props: { onDriftDismiss?: () => void } = {}) {
+    return render(
+      <Hud
+        update={update({ attach: 'attached' })}
+        drifted
+        {...props}
+        onAttach={() => undefined}
+        onDetach={() => undefined}
+        origin="https://orders.northwind.example"
+        version="0.0.0"
+      />,
+    );
+  }
+
+  it('renders nothing while the screen still matches memory', () => {
+    renderHud(update({ attach: 'attached' }));
+
+    expect(screen.queryByTestId('wispr-hud-drift')).toBeNull();
+  });
+
+  it('shows the notice while the panel is collapsed', () => {
+    // Outside the collapse deliberately: the notice explains a change in how the panel behaves,
+    // and a tester who could not see it would experience degraded mode as a refusal to act.
+    renderDrifted();
+
+    expect(screen.getByTestId('wispr-hud').dataset.collapsed).toBe('true');
+    expect(screen.getByTestId('wispr-hud-drift')).toBeTruthy();
+  });
+
+  it('says what changed and what still works', () => {
+    renderDrifted();
+
+    const notice = screen.getByTestId('wispr-hud-drift');
+    expect(notice.textContent).toContain('changed since it was indexed');
+    expect(notice.textContent).toContain('Everything else works as usual');
+  });
+
+  it('interrupts the announcement without taking focus or blocking input', () => {
+    // `alert` is right for "the application changed under you" — it interrupts a screen reader
+    // mid-sentence. It must interrupt the announcement and nothing else.
+    const { container } = renderDrifted();
+
+    expect(screen.getByTestId('wispr-toast').getAttribute('role')).toBe('alert');
+    // A region, never a dialog: nothing traps focus, and the panel is still just a panel.
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('names the page but never anything on it', () => {
+    // CLAUDE.md § "PII rule": the notice describes structure. No route, no element, no text.
+    renderDrifted();
+
+    const notice = screen.getByTestId('wispr-hud-drift');
+    expect(notice.textContent).not.toContain('/orders');
+  });
+
+  it('lets the tester hide it', () => {
+    const onDriftDismiss = vi.fn();
+    renderDrifted({ onDriftDismiss });
+
+    fireEvent.click(screen.getByText('Hide'));
+
+    expect(onDriftDismiss).toHaveBeenCalledTimes(1);
+  });
+});

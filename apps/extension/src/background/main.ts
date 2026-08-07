@@ -4,6 +4,7 @@ import type { OffscreenCommand } from '../voice/messages.js';
 import { createAliasClient } from './alias-client.js';
 import { createAttachController } from './attach.js';
 import { createCdpDispatchService } from './cdp-dispatch.js';
+import { createDriftClient } from './drift-client.js';
 import { createEscalateClient } from './escalate-client.js';
 import { createMemoryClient } from './memory-client.js';
 import { createEvidenceUploader } from './evidence-uploader.js';
@@ -112,6 +113,9 @@ const controller = createAttachController({
   // Seeding: composed, previewed and approved before anything is written. The session and
   // application ids that scope the write live here with the token, never in the page.
   seeds: createSeedClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  // Drift: the learning loop's first step (docs/ARCHITECTURE.md § 6). Raised in the background,
+  // awaited by nothing, and gated on a human before it can change anything.
+  drifts: createDriftClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
   // Evidence: the screenshot comes over the same debugger attachment dispatch uses, and the bytes
   // go straight to object storage through a pre-signed URL the gateway hands out.
   screenshots: cdp,

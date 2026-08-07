@@ -39,6 +39,19 @@ export interface IndexerMetrics {
   readonly jobsTotal: Counter;
   /** End-to-end job duration, including browser launch and authentication. */
   readonly jobDurationMs: Histogram;
+  /** Reconciles finished, labelled `outcome=diffed|skipped|failed`. */
+  readonly driftReconcilesTotal: Counter;
+  /** Time to navigate, settle, extract and diff one drifted screen. */
+  readonly driftReconcileDurationMs: Histogram;
+  /**
+   * Alias migration rate of each diff produced.
+   *
+   * The number the approval screen leads with, recorded here so a *fleet-wide* fall can be seen
+   * without reading reports one at a time: a release that renames half an application's controls
+   * shows up as this distribution collapsing, which is the earliest signal that testers are about
+   * to lose the vocabulary they have taught the system.
+   */
+  readonly driftAliasMigrationRate: Histogram;
 }
 
 export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): IndexerMetrics {
@@ -71,6 +84,16 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Inde
     jobDurationMs: meter.createHistogram('wispr_indexer_job_duration_ms', {
       description: 'End-to-end crawl job duration, in milliseconds.',
       unit: 'ms',
+    }),
+    driftReconcilesTotal: meter.createCounter('wispr_indexer_drift_reconciles_total', {
+      description: 'Drift reconciles finished, labelled by outcome.',
+    }),
+    driftReconcileDurationMs: meter.createHistogram('wispr_indexer_drift_reconcile_duration_ms', {
+      description: 'Time to navigate, extract and diff one drifted screen, in milliseconds.',
+      unit: 'ms',
+    }),
+    driftAliasMigrationRate: meter.createHistogram('wispr_indexer_drift_alias_migration_rate', {
+      description: "Fraction of a screen's aliases that would survive a proposed memory change.",
     }),
   };
 }

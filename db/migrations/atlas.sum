@@ -1,4 +1,4 @@
-h1:vjX4qYf6FKzLfkqcqBLoyRysAztFxOAdIbeCMEzPHjY=
+h1:zZMOrUo/2T8mhpqmRcRDnbe/XQmPB3CLyS9opCQlZ2s=
 20260725120000_core_schema.sql h1:wKPlR5+Cds5PU6spTsB/CUz4OR6jB91NLcPxx9H68Rs=
 20260725120001_updated_at_triggers.sql h1:/j4+yLPqXtNky8b0GxCm19Eyg96FnlQ1ybAi2vHfeqU=
 20260725120002_row_level_security.sql h1:OUEHiGOBJjax0jht0aRlfrjPf3AnBNQDZjs4vA4My5A=
@@ -7,3 +7,5 @@ h1:vjX4qYf6FKzLfkqcqBLoyRysAztFxOAdIbeCMEzPHjY=
 20260803120002_entity_delete_flow.sql h1:oGWPhVjhkJf+w8HMvlQb425J3So4vlUbNSQMcVWqhX8=
 20260805120000_drift_candidate_and_route.sql h1:9w5zKgwAeEM4DOJFlORm/cPwx/UwC+WratF1gQ3SQjA=
 20260805130000_memory_version_origin.sql h1:WuF1lJUZ+qMYzZ120v1bSX3kJle9rnBTby0eCQ3y2Qw=
+20260806120000_drift_decision_survives_user_deletion.sql h1:zrdcIqhpimbfyyGVrhFyMaIKUs1Lw64Er6cYTq5UAWQ=
+20260806130000_memory_version_viewport.sql h1:oeQo6/jfEUFlvvEsE8htEvsndkFOis93hVVZajEvGhs=

@@ -49,9 +49,12 @@ async function building(version: number, origin: 'crawl' | 'reconcile'): Promise
 
 async function open() {
   return database.withTenant(fixture.tenantId, (db) =>
-    openMemoryVersion(db, fixture.tenantId, fixture.applicationId),
+    openMemoryVersion(db, fixture.tenantId, fixture.applicationId, VIEWPORT),
   );
 }
+
+/** The viewport a crawl records on the version it opens, so its geometry can be read back. */
+const VIEWPORT = { width: 1280, height: 720 } as const;
 
 describe('opening a memory version for a crawl', () => {
   it('resumes a crawl that was interrupted', async () => {

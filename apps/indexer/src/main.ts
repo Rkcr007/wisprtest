@@ -1,9 +1,10 @@
-import { CrawlJob, SeedJob } from 'protocol';
+import { CrawlJob, DriftReconcileJob, SeedJob } from 'protocol';
 
 import { loadConfig } from './config.js';
 import { launchBrowser } from './crawl/browser.js';
 import { createSecretResolver } from './crawl/secrets.js';
 import { createTenantDatabase } from './db/pool.js';
+import { createDriftWorker } from './drift/worker.js';
 import { ConfigError } from './errors.js';
 import { startHealthServer } from './health.js';
 import { installSignalHandlers, Lifecycle } from './lifecycle.js';
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   lifecycle.onShutdown('browser', () => browser.close());
 
   const secrets = createSecretResolver();
+  const metrics = createMetrics();
 
   const worker = createWorker({
     stream: createJobStream(redis, CrawlJob, {
@@ -70,7 +72,7 @@ async function main(): Promise<void> {
     redis,
     browser,
     secrets,
-    metrics: createMetrics(),
+    metrics,
     logger,
     progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,
   });
@@ -92,13 +94,28 @@ async function main(): Promise<void> {
     resultTtlSeconds: config.INDEXER_SEED_RESULT_TTL_SECONDS,
   });
 
+  // The third loop, sharing the same browser and database. A worker that could crawl and seed but
+  // not reconcile would leave the learning loop's review queue filling and never draining.
+  const driftWorker = createDriftWorker({
+    stream: createJobStream(redis, DriftReconcileJob, {
+      stream: config.INDEXER_DRIFT_STREAM,
+      group: config.INDEXER_DRIFT_CONSUMER_GROUP,
+      consumer: config.INDEXER_WORKER_ID,
+      blockMs: config.INDEXER_BLOCK_MS,
+      claimMinIdleMs: config.INDEXER_CLAIM_MIN_IDLE_MS,
+    }),
+    reconciler: { database, browser, secrets },
+    metrics,
+    logger,
+  });
+
   const health = await startHealthServer({
     host: config.INDEXER_HOST,
     port: config.INDEXER_PORT,
     database,
     redis,
     logger,
-    isBusy: () => worker.isBusy() || seedWorker.isBusy(),
+    isBusy: () => worker.isBusy() || seedWorker.isBusy() || driftWorker.isBusy(),
   });
   lifecycle.onShutdown('health', () => health.close());
 
@@ -108,6 +125,14 @@ async function main(): Promise<void> {
     // Shorter grace than the crawl gets: a seed job is bounded by its own deadline, and the
     // gateway waiting on it has one too.
     await Promise.race([seedLoop, sleep(config.SHUTDOWN_TIMEOUT_MS)]);
+  });
+
+  const driftLoop = driftWorker.run();
+  lifecycle.onShutdown('drift-worker', async () => {
+    driftWorker.stop();
+    // Same grace as a seed: a reconcile is bounded by the job's own deadline. Abandoning one is
+    // cheap — it wrote a candidate version nobody has approved, and the report returns to `open`.
+    await Promise.race([driftLoop, sleep(config.SHUTDOWN_TIMEOUT_MS)]);
   });
 
   const loop = worker.run();
@@ -126,6 +151,7 @@ async function main(): Promise<void> {
       health_port: health.port,
       job_stream: config.INDEXER_JOB_STREAM,
       seed_stream: config.INDEXER_SEED_STREAM,
+      drift_stream: config.INDEXER_DRIFT_STREAM,
       consumer_group: config.INDEXER_CONSUMER_GROUP,
       headless: config.INDEXER_HEADLESS,
       telemetry_exporting: telemetry.exporting,
@@ -151,7 +177,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await Promise.all([loop, seedLoop]);
+  await Promise.all([loop, seedLoop, driftLoop]);
 }
 
 function sleep(ms: number): Promise<void> {

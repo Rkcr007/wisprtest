@@ -20,6 +20,8 @@ const validEnv = {
   INDEXER_SEED_STREAM: 'wispr:indexer:seed',
   INDEXER_SEED_CONSUMER_GROUP: 'seeders',
   INDEXER_SEED_RESULT_TTL_SECONDS: '120',
+  INDEXER_DRIFT_STREAM: 'wispr:indexer:drift',
+  INDEXER_DRIFT_CONSUMER_GROUP: 'reconcilers',
   INDEXER_HEADLESS: 'true',
   OTEL_SERVICE_NAME: 'wispr-indexer',
   SHUTDOWN_TIMEOUT_MS: '10000',

@@ -44,11 +44,12 @@ import {
  *
  * ## Viewports
  *
- * The crawl indexes at the bounds' viewport and a reconcile opens at `SEED_VIEWPORT`, because the
- * viewport a crawl used is not persisted anywhere — bounds arrive per request. So the geometry
- * signal is compared across two different normalisations and scores low. That is a real gap, not
- * an artefact of this test: the seed adapters have it too. It costs at most the bbox weight, and
- * the match here clears the floor without it.
+ * A stored bbox is a fraction of the viewport it was captured at, so scoring against a page
+ * rendered at a different size compares two different rulers. The crawl records the viewport it
+ * measured at (db/migrations/20260806130000_memory_version_viewport.sql) and the reconcile reads
+ * it back, so both halves of this suite use one — asserted below rather than assumed, because
+ * the failure it prevents is silent: every element's bbox signal degrades at once, and matches
+ * simply sit closer to their thresholds than they should.
  */
 
 const config = testConfig();
@@ -302,6 +303,34 @@ describe('a control that was renamed', () => {
     expect(screen.rows[0]?.structural_hash).toBe(source.rows[0]?.structural_hash);
   });
 
+  it('scored against the viewport the crawl measured at, not a fixed one', async () => {
+    // Stored bboxes are fractions of the viewport they were captured at, so a reconcile opening
+    // at a different size compares two different rulers and the bbox signal collapses for every
+    // element at once. The crawl records its viewport
+    // (db/migrations/20260806130000_memory_version_viewport.sql) and the reconcile reads it back.
+    const source = await fixture.client.query<{
+      viewport_width: number | null;
+      viewport_height: number | null;
+    }>('SELECT viewport_width, viewport_height FROM memory_versions WHERE id = $1', [
+      memoryVersionId,
+    ]);
+
+    const bounds = fixtureBounds(app.url);
+    expect(source.rows[0]?.viewport_width).toBe(bounds.viewport.width);
+    expect(source.rows[0]?.viewport_height).toBe(bounds.viewport.height);
+
+    // And the candidate keeps it, or approving this proposal would produce an active version
+    // whose geometry nothing could interpret.
+    const candidate = await fixture.client.query<{
+      viewport_width: number | null;
+      viewport_height: number | null;
+    }>('SELECT viewport_width, viewport_height FROM memory_versions WHERE id = $1', [
+      result.candidateMemoryVersionId,
+    ]);
+    expect(candidate.rows[0]?.viewport_width).toBe(bounds.viewport.width);
+    expect(candidate.rows[0]?.viewport_height).toBe(bounds.viewport.height);
+  });
+
   it('hands the report to a human, naming the version approving it would activate', async () => {
     const report = await fixture.client.query<{
       status: string;
@@ -345,5 +374,45 @@ describe('a report a human has already decided', () => {
       [reportId],
     );
     expect(report.rows[0]?.status).toBe('rejected');
+  });
+
+  it('survives the deletion of the person who decided it', async () => {
+    // Regression test for db/migrations/20260806120000_drift_decision_survives_user_deletion.sql.
+    //
+    // `approved_by` is ON DELETE SET NULL, and the original CHECK required it non-null once a
+    // report was approved or rejected — so the two could not both hold, and it was the *user
+    // delete* that failed. Offboarding anyone who had ever decided a drift report raised a
+    // constraint violation naming a table the operator was not touching.
+    //
+    // A throwaway user rather than the fixture's own, so this cannot pull the ground out from
+    // under any other test in the file.
+    const deciderId = randomUUID();
+    await fixture.client.query(
+      'INSERT INTO users (id, tenant_id, email, role) VALUES ($1, $2, $3, $4)',
+      [deciderId, fixture.tenantId, `leaver-${deciderId.slice(0, 8)}@northwind.example`, 'lead'],
+    );
+
+    const reportId = await raiseReport('d'.repeat(64));
+    await fixture.client.query(
+      `UPDATE drift_reports SET status = 'approved', approved_by = $2, resolved_at = now()
+        WHERE id = $1`,
+      [reportId, deciderId],
+    );
+
+    await expect(
+      fixture.client.query('DELETE FROM users WHERE id = $1', [deciderId]),
+    ).resolves.toBeDefined();
+
+    const report = await fixture.client.query<{
+      status: string;
+      approved_by: string | null;
+      resolved_at: Date | null;
+    }>('SELECT status, approved_by, resolved_at FROM drift_reports WHERE id = $1', [reportId]);
+
+    // The decision survives the account. Who made it lives in audit_log (ARCHITECTURE § 8);
+    // `resolved_at` is what still proves here that one was taken at all.
+    expect(report.rows[0]?.status).toBe('approved');
+    expect(report.rows[0]?.approved_by).toBeNull();
+    expect(report.rows[0]?.resolved_at).not.toBeNull();
   });
 });

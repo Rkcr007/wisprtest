@@ -63,6 +63,13 @@ export async function openMemoryVersion(
   db: ScopedDatabase,
   tenantId: string,
   applicationId: string,
+  /**
+   * The viewport this crawl measures at, recorded so anything revisiting these pages later can
+   * normalise geometry the same way. Written on the row this call creates; a resumed version
+   * keeps the viewport of the crawl that opened it, because that is what its existing
+   * fingerprints were measured against.
+   */
+  viewport: { readonly width: number; readonly height: number },
 ): Promise<MemoryVersionRecord> {
   const existing = await db
     .selectFrom('memoryVersions')
@@ -97,6 +104,8 @@ export async function openMemoryVersion(
       version,
       status: 'building' satisfies MemoryVersionStatus,
       origin: 'crawl',
+      viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
       // Null: a version has no approver until a human approves it, and an index job is not one.
       approvedBy: null,
       failureReason: null,

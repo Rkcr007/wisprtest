@@ -55,6 +55,25 @@ export async function findDriftReport(
   return { ...row, status: row.status as DriftStatus };
 }
 
+/**
+ * The viewport a version's fingerprints were normalised against, or null if it predates the
+ * column. See db/migrations/20260806130000_memory_version_viewport.sql.
+ */
+export async function findVersionViewport(
+  db: ScopedDatabase,
+  memoryVersionId: string,
+): Promise<{ width: number; height: number } | null> {
+  const row = await db
+    .selectFrom('memoryVersions')
+    .select(['viewportWidth', 'viewportHeight'])
+    .where('id', '=', memoryVersionId)
+    .executeTakeFirst();
+
+  // The schema pairs these, so one null means both are.
+  if (row?.viewportWidth == null || row.viewportHeight == null) return null;
+  return { width: row.viewportWidth, height: row.viewportHeight };
+}
+
 /** One screen as memory holds it. The state fingerprint is how the clone's copy is found again. */
 export interface StoredScreen {
   readonly id: string;

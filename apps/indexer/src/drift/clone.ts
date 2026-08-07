@@ -68,6 +68,16 @@ export async function cloneMemoryVersion(
 
   const version = (highest?.version ?? 0) + 1;
 
+  // Carried, not re-derived. The clone's fingerprints are the source's until a reconcile
+  // overwrites some of them, and they were normalised against the viewport the *crawl* used —
+  // so the candidate has to keep saying so, or approving it would produce an active version whose
+  // geometry nothing could interpret.
+  const source = await db
+    .selectFrom('memoryVersions')
+    .select(['viewportWidth', 'viewportHeight'])
+    .where('id', '=', sourceVersionId)
+    .executeTakeFirstOrThrow();
+
   const created = await db
     .insertInto('memoryVersions')
     .values({
@@ -76,6 +86,8 @@ export async function cloneMemoryVersion(
       version,
       status: 'building',
       origin: 'reconcile',
+      viewportWidth: source.viewportWidth,
+      viewportHeight: source.viewportHeight,
       // A candidate has no approver. Populating it here is the auto-approve path ADR 0007
       // forbids, and it would be invisible — the row would simply look already-reviewed.
       approvedBy: null,

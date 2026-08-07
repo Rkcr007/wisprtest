@@ -27,6 +27,7 @@ import {
   findClonedScreen,
   findDriftReport,
   findScreen,
+  findVersionViewport,
   loadScreenElements,
   previousCandidate,
   recordDiff,
@@ -102,6 +103,15 @@ interface ReconcileContext {
   readonly route: string;
   readonly stored: Awaited<ReturnType<typeof loadScreenElements>>;
   readonly application: NonNullable<Awaited<ReturnType<typeof findSeedApplication>>>;
+  /**
+   * The size to open the browser at, and to score against.
+   *
+   * The viewport the crawl measured at when the version records one, and `SEED_VIEWPORT` when it
+   * does not. Stored bboxes are fractions of the viewport they were captured at, so comparing
+   * them against a page rendered at a different width means comparing two different rulers — the
+   * bbox signal then scores low for every element at once, not because anything moved.
+   */
+  readonly viewport: { readonly width: number; readonly height: number };
 }
 
 export async function reconcile(
@@ -147,6 +157,7 @@ export async function reconcile(
       route: report.observedRoute,
       stored: await loadScreenElements(db, screen.id),
       application,
+      viewport: (await findVersionViewport(db, report.memoryVersionId)) ?? SEED_VIEWPORT,
     } satisfies ReconcileContext;
   });
 
@@ -299,6 +310,7 @@ async function observePage(
       browser: deps.browser,
       secrets: deps.secrets,
       deadlineMs: job.deadlineMs,
+      viewport: context.viewport,
     },
     async (page) => {
       const response = await page.goto(target, { waitUntil: 'domcontentloaded' });
@@ -318,7 +330,7 @@ async function observePage(
         // A reconcile never interacts, so there is nothing for a never-interact list to prevent.
         // The collector still computes `interactable`; this run simply never acts on it.
         neverInteractSelectors: [],
-        viewport: SEED_VIEWPORT,
+        viewport: context.viewport,
         markerAttribute: MARKER_ATTRIBUTE,
       };
 
@@ -328,7 +340,7 @@ async function observePage(
           elementKey: element.elementKey,
           fingerprint: element.fingerprint,
         })),
-        viewport: SEED_VIEWPORT,
+        viewport: context.viewport,
         markerAttribute: MARKER_ATTRIBUTE,
         threshold: MATCH_THRESHOLD,
       });

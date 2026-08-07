@@ -34,6 +34,7 @@ import {
   type EscalationOutcome,
   type Resolver,
 } from '../resolver/index.js';
+import { createDriftDetector, type DriftObservation } from '../drift/index.js';
 import {
   createRuntimeStateEngine,
   toRuntimeState,
@@ -230,6 +231,17 @@ function HudApp({
   const seedRef = useRef<SeedController | null>(null);
   const [seed, setSeed] = useState<SeedView>(IDLE_SEED_VIEW);
   /**
+   * The screen the tester is on has changed since it was indexed.
+   *
+   * State, because the HUD renders a notice from it; a ref beside it, because the speculation
+   * controller reads it at classification time and must not be rebuilt when it flips — rebuilding
+   * would throw away the embedding cache for a fact the classifier can simply read next time.
+   */
+  const [drifted, setDrifted] = useState(false);
+  const driftedRef = useRef(false);
+  /** Dismissed for this screen. Cleared when the tester moves to a screen that has not drifted. */
+  const [driftDismissed, setDriftDismissed] = useState(false);
+  /**
    * Recognises a request for a precondition. Constructed once: it holds nothing per-page, and its
    * lexicons are normalised at construction.
    */
@@ -416,6 +428,21 @@ function HudApp({
   }, []);
 
   /**
+   * Hand a drift observation to the worker. Fire and forget, and required to be.
+   *
+   * Phase 17: drift never blocks the tester. The notice the HUD shows is driven by the detection
+   * itself rather than by the reply, so a gateway that is down costs the learning loop an
+   * observation and costs the tester nothing at all.
+   */
+  const sendDrift = useCallback((observation: DriftObservation) => {
+    try {
+      portRef.current?.postMessage({ kind: 'drift_raise', ...observation });
+    } catch {
+      // A report lost to a terminated worker is re-detected on the next settle of the same screen.
+    }
+  }, []);
+
+  /**
    * The seeding controller, built once and independent of the snapshot.
    *
    * It needs neither memory nor the DOM: the composer owns entity knowledge, and the plan comes
@@ -501,6 +528,47 @@ function HudApp({
       started.dispose();
     };
   }, [attached, hudHost]);
+
+  /**
+   * Watch for drift: the first step of docs/ARCHITECTURE.md § 6's learning loop.
+   *
+   * Subscribed to the engine's published state rather than driven by a timer. The engine recomputes
+   * the structural hash on route settle and publishes, so this runs exactly when there is something
+   * new to compare — and the comparison itself is two map lookups and a string equality.
+   *
+   * Detection is per published state, and the *report* is sent every time a drifted screen is
+   * detected, not once. `DriftRaiseResponse` is explicit that this is the ordinary case and that
+   * collapsing it is the gateway's job, so it survives a service worker restart.
+   */
+  useEffect(() => {
+    if (engine === null || snapshot === null) return undefined;
+
+    const detector = createDriftDetector(snapshot);
+
+    const subscription = engine.state.subscribe((live) => {
+      const observation = detector.detect(live);
+
+      if (observation === null) {
+        // Back on a screen that matches memory — or one memory has never seen. Either way the
+        // degraded classification lifts, and a dismissed notice is armed again for the next screen.
+        driftedRef.current = false;
+        setDrifted(false);
+        setDriftDismissed(false);
+        return;
+      }
+
+      driftedRef.current = true;
+      setDrifted(true);
+      sendDrift(observation);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      driftedRef.current = false;
+      setDrifted(false);
+      setDriftDismissed(false);
+    };
+  }, [engine, snapshot, sendDrift]);
 
   /**
    * Build the resolver once the engine and the snapshot are both present.
@@ -600,6 +668,10 @@ function HudApp({
           window,
           navRouteFor: buildNavRoutes(snapshot),
           onStep: sendStep,
+          // Phase 17's degraded mode. Read through the ref at classification time, so a mismatch
+          // detected mid-session degrades the very next utterance without rebuilding the controller
+          // — and with it the embedding cache — for a boolean.
+          screenDrifted: () => driftedRef.current,
         });
         lifecycle.controller = controller;
         controllerRef.current = controller;
@@ -832,6 +904,13 @@ function HudApp({
       onSeedDismiss={() => seedRef.current?.dismiss()}
       onSeedRevert={() => {
         void seedRef.current?.revertSession();
+      }}
+      // The notice, and only the notice. Dismissing hides the band for this screen; it does not
+      // lift the degraded classification, because the screen has still changed. The report has
+      // already been raised either way.
+      drifted={drifted && !driftDismissed}
+      onDriftDismiss={() => {
+        setDriftDismissed(true);
       }}
       stateFingerprint={engine?.state.value.stateFingerprint ?? null}
       onConfirm={() => controllerRef.current?.confirm()}

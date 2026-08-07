@@ -9,8 +9,10 @@ import {
   type AlarmScheduler,
   type PortLike,
 } from './attach.js';
+import type { DriftClient } from './drift-client.js';
 import type { EscalateClient } from './escalate-client.js';
 import type { MemoryClient } from './memory-client.js';
+import type { SessionClient } from './session-client.js';
 import { UnauthenticatedError } from './token-client.js';
 import type { TokenStore } from './token-store.js';
 
@@ -470,6 +472,8 @@ describe('T2 escalation and the write-back queue', () => {
   async function attached(options: {
     escalation?: EscalateClient;
     aliases?: AliasClient;
+    drifts?: DriftClient;
+    sessions?: SessionClient;
   }): Promise<ReturnType<typeof fakePort>> {
     const connection = fakePort();
     const controller = createAttachController({
@@ -607,5 +611,207 @@ describe('T2 escalation and the write-back queue', () => {
     // A stranger's phrase must not end up in a tenant's vocabulary.
     expect(onError).toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('raising drift', () => {
+  /**
+   * The worker's half of Phase 17 detection. Two things matter: that the report carries the
+   * session and the token the page side is not allowed to hold, and that nothing about it can
+   * reach the tester as a failure.
+   */
+
+  const SESSION_ID = '55555555-5555-4555-8555-555555555555';
+  const MEMORY_VERSION = '33333333-3333-4333-8333-333333333333';
+  const SCREEN_ID = '66666666-6666-4666-8666-666666666666';
+
+  function snapshot(): MemorySnapshot {
+    return {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      applicationId: '22222222-2222-4222-8222-222222222222',
+      memoryVersion: {
+        id: MEMORY_VERSION,
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        applicationId: '22222222-2222-4222-8222-222222222222',
+        version: 1,
+        status: 'active',
+        createdAt: '2026-08-07T00:00:00.000Z',
+        approvedBy: null,
+        failureReason: null,
+      },
+      screens: [],
+      elements: [],
+      navEdges: [],
+      aliases: [],
+      generatedAt: '2026-08-07T00:00:00.000Z',
+    };
+  }
+
+  const observation = {
+    kind: 'drift_raise',
+    screenId: SCREEN_ID,
+    routePattern: '/orders/:id',
+    route: '/orders/4903',
+    stateFingerprint: 'c'.repeat(64),
+    expectedStructuralHash: 'a'.repeat(64),
+    observedStructuralHash: 'b'.repeat(64),
+    observedAt: '2026-08-07T12:00:00.000Z',
+  };
+
+  function sessionClient(): SessionClient {
+    return {
+      open: () =>
+        Promise.resolve({
+          id: SESSION_ID,
+          tenantId: '11111111-1111-4111-8111-111111111111',
+          applicationId: '22222222-2222-4222-8222-222222222222',
+          memoryVersionId: MEMORY_VERSION,
+          userId: '88888888-8888-4888-8888-888888888888',
+          startedAt: '2026-08-07T12:00:00.000Z',
+          endedAt: null,
+        }),
+      sendSteps: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+  }
+
+  async function attachedWithSession(
+    drifts: DriftClient,
+    onError?: (e: string, x: unknown) => void,
+  ) {
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: () => Promise.resolve(token()) },
+      store: memoryStore(),
+      alarms: alarms(),
+      memory: {
+        load: () => Promise.resolve(snapshot()),
+        get: snapshot,
+        invalidate: () => undefined,
+      },
+      sessions: sessionClient(),
+      bufferStore: {
+        read: () => Promise.resolve([]),
+        write: () => Promise.resolve(),
+        clear: () => Promise.resolve(),
+      },
+      drifts,
+      stepIntervalMs: 60_000,
+      ...(onError === undefined ? {} : { onError }),
+    });
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    return connection;
+  }
+
+  it('adds the session id and the token the content script never holds', async () => {
+    const raise = vi.fn(() =>
+      Promise.resolve({ ok: true as const, value: { report: {}, created: true } as never }),
+    );
+    const connection = await attachedWithSession({ raise });
+
+    connection.emit(observation);
+    await Promise.resolve();
+
+    expect(raise).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: SESSION_ID,
+        bearerToken: 'a.scoped.token',
+        screenId: SCREEN_ID,
+        route: '/orders/4903',
+        expectedStructuralHash: 'a'.repeat(64),
+        observedStructuralHash: 'b'.repeat(64),
+      }),
+    );
+  });
+
+  it('sends nothing back to the content script — nothing there is waiting', async () => {
+    const raise = vi.fn(() =>
+      Promise.resolve({ ok: true as const, value: { report: {}, created: true } as never }),
+    );
+    const connection = await attachedWithSession({ raise });
+    const before = connection.sent.length;
+
+    connection.emit(observation);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The HUD's notice is driven by the detection, not by the gateway's answer. A reply here would
+    // be a round trip the tester's notice was waiting on.
+    expect(connection.sent.length).toBe(before);
+  });
+
+  it('swallows a gateway that will not take the report', async () => {
+    const onError = vi.fn();
+    const raise = vi.fn(() =>
+      Promise.resolve({ ok: false as const, reason: 'unavailable' as const, detail: null }),
+    );
+    const connection = await attachedWithSession({ raise }, onError);
+
+    connection.emit(observation);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Reported to telemetry, never to the tester, and never as a rejection in a worker Chrome is
+    // about to terminate anyway.
+    expect(onError).toHaveBeenCalledWith('drift.not_raised', expect.anything());
+  });
+
+  it('does not treat a collapsed duplicate as an error', async () => {
+    const onError = vi.fn();
+    const raise = vi.fn(() =>
+      Promise.resolve({ ok: false as const, reason: 'duplicate' as const, detail: null }),
+    );
+    const connection = await attachedWithSession({ raise }, onError);
+
+    connection.emit(observation);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('drops a report when no session has been opened', async () => {
+    // The gateway reads the memory version from the session. Without one there is nothing the
+    // report could be about, and sending it would earn a validation error nobody is watching.
+    const raise = vi.fn(() => Promise.resolve({ ok: true as const, value: {} as never }));
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: () => Promise.resolve(token()) },
+      store: memoryStore(),
+      alarms: alarms(),
+      memory: {
+        load: () => Promise.resolve(snapshot()),
+        get: snapshot,
+        invalidate: () => undefined,
+      },
+      drifts: { raise },
+    });
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    connection.emit(observation);
+    await Promise.resolve();
+
+    expect(raise).not.toHaveBeenCalled();
+  });
+
+  it('ignores a malformed observation from the page', async () => {
+    const raise = vi.fn(() => Promise.resolve({ ok: true as const, value: {} as never }));
+    const connection = await attachedWithSession({ raise });
+
+    // A content script runs in a page the extension does not control. `parseRequest` rejects this
+    // before the switch ever sees it.
+    connection.emit({ kind: 'drift_raise', screenId: '' });
+    await Promise.resolve();
+
+    expect(raise).not.toHaveBeenCalled();
   });
 });

@@ -113,6 +113,15 @@ export interface SpeculationControllerOptions {
   readonly sessionId?: string;
   readonly window?: Window;
   readonly classifyConfig?: Partial<ClassifyConfig>;
+  /**
+   * Whether the screen the tester is on has drifted from memory.
+   *
+   * A predicate rather than a value, because drift is discovered mid-session: the engine settles on
+   * a new route, the detector finds a mismatch, and every classification from that moment on has to
+   * account for it. Read at classification time so a controller built before the drift was noticed
+   * still degrades correctly. Defaults to "not drifted".
+   */
+  readonly screenDrifted?: () => boolean;
   readonly redact?: Redactor;
   readonly now?: () => number;
   readonly wallClock?: () => Date;
@@ -472,7 +481,9 @@ export function createSpeculationController(
     const windowVerb = parse.verb === 'scroll' || parse.verb === 'back';
     const resolved = resolution.outcome === 'resolved' ? resolution : null;
     const confidence = resolved ? resolved.confidence : (resolution.candidates[0]?.confidence ?? 0);
-    const actionClass = classifyAction(parse.verb, confidence, classifyConfig);
+    const actionClass = classifyAction(parse.verb, confidence, classifyConfig, {
+      screenDrifted: options.screenDrifted?.() ?? false,
+    });
     const scopedQuery = scopedQueryFor(parse, state.stateFingerprint, resolution);
 
     // Divergence: a live speculative class-R effect whose target is no longer the answer is undone
@@ -546,8 +557,13 @@ export function createSpeculationController(
       return;
     }
 
-    // Class C or S: never executed from here. A partial only stages; a final opens the confirmation
-    // gate. This is the branch the release-gate test guards — no path from a partial reaches execute.
+    // Class A, C or S: never executed from here. A partial only stages; a final opens the
+    // confirmation gate. This is the branch the release-gate test guards — no path from a partial
+    // reaches execute.
+    //
+    // `A` arrives here two ways: a resolution below threshold, and — since Phase 17 — any
+    // resolution at all on a screen that has drifted from memory. Both get the same treatment,
+    // which is the taxonomy's: pre-staged with a reticle, and executed only on an explicit yes.
     if (!isFinal) {
       publish({
         phase: 'staged',

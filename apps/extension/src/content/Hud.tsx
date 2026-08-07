@@ -84,6 +84,17 @@ export interface HudProps {
   /** Undo everything this session seeded, in reverse dependency order. */
   readonly onSeedRevert?: () => void;
   /**
+   * The screen no longer matches the structural hash memory holds for it (Phase 17).
+   *
+   * Renders a notice and nothing else — it never takes focus, never gates input, and the tester can
+   * keep working straight through it. What it explains is why they are suddenly being asked to
+   * confirm actions that normally run on sight: a drifted screen classifies every resolution as
+   * class A, because memory is describing a page that has changed.
+   */
+  readonly drifted?: boolean;
+  /** Dismiss the drift notice for this screen. The report is already raised; this hides the band. */
+  readonly onDriftDismiss?: () => void;
+  /**
    * The runtime state engine's fingerprint, so the marks over created records re-measure when the
    * page moves under them. Null before the engine exists.
    */
@@ -157,6 +168,8 @@ export function Hud({
   onSeedApprove,
   onSeedDismiss,
   onSeedRevert,
+  drifted = false,
+  onDriftDismiss,
   stateFingerprint = null,
   onAttach,
   onDetach,
@@ -264,6 +277,27 @@ export function Hud({
           onDismiss={() => onSeedDismiss?.()}
           onRevertSession={() => onSeedRevert?.()}
         />
+
+        {/* ── Drift notice ───────────────────────────────────────────────────────────────
+            Outside the collapse, like the seed card and for a related reason: it explains a
+            change in how the panel is about to behave, and a tester who cannot see it would
+            experience the degraded mode as the HUD suddenly refusing to act.
+
+            `Toast` with the `drift` tone is an `alert`, so it interrupts a screen reader's
+            announcement — right for "the application changed under you". It interrupts the
+            announcement and nothing else: no focus is taken, no input is gated, and the tester
+            keeps working. Phase 17: "show a NON-BLOCKING notice ... Never block the tester." */}
+        {drifted ? (
+          <div className="wispr-hud__toast-slot" data-testid="wispr-hud-drift">
+            <Toast
+              tone="drift"
+              title="This screen changed since it was indexed"
+              detail="Actions need confirming until a reviewer approves the update. Everything else works as usual."
+              {...(onDriftDismiss === undefined ? {} : { onDismiss: onDriftDismiss })}
+              dismissLabel="Hide"
+            />
+          </div>
+        ) : null}
 
         {collapsed ? null : (
           <>

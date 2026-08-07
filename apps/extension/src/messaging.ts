@@ -108,6 +108,29 @@ export const HudRequest = z.discriminatedUnion('kind', [
    */
   z.strictObject({ kind: z.literal('session_step'), step: z.unknown() }),
   /**
+   * A screen stopped matching the structural hash memory holds for it.
+   *
+   * Fire-and-forget, and that is the requirement rather than an optimisation: `BUILD-PLAN.md`
+   * Phase 17 says drift must never block the tester, and `DriftRaiseRequest` calls itself "a
+   * *notification*, not a request for anything". There is no `requestId` because there is no reply
+   * to correlate — the HUD's notice is driven by the detection itself, not by what the gateway says
+   * about it, so a tester on a drifted screen is told immediately rather than after a round trip.
+   *
+   * The fields are what the page side alone can observe. `sessionId` is deliberately absent: it is
+   * the worker's, and the gateway reads the memory version from it so that a client cannot report
+   * drift against a version it never loaded.
+   */
+  z.strictObject({
+    kind: z.literal('drift_raise'),
+    screenId: z.string().min(1),
+    routePattern: z.string().min(1),
+    route: z.string().min(1),
+    stateFingerprint: z.string().min(1),
+    expectedStructuralHash: z.string().min(1),
+    observedStructuralHash: z.string().min(1),
+    observedAt: z.string().min(1),
+  }),
+  /**
    * Capture evidence for a step that is about to be recorded.
    *
    * The content script sends what only it can produce — the redacted DOM snapshot, and the region

@@ -45,4 +45,50 @@ describe('classifyAction', () => {
     });
     expect(classifyAction('click', above, config)).toBe('R');
   });
+
+  describe('on a drifted screen', () => {
+    // Phase 17's degraded mode. Memory for this screen is known to describe a page that changed,
+    // and a high score only says the phrase matched what memory holds — not that memory is true.
+    const config = resolveClassifyConfig();
+
+    it('forces ambiguous regardless of how confident the resolution was', () => {
+      expect(classifyAction('click', 1, config, { screenDrifted: true })).toBe('A');
+      expect(classifyAction('focus', 1, config, { screenDrifted: true })).toBe('A');
+    });
+
+    it('forces ambiguous for every verb, including the reversible ones', () => {
+      for (const verb of [
+        'navigate',
+        'back',
+        'focus',
+        'scroll',
+        'check',
+        'type',
+        'filter',
+        'select',
+        'click',
+      ] as const) {
+        expect(classifyAction(verb, above, config, { screenDrifted: true })).toBe('A');
+      }
+    });
+
+    it('cannot be overridden by a verb table that narrows a click to R', () => {
+      // The per-app override says what a click does when memory is accurate. It says nothing about
+      // a screen that has changed underneath it, so drift is checked first.
+      const narrowed = resolveClassifyConfig({
+        verbClasses: { ...DEFAULT_VERB_CLASSES, click: 'R' },
+      });
+      expect(classifyAction('click', above, narrowed, { screenDrifted: true })).toBe('A');
+    });
+
+    it('changes nothing when the screen still matches memory', () => {
+      expect(classifyAction('click', above, config, { screenDrifted: false })).toBe('C');
+      expect(classifyAction('focus', above, config, { screenDrifted: false })).toBe('R');
+    });
+
+    it('defaults to not drifted when no context is given', () => {
+      expect(classifyAction('focus', above, config)).toBe('R');
+      expect(classifyAction('focus', above, config, {})).toBe('R');
+    });
+  });
 });

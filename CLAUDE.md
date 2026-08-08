@@ -60,11 +60,19 @@ speculative execution is allowed.
 |-------|---------|----------------------|--------------|
 | **R** — Reversible | focus, hover, scroll, expand, read-only navigation | Yes, on partial ASR hypothesis | No |
 | **C** — Committing | submit, delete, approve, any state mutation | **Never** | Yes — finalized transcript + explicit yes |
-| **A** — Ambiguous | resolver confidence below threshold | Pre-stage only (focus + reticle) | Yes |
+| **A** — Ambiguous | resolver confidence below threshold, **or** any resolution on a screen whose structural hash no longer matches memory | Pre-stage only (focus + reticle) | Yes |
 | **S** — Seeding | test data creation | **Never** | Yes — preview shown before write |
 
 Speculating on a Class C action is the single worst bug this product can have.
 A confident wrong click costs more trust than any latency win gains.
+
+**Drift forces Class A, and confidence cannot override it.** When a screen's structural hash stops
+matching memory, every resolution against that screen is `A` regardless of verb or score. This is
+the degraded mode Phase 17 requires, and it is checked *before* the confidence gate for a reason:
+confidence cannot express staleness. A T0 alias hit is **more** confident, not less, when it names
+an element that has since moved — the score says the phrase matched what memory holds, and nothing
+about whether memory is still true. The tester keeps working and nothing is blocked; what stops is
+unconfirmed action against memory known to be stale.
 
 ---
 

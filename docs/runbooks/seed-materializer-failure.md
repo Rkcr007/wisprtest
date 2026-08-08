@@ -5,44 +5,34 @@ everywhere.
 
 ## What exists today
 
-**Phases 15 and 16 are unbuilt, and Phase 14 is roughly half done.** No record has ever been seeded
-by this system. This runbook is written against the design so it does not have to be written from
-scratch later; every step that depends on unbuilt code is marked.
-
-What is built:
+**Phases 14, 15 and 16 are complete.** The composer plans, the gateway executes through a
+three-adapter fallback chain, the ledger records every write, and a tester approves a preview
+before anything is created. Every step below is live.
 
 | Piece | Where | State |
 |-------|-------|-------|
-| `seed_ledger`, `materializers` tables, with constraints and indexes | `db/migrations/20260725120000_core_schema.sql` | Exist, tested, **nothing writes to them** |
-| `CompositionPlan`, `SeedLedgerEntry`, `InverseOperation`, `MaterializationResult`, `MaterializerKind`, `ProvenanceEntry` | `packages/protocol/src/data.ts`, `composition.ts` | Exist, round-trip tested |
-| Constraint parser, value sampler, derived-field and conflict logic | `apps/composer/src/composer/parsing/`, `solving/` | Built (Phase 14 part 1) |
-| Learned schemas to compose against | `entity_schemas`, `field_specs`, written by the indexer's observers (Phase 13) | **Built and populated by a crawl** |
-| Seeding error codes | `apps/gateway/src/errors.ts` | In the taxonomy, never thrown |
-| `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total{adapter,outcome}` | `apps/gateway/src/telemetry/metrics.ts` | Registered deliberately ahead of the phases, so a dashboard can tell "zero" from "not deployed". No call sites |
+| `seed_ledger`, `materializers` tables | `db/migrations/20260725120000_core_schema.sql` | Written on every execute and revert |
+| `CompositionPlan`, `SeedLedgerEntry`, `InverseOperation`, `MaterializationResult`, `MaterializerKind`, `ProvenanceEntry` | `packages/protocol/src/data.ts`, `composition.ts` | Producer and consumer both live |
+| Constraint parser, value sampler, derived-field and conflict logic | `apps/composer/src/composer/parsing/`, `solving/` | Live behind `POST /compose` |
+| Learned schemas to compose against | `entity_schemas`, `field_specs`, written by the indexer's observers | Populated by a crawl |
+| Seed routes | `apps/gateway/src/routes/seed.ts` | `/v1/seed/plan`, `/v1/seed/execute`, `/v1/seed/revert` |
+| The fallback chain and its three adapters | `apps/gateway/src/materializers/` — `chain.ts`, `api.ts`, `fixture.ts`, `ui.ts` | Ordered, with the verification lifecycle that demotes an adapter that stopped working |
+| Preview, approval gate, class-S wiring | `apps/extension/src/seed/` | The approval is the only path to a write |
+| `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total{adapter,outcome}` | `apps/gateway/src/telemetry/metrics.ts` | **Live call sites** in `routes/seed.ts` |
+| `COMPOSER_URL` | `apps/gateway/src/config.ts` | Validated at boot; the gateway and composer are wired |
 
-What is not built, and matters most here:
+Two limits are deliberate, and both are recorded in
+[ADR 0016](../adr/0016-writes-go-through-the-indexer.md):
 
-- **No seed routes.** `apps/gateway/src/routes/` is `memory.ts`, `resolve.ts`, `sessions.ts`. There
-  is no `/v1/seed/plan`, `/v1/seed/execute` or `/v1/seed/revert`.
-- **No materializers.** There is no `apps/gateway/src/materializers/` and no
-  `apps/extension/src/seed/`. The fallback chain does not exist in any form.
-- **The composer serves nothing.** `apps/composer/src/composer/app.py` registers **no routes at
-  all** — not `/v1/compose`, and not `/healthz` or `/readyz`. OTel is a declared dependency and is
-  not initialised. Nothing can probe the composer and nothing can call it.
-- **The gateway does not know where the composer is.** `apps/gateway/src/config.ts` has no
-  `COMPOSER_URL`; `.env.example` defines `COMPOSER_HOST` / `COMPOSER_PORT` for the composer's own
-  bind address only. The two services are not wired to each other.
-
-**So none of the alerts below can fire, and a tenant-wide seeding failure cannot occur.** What
-*can* happen today is the upstream half: a crawl that learned no usable entity schemas, which is
-the condition that will make seeding fail on the day it exists. That part is diagnosable now and is
-covered in *Confirm* step 1.
+- **An API observed behind a bearer token cannot be replayed**, because the token was never
+  captured. The chain demotes to the UI adapter, which is correct but slow — see *Confirm* step 3
+  before concluding the API adapter is broken.
+- **A failed materializer is demoted but no re-crawl is queued**, because crawl bounds are not
+  stored per application. Re-learning a materializer is a manual crawl.
 
 ---
 
 ## Symptoms
-
-**Once Phases 15–16 exist:**
 
 - `wispr_seed_materialize_total{outcome="failed"}` rising across every `adapter` label for one
   tenant.
@@ -58,14 +48,11 @@ covered in *Confirm* step 1.
   revertible. `inverse_op` degrading to `{"kind":"none"}` means the indexed delete flow stopped
   resolving.
 
-**Today:** the only reachable symptom is a tester asking for test data and the product having no
-way to produce it, because the feature does not exist.
-
 ---
 
 ## Confirm
 
-### 1. Does the tenant have anything to compose from? *(works today)*
+### 1. Does the tenant have anything to compose from?
 
 This is the first question in every seeding failure, and it is answerable now:
 
@@ -87,7 +74,7 @@ which is a **learning** failure, not a materialization failure. The fix is a bet
 better adapter. `entity_schemas` with zero rows means the observers ran and learned nothing — work
 [indexer-failure.md](indexer-failure.md), not this runbook.
 
-### 2. What materializers exist, and are any of them verified? *(works today; returns zero rows until something registers them)*
+### 2. What materializers exist, and are any of them verified?
 
 ```sql
 SELECT es.entity_name,
@@ -135,7 +122,7 @@ WHERE tenant_id = '<tenant-id>' AND action LIKE 'seed%'
 ORDER BY created_at DESC LIMIT 50;
 ```
 
-Phase 15 specifies that **every** seeding attempt is logged in the route, including refused ones.
+**Every** seeding attempt is logged in the route, including refused ones.
 A tenant-wide failure with no audit rows means the requests are not reaching the route at all.
 
 ### 4. Distinguish a composition failure from a materialization failure
@@ -156,7 +143,7 @@ The error taxonomy already draws this line, and it is the most useful triage in 
 **A tenant-wide failure that is all 422s is a learning problem.** All 501s means no materializers
 are registered. All 502s means the adapters exist and the application is rejecting the writes.
 
-### 5. What did the ledger record? *(Phase 15 required)*
+### 5. What did the ledger record?
 
 ```sql
 SELECT entity, adapter_used, inverse_op->>'kind' AS inverse_kind,
@@ -178,10 +165,11 @@ reverted_at IS NULL`, built for exactly this query and for a tenant-wide revert.
 ### 6. Is the composer up?
 
 Today: **you cannot tell.** There is no `/healthz` and no `/readyz` on the composer, no OTel, and
-no metrics. `docker compose ps` and the process's own `service.started` / `service.stopped`
-structlog lines are the entire signal. This is a known gap recorded in
-[ADR 0010](../adr/0010-python-confined-to-composer.md) and it is the first thing Phase 14 part 2
-should close.
+`GET /healthz` and `GET /readyz` (`apps/composer/src/composer/routes.py`), plus
+`wispr_seed_plan_latency_ms`, `wispr_tier_total` and `wispr_compose_outcome_total` from
+`telemetry.py`. Note that the first two are emitted by the **gateway as well**: the gateway measures
+the round trip a tester waits on, the composer measures its own share, and aggregating them without
+a `service` dimension double-counts.
 
 ---
 
@@ -203,10 +191,15 @@ per application.
 
 ### If the API adapter is failing, let the chain fall back
 
-That is the design: `fixture → api → ui → surface the failure with the concrete reason`. Phase 16
-specifies that a failing API adapter is **marked unverified**, re-observation is enqueued, and the
-chain falls to UI. Do not disable the API adapter manually — that discards the signal that it needs
-re-observing, and the TTL mechanism already demotes it.
+That is the design: `fixture → api → ui → surface the failure with the concrete reason`. A failing
+API adapter is **marked unverified** by the verification lifecycle and the chain falls to UI. Do not
+disable it manually — the TTL mechanism already demotes it, and disabling discards the record of why.
+
+> ⚠️ **No re-crawl is queued for a demoted materializer.** The chain demotes and stops there;
+> nothing re-observes the endpoint automatically, because crawl bounds are not stored per
+> application. Recovering an API adapter means someone enqueues a crawl by hand. This is deliberate
+> and recorded in [ADR 0016](../adr/0016-writes-go-through-the-indexer.md) — it is the single
+> likeliest reason a tenant sits on the slow UI path for weeks without anybody noticing.
 
 **Tell the testers the adapter changed.** This is not cosmetic. `docs/TEST-DATA-ENGINE.md § 4` is
 explicit: *"Never silently degrade without telling the tester which adapter ran — it changes what
@@ -282,11 +275,10 @@ more specific field name to the log call.
 
 ## Prevention
 
-- **Give the composer a health check.** It is the only service with no `/healthz` and no `/readyz`,
-  so it is the only one whose failure is invisible to orchestration. `CLAUDE.md` rule #6 requires
-  it and Phase 14 part 2 owns it.
-- **Wire `wispr_seed_materialize_total{adapter,outcome}` on the day the chain ships.** The
-  instrument already exists precisely so a dashboard can distinguish zero from not-deployed. The
+- **Alert on a demoted materializer, not just on failures.** Nothing re-crawls a demoted adapter
+  (ADR 0016), so a tenant can sit on the UI path indefinitely with every seed *succeeding*. Watch
+  `materializers.verified_at` going stale, not only the error rate.
+- **Alert on `wispr_seed_materialize_total{adapter,outcome}`.** The instrument is live. The
   alert that matters is not "failures" — it is **a shift in the `adapter` distribution**, because a
   silent slide to UI changes what the tests cover without failing anything.
 - **Alert on materializer verification expiry before it bites.** `verified_at +

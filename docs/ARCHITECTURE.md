@@ -285,6 +285,16 @@ Every service emits:
   `wispr_speech_to_reticle_ms` (histogram),
   `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total{adapter,outcome}`,
   `wispr_drift_open_total`, `wispr_memory_staleness_hours`.
+
+  Three of those are **specified but not emitted**: `wispr_speech_to_reticle_ms` exists only as a
+  build-time benchmark, `wispr_memory_staleness_hours` is computable from Postgres but has no
+  instrument, and `wispr_drift_open_total` is a *gauge of queue depth* that nothing produces — what
+  shipped instead is `wispr_drift_reports_total{detected_by}`, a counter of raises, alongside
+  `wispr_drift_decisions_total` and the indexer's `wispr_indexer_drift_reconciles_total`,
+  `wispr_indexer_drift_reconcile_duration_ms` and `wispr_indexer_drift_alias_migration_rate`.
+  `wispr_false_execution_total` is registered with no call site. See
+  `docs/runbooks/README.md` § "Alerts that cannot fire yet" for the full status, and treat that
+  table as authoritative over this list.
 - **Logs** — structured JSON, `tenant_id`/`session_id`/`trace_id` on every line.
   Element text content is never logged.
 - **Health** — `/healthz` (liveness), `/readyz` (dependencies checked).

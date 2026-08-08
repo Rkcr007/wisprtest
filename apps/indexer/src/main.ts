@@ -2,7 +2,7 @@ import { CrawlJob, DriftReconcileJob, SeedJob } from 'protocol';
 
 import { loadConfig } from './config.js';
 import { launchBrowser } from './crawl/browser.js';
-import { createSecretResolver } from './crawl/secrets.js';
+import { createSecretResolverFactory } from './crawl/secrets.js';
 import { createTenantDatabase } from './db/pool.js';
 import { createDriftWorker } from './drift/worker.js';
 import { ConfigError } from './errors.js';
@@ -57,7 +57,9 @@ async function main(): Promise<void> {
   const browser = await launchBrowser(config.INDEXER_HEADLESS);
   lifecycle.onShutdown('browser', () => browser.close());
 
-  const secrets = createSecretResolver();
+  // One factory for the process; every job binds its own tenant off it. The root is required
+  // config, so a deployment that forgot it fails at boot rather than resolving anything.
+  const secrets = createSecretResolverFactory({ root: config.INDEXER_SECRET_ROOT });
   const metrics = createMetrics();
 
   const worker = createWorker({

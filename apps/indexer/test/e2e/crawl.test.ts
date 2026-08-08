@@ -7,7 +7,6 @@ import { CrawlJob, IndexProgressEvent } from 'protocol';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
-import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { runJob, type JobRunnerDependencies } from '../../src/job-runner.js';
 import { createRedis } from '../../src/redis/client.js';
@@ -22,6 +21,7 @@ import {
   testConfig,
   waitFor,
   type Fixture,
+  testSecrets,
 } from '../support/harness.js';
 
 /**
@@ -71,7 +71,7 @@ function dependencies(): JobRunnerDependencies {
     database,
     redis,
     browser,
-    secrets: createSecretResolver(),
+    secrets: testSecrets(),
     metrics: createMetrics(),
     logger,
     progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,
@@ -432,7 +432,7 @@ describe('the job stream', () => {
       database,
       redis,
       browser,
-      secrets: createSecretResolver(),
+      secrets: testSecrets(),
       metrics: createMetrics(),
       logger,
       progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,

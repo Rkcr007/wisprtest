@@ -6,7 +6,6 @@ import type { DriftReconcileJob } from 'protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '../../src/crawl/browser.js';
-import { createSecretResolver } from '../../src/crawl/secrets.js';
 import { createTenantDatabase, type TenantDatabase } from '../../src/db/pool.js';
 import { reconcile, type ReconcileResult } from '../../src/drift/reconcile.js';
 import { runJob } from '../../src/job-runner.js';
@@ -20,6 +19,7 @@ import {
   fixtureJob,
   testConfig,
   type Fixture,
+  testSecrets,
 } from '../support/harness.js';
 
 /**
@@ -82,7 +82,7 @@ afterAll(async () => {
 });
 
 function dependencies() {
-  return { database, browser, secrets: createSecretResolver() };
+  return { database, browser, secrets: testSecrets() };
 }
 
 /** Index the fixture as it stands, and locate the screen a rename will drift. */
@@ -93,7 +93,7 @@ async function crawlAndLocate(): Promise<void> {
       database,
       redis: await connectRedis(),
       browser,
-      secrets: createSecretResolver(),
+      secrets: testSecrets(),
       metrics: createMetrics(),
       logger,
       progressMaxLength: config.INDEXER_PROGRESS_MAXLEN,

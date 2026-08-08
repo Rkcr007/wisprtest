@@ -113,18 +113,30 @@ is better diffs and bulk approval of *reviewed* changes, never an unreviewed pat
   reviews the diff." Sales will feel this. The counter-argument has to be told as the story
   above, not as a principle.
 - **Degraded mode has to actually work.** Because memory can be stale for days, the runtime path
-  cannot assume it is correct. T0 discounts aliases whose bound element no longer matches its
-  fingerprint (`apps/extension/src/resolver/tier0.ts`), which pushes toward disambiguation instead
-  of a wrong hit. That is load-bearing behaviour that only exists because of this ADR.
+  cannot assume it is correct. Two layers do this, and both exist only because of this ADR. At the
+  element level, T0 discounts aliases whose bound element no longer matches its fingerprint
+  (`apps/extension/src/resolver/tier0.ts`), pushing toward disambiguation instead of a wrong hit. At
+  the screen level, `apps/extension/src/speculation/classify.ts` forces class `A` on any screen
+  whose structural hash no longer matches memory — nothing runs from a partial hypothesis and every
+  action needs an explicit yes.
 
-### Not yet built
+### As built
 
-Phase 17 is unbuilt as of `81b786c`. `drift_reports` exists, its constraints are tested
-(`apps/gateway/test/db/schema.test.ts`), and nothing writes to it: there is no
-`apps/extension/src/drift/`, no `apps/indexer/src/drift/`, and no `/v1/drift/*` route in
-`apps/gateway/src/routes/`. The decision is encoded in the schema ahead of the code deliberately —
-the constraint is what makes the auto-approve path unbuildable later without an explicit
-migration that somebody has to justify.
+Phase 17 shipped across six PRs, and the decision held: there is no auto-approve path, not even
+behind a flag. `apps/gateway/src/routes/drift.ts` gates approval on the `drift:approve` permission;
+the indexer's reconcile worker leaves its candidate version `building` and never activates one; and
+approving flips a status rather than editing memory in place, so a session mid-flight keeps
+resolving against the version it loaded.
+
+One constraint was narrowed on the way, and it is worth recording here because it looks like a
+weakening and is not. `drift_reports_decision_needs_approver` originally required `approved_by` on
+any decided report, which contradicted the `ON DELETE SET NULL` on that same column: deleting a user
+who had once approved a report failed on a table nobody was touching. The CHECK now requires
+`resolved_at` instead (`20260806120000_drift_decision_survives_user_deletion.sql`). The property
+this ADR cares about — that a human is on the record — moved to `audit_log`, which
+`docs/ARCHITECTURE.md § 8` already makes the durable record and which nothing nulls. What remains
+impossible is a decided report with no decision timestamp, and a status reaching `approved` without
+a human making the call.
 
 ### What would reverse it
 

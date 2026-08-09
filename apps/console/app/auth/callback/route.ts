@@ -5,6 +5,7 @@ import {
   cookieOptions,
   FLOW_COOKIE,
   openFlow,
+  safeReturnTo,
   sealSession,
   SESSION_COOKIE,
 } from '../../../src/auth/session';
@@ -67,7 +68,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return failure('the identity provider issued a token that is already expired');
     }
 
-    const response = NextResponse.redirect(new URL(flow.returnTo, request.nextUrl.origin));
+    // Re-checked rather than trusted, even though the flow cookie is encrypted and therefore
+    // cannot have been edited by the browser. A cookie minted by the *previous* build is still
+    // valid for the whole flow TTL after a deploy, so for those ten minutes this is the only
+    // thing standing between a value approved by the old guard and a redirect off-site.
+    const response = NextResponse.redirect(
+      new URL(safeReturnTo(flow.returnTo), request.nextUrl.origin),
+    );
     response.cookies.set(
       SESSION_COOKIE,
       await sealSession(cfg, tokens),

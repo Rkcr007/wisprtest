@@ -136,17 +136,53 @@ export async function openFlow(config: ConsoleConfig, token: string): Promise<Fl
 }
 
 /**
+ * An origin the console can never be served from, used to resolve a candidate against.
+ *
+ * `.invalid` is reserved by RFC 2606 and is guaranteed not to resolve, so a candidate that comes
+ * back still on this origin is one that named no authority of its own.
+ */
+const PROBE_ORIGIN = 'https://console.invalid';
+
+/**
  * A caller-supplied return path, reduced to something safe to redirect to.
  *
- * Anything that is not a single-slash-prefixed path becomes `/`. `//evil.example` and
- * `/\evil.example` are both read by browsers as protocol-relative URLs, which is the open-redirect
- * this exists to close.
+ * Both call sites finish with `new URL(returnTo, origin)`, so the only question that matters is
+ * what *the URL parser* makes of the value — not what its characters look like. Those are not the
+ * same question, and the gap between them is the whole vulnerability class this guards:
+ * `new URL` strips every ASCII tab, CR and LF from its input before parsing, so
+ * `/<TAB>/evil.example` passes any `startsWith('//')` check and then resolves to
+ * `https://evil.example/`. Backslashes, which the parser treats as slashes under a special scheme,
+ * are the same trick with a different character, and there is no reason to believe the list of
+ * such characters is closed.
+ *
+ * So the candidate is *parsed* rather than pattern-matched: resolved against an origin the console
+ * can never be, and kept only if it is still on that origin — meaning it named no authority of its
+ * own. What is returned is the parser's own view of the path, so the value stored in the flow
+ * cookie is already normalised and the callback's re-parse cannot disagree with what was approved.
+ *
+ * A leading `/` is still required, so a bare `applications` is refused rather than silently
+ * becoming `/applications`; the caller is naming a location in the console and should say so.
  */
 export function safeReturnTo(candidate: string | null): string {
   if (candidate === null) return '/';
   if (!candidate.startsWith('/')) return '/';
-  if (candidate.startsWith('//') || candidate.startsWith('/\\')) return '/';
-  return candidate;
+
+  let resolved: URL;
+  try {
+    resolved = new URL(candidate, PROBE_ORIGIN);
+  } catch {
+    return '/';
+  }
+
+  // An authority of its own — `//evil.example`, `https://evil.example`, or anything that becomes
+  // one once the parser has stripped what it strips. A non-hierarchical scheme such as
+  // `javascript:` lands here too, with an origin of `null`.
+  if (resolved.origin !== PROBE_ORIGIN) return '/';
+
+  const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  // `pathname` is always rooted for a special scheme, so this is belt and braces — and it is what
+  // makes the return value's one guarantee (a same-site path) true by inspection.
+  return path.startsWith('/') && !path.startsWith('//') ? path : '/';
 }
 
 /** Cookie attributes shared by both cookies. `secure` is dropped only for local plain HTTP. */

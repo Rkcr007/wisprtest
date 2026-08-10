@@ -207,6 +207,47 @@ describe('safeReturnTo', () => {
   ])('refuses %s', (_label, candidate) => {
     expect(safeReturnTo(candidate)).toBe('/');
   });
+
+  /**
+   * The bypass a prefix check cannot see.
+   *
+   * `new URL` strips every ASCII tab, CR and LF from its input *before* parsing, so
+   * `/<TAB>/evil.example` is not the same string to the guard and to the parser: it fails
+   * `startsWith('//')` and then resolves to `https://evil.example/`. Both call sites hand the
+   * stored value to `new URL(returnTo, origin)`, so a guard that only inspects the raw characters
+   * is checking a URL that never gets parsed.
+   *
+   * Asserted through the parser rather than on the returned string, because the string is not the
+   * thing that redirects — the resolved URL is, and it is the only assertion an attacker cannot
+   * satisfy by finding another character the guard does not know about.
+   */
+  it.each([
+    ['a tab', '/\t/evil.example'],
+    ['a newline', '/\n/evil.example'],
+    ['a carriage return', '/\r/evil.example'],
+    ['a tab before a backslash', '/\t\\evil.example'],
+    ['a tab before a protocol-relative URL', '/\t//evil.example/phish'],
+  ])('cannot be escaped off-site by embedding %s', (_label, candidate) => {
+    const CONSOLE_ORIGIN = 'https://console.example';
+
+    // What both `/auth/login` and `/auth/callback` do with the value they kept.
+    const redirect = new URL(safeReturnTo(candidate), CONSOLE_ORIGIN);
+
+    expect(redirect.origin).toBe(CONSOLE_ORIGIN);
+  });
+
+  it('keeps a percent-encoded tab, which no parser turns into an authority', () => {
+    // The encoded form is a path segment, not a separator, so it is a legitimate destination and
+    // refusing it would be the guard over-reaching rather than protecting anything.
+    expect(safeReturnTo('/%09/orders')).toBe('/%09/orders');
+  });
+
+  it('normalises the value it keeps, so the callback re-parses exactly what was approved', () => {
+    // A tab inside a path segment is harmless and is still baked out here: what gets stored is the
+    // parser's own view of the path, so the string that was approved and the string that is later
+    // resolved cannot disagree.
+    expect(safeReturnTo('/applic\tations?jobId=1#top')).toBe('/applications?jobId=1#top');
+  });
 });
 
 describe('cookieOptions', () => {

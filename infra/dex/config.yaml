@@ -1,0 +1,140 @@
+# Dex — the identity provider for the local stack.
+#
+# The console is a real OIDC relying party (`apps/console/src/auth/oidc.ts`: authorization code
+# + PKCE, no implicit grant) and the gateway is a real resource server that verifies signature,
+# `iss`, `aud`, `exp` and `email` on every bearer token (`apps/gateway/src/auth/verify.ts`).
+# Both were complete and both were unreachable, because nothing in the Compose stack could mint
+# a token. This file is what closes that gap, and it does it with an actual OIDC provider rather
+# than a development bypass: there is no "skip auth locally" flag anywhere in the codebase, and
+# adding one would violate CLAUDE.md rule #1 and mean the path a tester exercises locally is not
+# the path that runs in production.
+#
+# Fixture users only. The passwords below are bcrypt hashes of strings printed in plaintext in
+# `.env.example` — deliberately, because their whole purpose is that a developer can sign in
+# with them. Nothing here is a credential for anything outside this repository's Compose stack,
+# and no real identity provider configuration belongs in this file.
+
+# Baked into every token as `iss`, and verified against `OIDC_ISSUER_URL` by *both* the console
+# (which refuses a discovery document whose issuer disagrees) and the gateway. It is therefore
+# not a free-form address: change it and `OIDC_ISSUER_URL`, `DEX_PORT` and the published port in
+# docker-compose.yml all have to move with it, or sign-in fails at the first hop.
+issuer: http://localhost:5556/dex
+
+storage:
+  # Sqlite on a named volume rather than `memory`. Dex keeps auth requests, refresh tokens and
+  # its signing keys in storage, so `memory` would rotate the signing key on every restart and
+  # invalidate every session and every cached JWKS entry the gateway holds. The file lives in
+  # /var/dex, which the image already creates owned by the uid dex runs as (1001).
+  type: sqlite3
+  config:
+    file: /var/dex/dex.db
+
+web:
+  # 0.0.0.0 because this is inside a container; the port is published to the host by Compose.
+  http: 0.0.0.0:5556
+
+telemetry:
+  # Prometheus metrics and a second /healthz. Not published to the host: nothing scrapes it
+  # locally until the collector arrives in Phase 19, and the container healthcheck probes the
+  # main port, which is the one clients actually depend on.
+  http: 0.0.0.0:5558
+
+oauth2:
+  # Only the authorization code flow. The console uses nothing else, and leaving the implicit
+  # and hybrid flows enabled means a client id registered here can be talked into handing a
+  # token straight to a browser.
+  responseTypes:
+    - code
+  # The consent screen adds a click to every local sign-in and asks the developer to approve
+  # their own first-party console. It is a real screen for third-party clients; there are none.
+  skipApprovalScreen: true
+  # Show the login form directly instead of a connector chooser — there is one connector.
+  alwaysShowLoginScreen: false
+
+staticClients:
+  # The console. Public — it holds no client secret — because PKCE is what protects the code
+  # exchange (`apps/console/src/config.ts` documents the same reasoning on the RP side), and a
+  # secret shared through a committed example file would protect nothing.
+  #
+  # The redirect URI is exact-matched by Dex and must equal the console's `OIDC_REDIRECT_URI`,
+  # which is `${CONSOLE_URL}/auth/callback` — the route implemented at
+  # apps/console/app/auth/callback/route.ts — on `CONSOLE_PORT`, 3000.
+  - id: wispr-console
+    name: WisprTest Console
+    public: true
+    redirectURIs:
+      - http://localhost:3000/auth/callback
+
+  # The gateway. It never runs an OAuth flow — it is a resource server, and it verifies tokens
+  # rather than obtaining them. It is registered here for one reason: to exist as an *audience*.
+  #
+  # ## The audience problem, and why it is solved this way
+  #
+  # The gateway verifies `aud: OIDC_AUDIENCE` (= `wispr-gateway`). Dex, like every OIDC
+  # provider, stamps `aud` with the id of the client that asked — `wispr-console`. Left alone,
+  # every token the console obtains is rejected by the gateway on the audience claim.
+  #
+  # There are two ways to make that stop happening and only one of them is honest. Setting
+  # `OIDC_AUDIENCE=wispr-console` would make the check pass by making it check nothing useful:
+  # the audience claim exists precisely so that a token minted for one service cannot be
+  # replayed against another, and pointing the gateway at the console's own client id turns
+  # "this token was issued for me" into "this token was issued". Local configuration that
+  # disables a control is how a control ends up disabled in production.
+  #
+  # So the audience is modelled instead, with Dex's cross-client trust (its implementation of
+  # the same idea as Auth0's `audience` parameter): `wispr-gateway` names `wispr-console` as a
+  # trusted peer, which authorises the console to ask — via the
+  # `audience:server:client_id:wispr-gateway` scope — for a token whose `aud` is the gateway.
+  # The token then legitimately says what it is for. Dex mints its access token through the same
+  # code path as the ID token, so the audience and the `email` claim are on the *access* token,
+  # which is the one the console seals into its session cookie
+  # (`apps/console/src/auth/session.ts`) and sends to the gateway. Verified end to end: with that
+  # scope the access token carries `aud: ["wispr-gateway", "wispr-console"]`, `azp: wispr-console`
+  # and the signed-in user's `email`, and it passes every check in the gateway's verify.ts.
+  #
+  # The half that is not here: the console's scope list is a literal in
+  # apps/console/src/auth/oidc.ts, so it does not request the cross-client scope yet and receives
+  # `aud: wispr-console` — which the gateway rejects, correctly. It sends the Auth0-style
+  # `audience` parameter, which Dex ignores. That is one line in a module this change does not
+  # own; the peer relationship it needs is configured and proven from here.
+  #
+  # `public: true` because it has no secret and never presents one: nothing signs in as the
+  # gateway. `trustedPeers` is what does the work.
+  - id: wispr-gateway
+    name: WisprTest Gateway
+    public: true
+    trustedPeers:
+      - wispr-console
+
+# The local password connector. Real hashed credentials checked by Dex, not a header the
+# gateway is told to trust.
+enablePasswordDB: true
+
+# ## Why these two emails and no others
+#
+# The gateway resolves a verified token to a principal by *email*
+# (`findPrincipalByEmail`, apps/gateway/src/http/plugins.ts) and rejects a token that names
+# somebody no tenant knows. A fixture user whose address does not appear in
+# `db/seed/001_fixture.sql` therefore produces a completely valid sign-in followed by a 401 on
+# every gateway call — which reads as a broken identity provider and is not one. These two
+# addresses match the seeded users exactly, and the roles noted below are the ones the fixture
+# gives them, so signing in as Priya and as Daniel exercises opposite ends of the permission map.
+#
+# `userID` is the users' primary key from that same fixture. Dex derives `sub` from it rather
+# than using it verbatim, so this buys traceability rather than equality — a token can be traced
+# back to a row.
+staticPasswords:
+  # Role `lead` in the fixture: may approve a memory version and a drift report.
+  # Password: priya-local-dev-only
+  - email: priya.lead@northwind.example
+    username: priya.lead
+    userID: 22222222-2222-4222-8222-222222222221
+    hash: $2y$10$riWdKcDEohrToflwmPWAKOQPHPU/AavcknIDmnnW6WB5ufKu3rSm6
+
+  # Role `tester` in the fixture: may not. Sign in as this one to check that a route is actually
+  # gated rather than merely authenticated.
+  # Password: daniel-local-dev-only
+  - email: daniel.tester@northwind.example
+    username: daniel.tester
+    userID: 22222222-2222-4222-8222-222222222222
+    hash: $2y$10$S1DnYljaGFT8RWU6SV49PO1O06RfukKy01KXKTIriZp.IZuUdgT56

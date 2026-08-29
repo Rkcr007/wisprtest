@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { z } from 'zod';
+
 import { PERMISSIONS_BY_ROLE } from '../../src/rbac/permissions.js';
 import { NEIGHBOUR, SEED, startHarness, type Harness } from '../support/harness.js';
 
@@ -13,6 +15,22 @@ import { NEIGHBOUR, SEED, startHarness, type Harness } from '../support/harness.
 
 const LEAD_ID = '22222222-2222-4222-8222-222222222221';
 const TESTER_ID = '22222222-2222-4222-8222-222222222222';
+
+const AdminUsers = z.object({
+  users: z.array(z.object({ email: z.string() })),
+});
+const AdminUser = z.object({ role: z.string() });
+const ErrorCode = z.object({ code: z.string() });
+const AdminPolicy = z.object({
+  writable: z.boolean(),
+  permissionsByRole: z.object({ owner: z.array(z.string()) }),
+  reversibility: z.array(z.object({ class: z.string(), speculative: z.boolean() })),
+  redaction: z.object({ writable: z.boolean(), elementTextInLogs: z.boolean() }),
+});
+const AdminAudit = z.object({
+  total: z.number(),
+  entries: z.array(z.object({ action: z.string(), target: z.string() })),
+});
 
 let harness: Harness;
 
@@ -58,7 +76,7 @@ describe('GET /v1/admin/users', () => {
 
     const ours = await get(SEED.leadEmail, '/v1/admin/users');
     expect(ours.statusCode).toBe(200);
-    const listed = ours.json() as { users: { id: string; email: string; role: string }[] };
+    const listed = AdminUsers.parse(ours.json());
     expect(listed.users.map((row) => row.email)).toEqual(
       expect.arrayContaining([SEED.leadEmail, SEED.testerEmail]),
     );
@@ -66,7 +84,7 @@ describe('GET /v1/admin/users', () => {
 
     const theirs = await get(NEIGHBOUR.ownerEmail, '/v1/admin/users');
     expect(theirs.statusCode).toBe(200);
-    const neighbour = theirs.json() as { users: { email: string }[] };
+    const neighbour = AdminUsers.parse(theirs.json());
     expect(neighbour.users.map((row) => row.email)).toContain(NEIGHBOUR.ownerEmail);
     expect(neighbour.users.map((row) => row.email)).not.toContain(SEED.leadEmail);
   });
@@ -76,15 +94,17 @@ describe('PATCH /v1/admin/users/:id', () => {
   it('changes a role, audits it, and refuses demoting the last owner', async () => {
     const changed = await patch(SEED.leadEmail, `/v1/admin/users/${TESTER_ID}`, { role: 'viewer' });
     expect(changed.statusCode).toBe(200);
-    expect((changed.json() as { role: string }).role).toBe('viewer');
+    expect(AdminUser.parse(changed.json()).role).toBe('viewer');
 
     const lastOwner = await patch(SEED.leadEmail, `/v1/admin/users/${LEAD_ID}`, { role: 'lead' });
     expect(lastOwner.statusCode).toBe(400);
-    expect((lastOwner.json() as { code: string }).code).toBe('validation_failed');
+    expect(ErrorCode.parse(lastOwner.json()).code).toBe('validation_failed');
 
-    const restored = await patch(SEED.leadEmail, `/v1/admin/users/${TESTER_ID}`, { role: 'tester' });
+    const restored = await patch(SEED.leadEmail, `/v1/admin/users/${TESTER_ID}`, {
+      role: 'tester',
+    });
     expect(restored.statusCode).toBe(200);
-    expect((restored.json() as { role: string }).role).toBe('tester');
+    expect(AdminUser.parse(restored.json()).role).toBe('tester');
   });
 });
 
@@ -92,12 +112,7 @@ describe('GET /v1/admin/policy', () => {
   it('returns the RBAC matrix and the frozen reversibility taxonomy', async () => {
     const response = await get(SEED.leadEmail, '/v1/admin/policy');
     expect(response.statusCode).toBe(200);
-    const body = response.json() as {
-      writable: boolean;
-      permissionsByRole: typeof PERMISSIONS_BY_ROLE;
-      reversibility: { class: string; speculative: boolean }[];
-      redaction: { writable: boolean; elementTextInLogs: boolean };
-    };
+    const body = AdminPolicy.parse(response.json());
     expect(body.writable).toBe(false);
     expect(body.permissionsByRole.owner).toEqual([...PERMISSIONS_BY_ROLE.owner]);
     expect(body.reversibility.find((row) => row.class === 'C')?.speculative).toBe(false);
@@ -111,10 +126,7 @@ describe('GET /v1/admin/audit', () => {
   it('pages tenant audit rows including the role change just made', async () => {
     const response = await get(SEED.leadEmail, '/v1/admin/audit?limit=50');
     expect(response.statusCode).toBe(200);
-    const body = response.json() as {
-      entries: { action: string; target: string }[];
-      total: number;
-    };
+    const body = AdminAudit.parse(response.json());
     expect(body.total).toBeGreaterThanOrEqual(1);
     expect(body.entries.some((row) => row.action === 'user.role_changed')).toBe(true);
     expect(body.entries.some((row) => row.target === `user:${TESTER_ID}`)).toBe(true);

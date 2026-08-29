@@ -27,19 +27,26 @@ function request(origin: string | null): Request {
 
 describe('assertExtensionMintCaller', () => {
   it('allows the console’s own origin', () => {
-    expect(() => assertExtensionMintCaller(request('http://localhost:3000'), cfg)).not.toThrow();
+    expect(() => {
+      assertExtensionMintCaller(request('http://localhost:3000'), cfg);
+    }).not.toThrow();
   });
 
   it('allows a packed extension', () => {
-    expect(() =>
-      assertExtensionMintCaller(request('chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef'), cfg),
-    ).not.toThrow();
+    expect(() => {
+      assertExtensionMintCaller(
+        request('chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef'),
+        cfg,
+      );
+    }).not.toThrow();
   });
 
   it('refuses a foreign page, including a missing Origin', () => {
-    expect(() => assertExtensionMintCaller(request('https://evil.example'), cfg)).toThrow(
-      ConsoleError,
-    );
-    expect(() => assertExtensionMintCaller(request(null), cfg)).toThrow(ConsoleError);
+    expect(() => {
+      assertExtensionMintCaller(request('https://evil.example'), cfg);
+    }).toThrow(ConsoleError);
+    expect(() => {
+      assertExtensionMintCaller(request(null), cfg);
+    }).toThrow(ConsoleError);
   });
 });

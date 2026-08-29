@@ -42,7 +42,7 @@ describe('SessionTimelineView', () => {
 
     expect(screen.queryByRole('link', { name: 'Screenshot' })).toBeNull();
     expect(screen.getByText(/not signed/)).toBeTruthy();
-    expect(document.body.textContent ?? '').not.toContain(EVIDENCE_KEY);
+    expect(document.body.textContent).not.toContain(EVIDENCE_KEY);
   });
 
   it('renders an open session with no steps as empty, not as a fabricated timeline', () => {

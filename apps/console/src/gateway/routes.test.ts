@@ -75,6 +75,33 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function isStringBodyInit(init: unknown): init is { body: string } {
+  return (
+    typeof init === 'object' && init !== null && 'body' in init && typeof init.body === 'string'
+  );
+}
+
+function isHeadersInit(init: unknown): init is { headers: Headers } {
+  return (
+    typeof init === 'object' &&
+    init !== null &&
+    'headers' in init &&
+    init.headers instanceof Headers
+  );
+}
+
+function jsonBodyFromFetchCall(call: unknown[] | undefined): unknown {
+  const init: unknown = call?.[1];
+  if (!isStringBodyInit(init)) throw new Error('expected a JSON string body');
+  return JSON.parse(init.body);
+}
+
+function authorizationFromFetchCall(call: unknown[] | undefined): string | null {
+  const init: unknown = call?.[1];
+  if (!isHeadersInit(init)) throw new Error('expected RequestInit headers');
+  return init.headers.get('authorization');
+}
+
 const bounds = {
   allowedOrigins: ['https://app.example.com'],
   routeAllowlist: ['/orders'],
@@ -481,9 +508,11 @@ const APPLICATION = {
 describe('GET /api/applications', () => {
   it('forwards the tenant list and attaches the session bearer', async () => {
     await signIn();
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ tenantId: APPLICATION.tenantId, applications: [APPLICATION] }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ tenantId: APPLICATION.tenantId, applications: [APPLICATION] }),
+      );
     vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('../../app/api/applications/route');
 
@@ -494,9 +523,9 @@ describe('GET /api/applications', () => {
       applications: [{ id: APPLICATION_ID, name: 'Orders' }],
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://gateway.internal:8080/v1/applications');
-    expect(((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization')).toBe(
-      'Bearer gateway-access-token',
-    );
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
   });
 
   it('refuses without a session', async () => {
@@ -531,7 +560,7 @@ describe('POST /api/applications', () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({ id: APPLICATION_ID });
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://gateway.internal:8080/v1/applications');
-    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
       name: 'Orders',
       baseUrl: 'https://app.example.com',
       env: 'staging',
@@ -590,10 +619,7 @@ const minted = {
 };
 
 describe('POST /api/auth/extension-token', () => {
-  function mintRequest(
-    body: unknown,
-    origin = 'http://localhost:3000',
-  ): NextRequest {
+  function mintRequest(body: unknown, origin = 'http://localhost:3000'): NextRequest {
     return new NextRequest('http://localhost:3000/api/auth/extension-token', {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin },
@@ -616,9 +642,9 @@ describe('POST /api/auth/extension-token', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://gateway.internal:8080/v1/auth/extension-token',
     );
-    expect(((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization')).toBe(
-      'Bearer gateway-access-token',
-    );
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
   });
 
   it('refuses a foreign Origin before touching the gateway', async () => {
@@ -699,9 +725,14 @@ describe('GET /api/applications/:id/drift', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('../../app/api/applications/[id]/drift/route');
 
-    expect((await GET(new Request('http://localhost:3000/api/applications/nope/drift'), driftParams('nope'))).status).toBe(
-      400,
-    );
+    expect(
+      (
+        await GET(
+          new Request('http://localhost:3000/api/applications/nope/drift'),
+          driftParams('nope'),
+        )
+      ).status,
+    ).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -762,12 +793,10 @@ describe('POST /api/drift/:id/approve', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       `http://gateway.internal:8080/v1/drift/${REPORT_ID}/approve`,
     );
-    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
       decision: 'approve',
     });
-    expect(
-      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
-    ).toBe('Bearer gateway-access-token');
+    expect(authorizationFromFetchCall(fetchMock.mock.calls[0])).toBe('Bearer gateway-access-token');
   });
 
   it('forwards a rejection with its reason', async () => {
@@ -782,7 +811,7 @@ describe('POST /api/drift/:id/approve', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
       decision: 'reject',
       reason: 'the create form was mid-deploy',
     });
@@ -820,9 +849,9 @@ describe('POST /api/drift/:id/approve', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { POST } = await import('../../app/api/drift/[id]/approve/route');
 
-    expect((await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID))).status).toBe(
-      401,
-    );
+    expect(
+      (await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID))).status,
+    ).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -832,9 +861,9 @@ describe('POST /api/drift/:id/approve', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { POST } = await import('../../app/api/drift/[id]/approve/route');
 
-    expect((await POST(decideRequest({ decision: 'approve' }), decideParams('not-a-uuid'))).status).toBe(
-      400,
-    );
+    expect(
+      (await POST(decideRequest({ decision: 'approve' }), decideParams('not-a-uuid'))).status,
+    ).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -910,7 +939,10 @@ describe('GET /api/sessions/:sessionId', () => {
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { session: { id: string }; evidence: { url: string }[] };
+    const body = (await response.json()) as {
+      session: { id: string };
+      evidence: { url: string }[];
+    };
     expect(body.session.id).toBe(SESSION_ID);
     expect(body.evidence[0]?.url).toContain('evidence.wisprtest.example');
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -927,8 +959,12 @@ describe('GET /api/sessions/:sessionId', () => {
     const { GET } = await import('../../app/api/sessions/[sessionId]/route');
 
     expect(
-      (await GET(new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`), sessionParams(SESSION_ID)))
-        .status,
+      (
+        await GET(
+          new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`),
+          sessionParams(SESSION_ID),
+        )
+      ).status,
     ).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -940,8 +976,12 @@ describe('GET /api/sessions/:sessionId', () => {
     const { GET } = await import('../../app/api/sessions/[sessionId]/route');
 
     expect(
-      (await GET(new Request('http://localhost:3000/api/sessions/not-a-uuid'), sessionParams('not-a-uuid')))
-        .status,
+      (
+        await GET(
+          new Request('http://localhost:3000/api/sessions/not-a-uuid'),
+          sessionParams('not-a-uuid'),
+        )
+      ).status,
     ).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -974,4 +1014,3 @@ describe('GET /api/sessions/:sessionId', () => {
     await expect(response.json()).resolves.toMatchObject({ code: 'gateway_unreachable' });
   });
 });
-

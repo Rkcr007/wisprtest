@@ -39,7 +39,10 @@ export function SessionTimelineView({ timeline }: { readonly timeline: Timeline 
         </div>
         <dl className="grid">
           <Detail label="Started" value={formatUtc(session.startedAt)} />
-          <Detail label="Ended" value={session.endedAt === null ? '—' : formatUtc(session.endedAt)} />
+          <Detail
+            label="Ended"
+            value={session.endedAt === null ? '—' : formatUtc(session.endedAt)}
+          />
           <Detail label="Memory version" value={session.memoryVersionId} />
           <Detail label="Session" value={session.id} />
         </dl>
@@ -73,9 +76,7 @@ export function SessionTimelineView({ timeline }: { readonly timeline: Timeline 
                   </td>
                 </tr>
               ) : (
-                steps.map((step) => (
-                  <StepRow key={step.id} step={step} evidence={evidence} />
-                ))
+                steps.map((step) => <StepRow key={step.id} step={step} evidence={evidence} />)
               )}
             </tbody>
           </table>

@@ -28,6 +28,7 @@
     "vitest.memory.config.ts",
     "vitest.resolve.config.ts",
     "vitest.seed.config.ts",
-    "vitest.sessions.config.ts"
+    "vitest.sessions.config.ts",
+    "vitest.applications.config.ts"
   ]
 }

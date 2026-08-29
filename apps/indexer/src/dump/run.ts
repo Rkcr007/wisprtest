@@ -69,23 +69,25 @@ export async function dumpApplication(options: DumpRunOptions): Promise<DumpResu
   const skips: DumpSkip[] = [];
 
   const handlers: CrawlHandlers = {
-    async screenIndexed(screen: IndexedScreen): Promise<string> {
+    screenIndexed(screen: IndexedScreen): Promise<string> {
       const id = idGen();
       const elementIds = new Map<string, string>();
       for (const element of screen.elements) {
         elementIds.set(element.elementKey, idGen());
       }
       screens.push({ id, indexed: screen, elementIds });
-      return id;
+      return Promise.resolve(id);
     },
-    async edgeObserved(edge: ObservedEdge): Promise<void> {
+    edgeObserved(edge: ObservedEdge): Promise<void> {
       edges.push(edge);
+      return Promise.resolve();
     },
     async routeStarted(): Promise<void> {
       await Promise.resolve();
     },
-    async routeSkipped(path, reason): Promise<void> {
+    routeSkipped(path, reason): Promise<void> {
       skips.push({ path, reason });
+      return Promise.resolve();
     },
     async checkpoint(): Promise<void> {
       await Promise.resolve();
@@ -105,9 +107,7 @@ export async function dumpApplication(options: DumpRunOptions): Promise<DumpResu
         bounds: options.bounds,
         baseUrl: options.baseUrl,
         policy: createUrlPolicy(options.bounds, lookupFn, {
-          ...(options.allowPrivateOnAllowlist === true
-            ? { allowPrivateOnAllowlist: true }
-            : {}),
+          ...(options.allowPrivateOnAllowlist === true ? { allowPrivateOnAllowlist: true } : {}),
         }),
         limiter: createRateLimiter(options.bounds.requestsPerMinute),
         handlers,

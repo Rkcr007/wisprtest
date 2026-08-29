@@ -191,7 +191,7 @@ export async function listPendingReports(
   db: ScopedDatabase,
   applicationId: string,
   limit: number,
-  offset: number = 0,
+  offset = 0,
 ): Promise<{ readonly reports: readonly DriftReport[]; readonly total: number }> {
   // Joined through `memory_versions` rather than filtered on a denormalised application id: a
   // report belongs to a version, and the version is what knows which application it indexes.

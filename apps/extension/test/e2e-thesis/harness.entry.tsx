@@ -1,8 +1,4 @@
-import {
-  computeStateFingerprint,
-  interactiveCandidates,
-  toRoutePattern,
-} from 'fingerprint';
+import { computeStateFingerprint, interactiveCandidates, toRoutePattern } from 'fingerprint';
 import type { MemorySnapshot } from 'protocol';
 
 import {
@@ -104,58 +100,57 @@ function currentScope(): {
 }
 
 try {
-boot();
+  boot();
 } catch (error: unknown) {
   fail(error);
 }
 
 function boot(): void {
-const source = { current: currentScope };
-const resolver = createResolver({
-  snapshot: SNAPSHOT,
-  embedder: lexicalEmbedder(),
-  source,
-});
-const locator = createBinderLocator(SNAPSHOT);
-const executor = createActionExecutor({
-  window,
-  dispatcher: createRelayDispatcher(async (command) => {
-    const send = window.wisprCdp;
-    if (send === undefined) throw new Error('CDP relay is not installed');
-    await send(command);
-  }),
-});
-const detector = createSeedIntentDetector();
-const controller = createSpeculationController({
-  parser: createIntentParser({ vocabulary: buildIntentVocabulary(SNAPSHOT) }),
-  resolver,
-  executor,
-  locator,
-  source,
-  sessionId: '33333333-3333-4333-8333-333333333333',
-});
+  const source = { current: currentScope };
+  const resolver = createResolver({
+    snapshot: SNAPSHOT,
+    embedder: lexicalEmbedder(),
+    source,
+  });
+  const locator = createBinderLocator(SNAPSHOT);
+  const executor = createActionExecutor({
+    window,
+    dispatcher: createRelayDispatcher(async (command) => {
+      if (window.wisprCdp === undefined) throw new Error('CDP relay is not installed');
+      await window.wisprCdp(command);
+    }),
+  });
+  const detector = createSeedIntentDetector();
+  const controller = createSpeculationController({
+    parser: createIntentParser({ vocabulary: buildIntentVocabulary(SNAPSHOT) }),
+    resolver,
+    executor,
+    locator,
+    source,
+    sessionId: '33333333-3333-4333-8333-333333333333',
+  });
 
-let view: SpeculationView = IDLE_VIEW;
-let wasSeed = false;
-let revision = 0;
+  let view: SpeculationView = IDLE_VIEW;
+  let wasSeed = false;
+  let revision = 0;
 
-controller.view.subscribe((next) => {
-  view = next;
-});
+  controller.view.subscribe((next) => {
+    view = next;
+  });
 
-async function run(transcript: string): Promise<void> {
-  revision += 1;
-  wasSeed = detector.detect(transcript).isSeed;
-  controller.onSpeechOnset();
-  if (!wasSeed) await controller.onFinal({ revision, transcript });
-}
+  async function run(transcript: string): Promise<void> {
+    revision += 1;
+    wasSeed = detector.detect(transcript).isSeed;
+    controller.onSpeechOnset();
+    if (!wasSeed) await controller.onFinal({ revision, transcript });
+  }
 
-window.wisprCommand = run;
-window.wisprConfirm = () => {
-  controller.confirm();
-};
-window.wisprView = () => view;
-window.wisprWasSeed = () => wasSeed;
+  window.wisprCommand = run;
+  window.wisprConfirm = () => {
+    controller.confirm();
+  };
+  window.wisprView = () => view;
+  window.wisprWasSeed = () => wasSeed;
 
   window.wisprDebug = () => {
     const scope = currentScope();

@@ -46,7 +46,10 @@ async function AdminLoaded() {
     ]);
     return <AdminPanel users={users.users} policy={policy} audit={audit} />;
   } catch (error: unknown) {
-    if (isAuthRequired(error) || (error instanceof ConsoleError && error.code === 'auth_required')) {
+    if (
+      isAuthRequired(error) ||
+      (error instanceof ConsoleError && error.code === 'auth_required')
+    ) {
       redirect('/auth/login?next=%2Fadmin');
     }
     const forbidden = error instanceof ConsoleError && error.status === 403;

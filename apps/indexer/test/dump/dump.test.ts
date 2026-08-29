@@ -16,18 +16,19 @@ import { startFixtureApp, type FixtureApp } from '../fixture-app/server.js';
  * machine that cannot run Compose.
  */
 
-let app: FixtureApp;
+let app: FixtureApp | undefined;
 
 beforeAll(async () => {
   app = await startFixtureApp();
 }, 30_000);
 
 afterAll(async () => {
-  if (app !== undefined) await app.close();
+  await app?.close();
 });
 
 describe('dumpApplication — fixture app, no control plane', () => {
   it('writes a contract-valid snapshot that names Orders and the pending filter', async () => {
+    if (app === undefined) throw new Error('fixture app did not start');
     const result = await dumpApplication({
       baseUrl: app.url,
       bounds: dumpBounds({

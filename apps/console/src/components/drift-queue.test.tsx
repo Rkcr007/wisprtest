@@ -34,11 +34,35 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-beforeEach(() => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(jsonResponse(DRIFT_LIST)),
+function hrefOf(input: unknown): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  if (input instanceof Request) return input.url;
+  throw new Error('expected a fetch URL');
+}
+
+function clickNamed(name: string): void {
+  const [button] = screen.getAllByRole('button', { name });
+  if (button === undefined) throw new Error(`no ${name} button`);
+  fireEvent.click(button);
+}
+
+function isStringBodyInit(init: unknown): init is { body: string } {
+  return (
+    typeof init === 'object' && init !== null && 'body' in init && typeof init.body === 'string'
   );
+}
+
+function postedJson(fetchMock: ReturnType<typeof vi.fn>, path: string): unknown {
+  const posted = fetchMock.mock.calls.find((call) => hrefOf(call[0]) === path);
+  if (posted === undefined) throw new Error(`no request to ${path}`);
+  const init: unknown = posted[1];
+  if (!isStringBodyInit(init)) throw new Error('expected a JSON string body');
+  return JSON.parse(init.body);
+}
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(DRIFT_LIST)));
 });
 
 afterEach(() => {
@@ -56,33 +80,28 @@ describe('DriftQueue', () => {
   });
 
   it('posts an approval and removes the row immediately', async () => {
-    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
-      if (String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
-        return Promise.resolve(jsonResponse(APPROVED));
-      }
+    const path = `/api/drift/${DIFFED_REPORT.id}/approve`;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (hrefOf(input) === path) return Promise.resolve(jsonResponse(APPROVED));
       return Promise.resolve(jsonResponse(DRIFT_LIST));
     });
     vi.stubGlobal('fetch', fetchMock);
     renderQueue();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0]!);
+    clickNamed('Approve');
 
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
     });
 
-    const posted = fetchMock.mock.calls.find(
-      (call) => String(call[0]) === `/api/drift/${DIFFED_REPORT.id}/approve`,
-    );
-    expect(posted).toBeDefined();
-    expect(JSON.parse(String(posted?.[1]?.body))).toEqual({ decision: 'approve' });
+    expect(postedJson(fetchMock, path)).toEqual({ decision: 'approve' });
   });
 
   it('puts the row back when the gateway refuses the approval', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn((url: string) => {
-        if (String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
+      vi.fn((input: RequestInfo | URL) => {
+        if (hrefOf(input) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
           return Promise.resolve(
             jsonResponse(
               {
@@ -99,41 +118,42 @@ describe('DriftQueue', () => {
     );
     renderQueue();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0]!);
+    clickNamed('Approve');
 
     await waitFor(() => {
       expect(
-        screen.getByText('this report has not been reconciled yet, so there is nothing to activate'),
+        screen.getByText(
+          'this report has not been reconciled yet, so there is nothing to activate',
+        ),
       ).toBeTruthy();
     });
     expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(2);
   });
 
-  it('does not call the BFF when Reject is confirmed with no reason', async () => {
+  it('does not call the BFF when Reject is confirmed with no reason', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(DRIFT_LIST));
     vi.stubGlobal('fetch', fetchMock);
     renderQueue();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[0]!);
+    clickNamed('Reject');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }));
 
     expect(screen.getByText(/names why/)).toBeTruthy();
-    expect(
-      fetchMock.mock.calls.some(([url]) => String(url).includes('/api/drift/')),
-    ).toBe(false);
+    expect(fetchMock.mock.calls.some((call) => hrefOf(call[0]).includes('/api/drift/'))).toBe(
+      false,
+    );
   });
 
   it('posts a rejection with the reason and removes the row', async () => {
-    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
-      if (String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
-        return Promise.resolve(jsonResponse(REJECTED));
-      }
+    const path = `/api/drift/${DIFFED_REPORT.id}/approve`;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (hrefOf(input) === path) return Promise.resolve(jsonResponse(REJECTED));
       return Promise.resolve(jsonResponse(DRIFT_LIST));
     });
     vi.stubGlobal('fetch', fetchMock);
     renderQueue();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[0]!);
+    clickNamed('Reject');
     fireEvent.change(screen.getByLabelText(/^Reason$/), {
       target: { value: 'the create form was mid-deploy' },
     });
@@ -143,10 +163,7 @@ describe('DriftQueue', () => {
       expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
     });
 
-    const posted = fetchMock.mock.calls.find(
-      (call) => String(call[0]) === `/api/drift/${DIFFED_REPORT.id}/approve`,
-    );
-    expect(JSON.parse(String(posted?.[1]?.body))).toEqual({
+    expect(postedJson(fetchMock, path)).toEqual({
       decision: 'reject',
       reason: 'the create form was mid-deploy',
     });

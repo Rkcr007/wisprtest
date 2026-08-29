@@ -267,7 +267,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
       const envelope = await localMemory?.read();
       const current = sessions.get(tabId);
       if (current?.state !== 'attached' || !current.local) return;
-      if (envelope == null || envelope.origin !== current.origin) {
+      if (envelope?.origin !== current.origin) {
         postSnapshot(
           current,
           snapshotMessage('absent', current.token?.applicationId ?? null, null),
@@ -763,7 +763,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
   async function matchingLocalDump(origin: string): Promise<MemorySnapshot | null> {
     if (localMemory === undefined) return null;
     const envelope = await localMemory.read();
-    if (envelope === null || envelope.origin !== origin) return null;
+    if (envelope?.origin !== origin) return null;
     return envelope.snapshot;
   }
 

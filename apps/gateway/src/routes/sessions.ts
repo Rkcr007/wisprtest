@@ -106,7 +106,9 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
 
     return database.withTenant('session-list', (db) =>
       listSessions(db, {
-        ...(filter.data.applicationId === undefined ? {} : { applicationId: filter.data.applicationId }),
+        ...(filter.data.applicationId === undefined
+          ? {}
+          : { applicationId: filter.data.applicationId }),
         limit: page.limit,
         offset: page.offset,
       }),

@@ -29,9 +29,10 @@ export interface AdminRoutesOptions {
 export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOptions): void {
   const { database } = options;
 
-  function principalOf(request: {
-    principal?: { tenantId: string; userId: string };
-  }): { tenantId: string; userId: string } {
+  function principalOf(request: { principal?: { tenantId: string; userId: string } }): {
+    tenantId: string;
+    userId: string;
+  } {
     const principal = request.principal;
     if (principal === undefined) {
       throw new GatewayError('unauthorized', 'authentication required');
@@ -172,7 +173,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
     });
   });
 
-  app.get('/v1/admin/policy', { config: { permission: 'admin:manage' } }, async (request) => {
+  app.get('/v1/admin/policy', { config: { permission: 'admin:manage' } }, (request) => {
     principalOf(request);
     return {
       writable: false,
@@ -216,10 +217,10 @@ const REVERSIBILITY_POLICY = [
 
 const REDACTION_POLICY = {
   stores: 'structure, never content',
-  accessibleNames: 'redacted, then hashed; only the digest and the redacted display form are persisted',
+  accessibleNames:
+    'redacted, then hashed; only the digest and the redacted display form are persisted',
   masks: ['email', 'amount', 'phone', 'number'] as const,
   elementTextInLogs: false,
   customerDataInModelPrompts: false,
   writable: false,
 } as const;
-

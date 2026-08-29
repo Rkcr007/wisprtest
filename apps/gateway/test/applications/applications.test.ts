@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { ExtensionToken } from 'protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { z } from 'zod';
+
 import { NEIGHBOUR, SEED, startHarness, type Harness } from '../support/harness.js';
 
 /**
@@ -14,6 +16,16 @@ import { NEIGHBOUR, SEED, startHarness, type Harness } from '../support/harness.
  * 2. **A minted token is origin-scoped.** The seed Northwind origin gets that application id;
  *    an unknown origin gets `null`; that token cannot then read another application's snapshot.
  */
+
+const CreatedApplication = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  baseUrl: z.string(),
+});
+const ApplicationListBody = z.object({
+  applications: z.array(z.object({ id: z.uuid() })),
+});
+const ErrorCode = z.object({ code: z.string() });
 
 let harness: Harness;
 const createdIds: string[] = [];
@@ -46,12 +58,7 @@ async function get(email: string, url: string, bearer?: string) {
   });
 }
 
-async function post(
-  email: string,
-  url: string,
-  body: Record<string, unknown>,
-  bearer?: string,
-) {
+async function post(email: string, url: string, body: Record<string, unknown>, bearer?: string) {
   const token = bearer ?? (await harness.issuer.sign({ email }));
   return harness.app.inject({
     method: 'POST',
@@ -79,7 +86,7 @@ describe('POST /v1/applications', () => {
       env: 'staging',
     });
     expect(created.statusCode).toBe(201);
-    const body = created.json() as { id: string; baseUrl: string; name: string };
+    const body = CreatedApplication.parse(created.json());
     createdIds.push(body.id);
     expect(body.name).toBe(name);
     expect(body.baseUrl).toBe(baseUrl);
@@ -90,7 +97,7 @@ describe('POST /v1/applications', () => {
       env: 'development',
     });
     expect(again.statusCode).toBe(400);
-    expect((again.json() as { code: string }).code).toBe('validation_failed');
+    expect(ErrorCode.parse(again.json()).code).toBe('validation_failed');
   });
 
   it('refuses a second application for an origin this tenant already has', async () => {
@@ -108,12 +115,12 @@ describe('GET /v1/applications', () => {
   it('lists only the caller tenant', async () => {
     const ours = await get(SEED.leadEmail, '/v1/applications');
     expect(ours.statusCode).toBe(200);
-    const listed = ours.json() as { applications: { id: string }[] };
+    const listed = ApplicationListBody.parse(ours.json());
     expect(listed.applications.map((row) => row.id)).toContain(SEED.applicationId);
     expect(listed.applications.map((row) => row.id)).not.toContain(NEIGHBOUR.applicationId);
 
     const theirs = await get(NEIGHBOUR.ownerEmail, '/v1/applications');
-    const neighbourList = theirs.json() as { applications: { id: string }[] };
+    const neighbourList = ApplicationListBody.parse(theirs.json());
     expect(neighbourList.applications.map((row) => row.id)).toContain(NEIGHBOUR.applicationId);
     expect(neighbourList.applications.map((row) => row.id)).not.toContain(SEED.applicationId);
   });

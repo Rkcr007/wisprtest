@@ -183,7 +183,7 @@ describe('typed commands', () => {
     fireEvent.submit(screen.getByTestId('wispr-hud-command-form'));
 
     expect(onCommand).toHaveBeenCalledExactlyOnceWith('open orders');
-    expect((screen.getByTestId('wispr-hud-command') as HTMLInputElement).value).toBe('');
+    expect(screen.getByTestId('wispr-hud-command')).toHaveProperty('value', '');
   });
 
   it('does not submit whitespace', () => {

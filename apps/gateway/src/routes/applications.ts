@@ -106,74 +106,82 @@ export function registerApplicationRoutes(
    * RBAC: `application:register`, floor `lead`. Same permission as starting a crawl: naming
    * where a headless browser may go is the same class of decision as sending one there.
    */
-  app.post('/v1/applications', { config: { permission: 'application:register' } }, async (request, reply) => {
-    const { tenantId, userId } = principalOf(request);
-    const parsed = CreateApplicationBody.safeParse(request.body);
-    if (!parsed.success) {
-      throw new GatewayError('validation_failed', 'invalid application', {
-        issues: parsed.error.issues.map((issue) => ({
-          path: issue.path.join('.') || 'root',
-          message: issue.message,
-        })),
-      });
-    }
-
-    const origin = originOf(parsed.data.baseUrl);
-    if (origin === null) {
-      throw invalid('baseUrl must be an http(s) URL', 'baseUrl', 'baseUrl must be an http(s) URL');
-    }
-
-    const created = await database.withTenant('register-application', async (db) => {
-      const existing = await db
-        .selectFrom('applications')
-        .select(['id', 'name', 'baseUrl'])
-        .execute();
-
-      if (existing.some((row) => row.name.toLowerCase() === parsed.data.name.toLowerCase())) {
-        throw invalid(
-          'an application with this name already exists',
-          'name',
-          'an application with this name already exists in this tenant',
-        );
+  app.post(
+    '/v1/applications',
+    { config: { permission: 'application:register' } },
+    async (request, reply) => {
+      const { tenantId, userId } = principalOf(request);
+      const parsed = CreateApplicationBody.safeParse(request.body);
+      if (!parsed.success) {
+        throw new GatewayError('validation_failed', 'invalid application', {
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join('.') || 'root',
+            message: issue.message,
+          })),
+        });
       }
-      if (existing.some((row) => originOf(row.baseUrl) === origin)) {
+
+      const origin = originOf(parsed.data.baseUrl);
+      if (origin === null) {
         throw invalid(
-          'an application for this origin already exists',
+          'baseUrl must be an http(s) URL',
           'baseUrl',
-          'an application for this origin already exists in this tenant',
+          'baseUrl must be an http(s) URL',
         );
       }
 
-      const row = await db
-        .insertInto('applications')
-        .values({
-          tenantId,
-          name: parsed.data.name,
-          baseUrl: parsed.data.baseUrl,
-          env: parsed.data.env,
-        })
-        .returning(['id', 'tenantId', 'name', 'baseUrl', 'env', 'createdAt'])
-        .executeTakeFirstOrThrow();
+      const created = await database.withTenant('register-application', async (db) => {
+        const existing = await db
+          .selectFrom('applications')
+          .select(['id', 'name', 'baseUrl'])
+          .execute();
 
-      await db
-        .insertInto('auditLog')
-        .values({
-          tenantId,
-          actor: `user:${userId}`,
-          action: 'application.registered',
-          target: `application:${row.id}`,
-          metadata: JSON.stringify({ env: parsed.data.env }),
-        })
-        .execute();
+        if (existing.some((row) => row.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+          throw invalid(
+            'an application with this name already exists',
+            'name',
+            'an application with this name already exists in this tenant',
+          );
+        }
+        if (existing.some((row) => originOf(row.baseUrl) === origin)) {
+          throw invalid(
+            'an application for this origin already exists',
+            'baseUrl',
+            'an application for this origin already exists in this tenant',
+          );
+        }
 
-      return row;
-    });
+        const row = await db
+          .insertInto('applications')
+          .values({
+            tenantId,
+            name: parsed.data.name,
+            baseUrl: parsed.data.baseUrl,
+            env: parsed.data.env,
+          })
+          .returning(['id', 'tenantId', 'name', 'baseUrl', 'env', 'createdAt'])
+          .executeTakeFirstOrThrow();
 
-    const [enriched] = await database.withTenant('register-application-enrich', (db) =>
-      enrichApplications(db, [created]),
-    );
-    return reply.code(201).send(enriched);
-  });
+        await db
+          .insertInto('auditLog')
+          .values({
+            tenantId,
+            actor: `user:${userId}`,
+            action: 'application.registered',
+            target: `application:${row.id}`,
+            metadata: JSON.stringify({ env: parsed.data.env }),
+          })
+          .execute();
+
+        return row;
+      });
+
+      const [enriched] = await database.withTenant('register-application-enrich', (db) =>
+        enrichApplications(db, [created]),
+      );
+      return reply.code(201).send(enriched);
+    },
+  );
 
   /**
    * `GET /v1/applications/:id/schemas` — entity schemas of the active memory version.

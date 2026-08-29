@@ -33,9 +33,7 @@ describe('assembleSnapshot', () => {
             stateFingerprint: HASH,
             structuralHash: HASH,
             label: 'Orders',
-            elements: [
-              { elementKey: 'orders.nav.orders', fingerprint: FP, confidence: 0.95 },
-            ],
+            elements: [{ elementKey: 'orders.nav.orders', fingerprint: FP, confidence: 0.95 }],
           },
           elementIds: new Map([['orders.nav.orders', '00000000-0000-4000-8000-000000000020']]),
         },
@@ -89,9 +87,7 @@ describe('assembleSnapshot', () => {
             stateFingerprint: HASH,
             structuralHash: HASH,
             label: 'Home',
-            elements: [
-              { elementKey: 'home.nav.orders', fingerprint: FP, confidence: 0.95 },
-            ],
+            elements: [{ elementKey: 'home.nav.orders', fingerprint: FP, confidence: 0.95 }],
           },
           elementIds: new Map([['home.nav.orders', '00000000-0000-4000-8000-000000000020']]),
         },

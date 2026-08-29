@@ -318,9 +318,7 @@ export function configFromArgs(argv: readonly string[], env: NodeJS.ProcessEnv):
       args['console-origin'],
       'console-origin',
       env.CONSOLE_ORIGIN ??
-        (envName === 'development'
-          ? `http://127.0.0.1:${env.CONSOLE_PORT ?? '3000'}`
-          : ''),
+        (envName === 'development' ? `http://127.0.0.1:${env.CONSOLE_PORT ?? '3000'}` : ''),
     ),
     env: envName,
     version: requireString(args.version, 'version', '0.0.0'),

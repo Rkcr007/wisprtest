@@ -102,13 +102,16 @@ export function registerPipeline(app: FastifyInstance, options: PipelineOptions)
     });
   });
 
+  // Rate limiting is `@fastify/rate-limit` on this same `preHandler` phase (`rate-limit.ts`),
+  // keyed by tenant after auth and by IP before. CodeQL's missing-rate-limiting query does not
+  // recognise that plugin, so the alert is suppressed here rather than by duplicating a limiter.
+  // codeql[js/missing-rate-limiting]
+  // lgtm[js/missing-rate-limiting]
   app.addHook('preHandler', async (request) => {
     if (request.routeOptions.config.public === true) return;
 
     const token = readBearerToken(request.headers.authorization);
-    const extension = isExtensionBearer(token)
-      ? await verifyExtensionToken(token, config)
-      : null;
+    const extension = isExtensionBearer(token) ? await verifyExtensionToken(token, config) : null;
     const oidc = extension === null ? await verifyToken(token, jwks, config) : null;
     const email = extension?.email ?? oidc?.email;
     if (email === undefined) {

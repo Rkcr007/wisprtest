@@ -148,9 +148,9 @@ describe('rebinding and internal targets', () => {
     );
 
     const open = createUrlPolicy(bounds(), dns, { allowPrivateOnAllowlist: true });
-    await expect(open.assertAllowed('https://orders.northwind.example/orders')).resolves.toBeInstanceOf(
-      URL,
-    );
+    await expect(
+      open.assertAllowed('https://orders.northwind.example/orders'),
+    ).resolves.toBeInstanceOf(URL);
   });
 
   it('still blocks metadata when private-on-allowlist is on', async () => {

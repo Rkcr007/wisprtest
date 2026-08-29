@@ -1,4 +1,12 @@
-import { Alias, ElementRecord, EntitySchema, NavEdge, ScreenNode, SeedLedgerEntry, Session } from 'protocol';
+import {
+  Alias,
+  ElementRecord,
+  EntitySchema,
+  NavEdge,
+  ScreenNode,
+  SeedLedgerEntry,
+  Session,
+} from 'protocol';
 import { z } from 'zod';
 
 /**

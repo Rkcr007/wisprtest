@@ -1,5 +1,9 @@
 import { decodeJwt, SignJWT, jwtVerify, type JWTPayload } from 'jose';
-import { ExtensionTokenScope, type ExtensionToken, type ExtensionTokenScope as Scope } from 'protocol';
+import {
+  ExtensionTokenScope,
+  type ExtensionToken,
+  type ExtensionTokenScope as Scope,
+} from 'protocol';
 
 import type { GatewayConfig } from '../config.js';
 import { ForbiddenError, UnauthorizedError } from '../errors.js';
@@ -154,7 +158,8 @@ export async function verifyExtensionToken(
   }
 
   const aid = payload.aid;
-  const applicationId = aid === null || aid === undefined ? null : typeof aid === 'string' ? aid : null;
+  const applicationId =
+    aid === null || aid === undefined ? null : typeof aid === 'string' ? aid : null;
   if (aid !== null && aid !== undefined && applicationId === null) {
     throw new UnauthorizedError('extension token has a malformed application id');
   }

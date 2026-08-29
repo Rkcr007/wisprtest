@@ -46,9 +46,10 @@ async function MemoryLoaded({
   applicationId: string;
   screenId: string | null;
 }) {
-  const next = screenId === null
-    ? `/applications/${applicationId}/memory`
-    : `/applications/${applicationId}/memory?screenId=${screenId}`;
+  const next =
+    screenId === null
+      ? `/applications/${applicationId}/memory`
+      : `/applications/${applicationId}/memory?screenId=${screenId}`;
   const loaded = await requireApplicationPage(applicationId, next);
   if (!loaded.ok) {
     return (

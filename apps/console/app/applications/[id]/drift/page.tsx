@@ -54,7 +54,10 @@ async function DriftLoaded({ applicationId }: { applicationId: string }) {
     );
     return <DriftQueue applicationId={parsed.data} initial={listed} />;
   } catch (error: unknown) {
-    if (isAuthRequired(error) || (error instanceof ConsoleError && error.code === 'auth_required')) {
+    if (
+      isAuthRequired(error) ||
+      (error instanceof ConsoleError && error.code === 'auth_required')
+    ) {
       redirect(`/auth/login?next=${encodeURIComponent(`/applications/${parsed.data}/drift`)}`);
     }
     return (

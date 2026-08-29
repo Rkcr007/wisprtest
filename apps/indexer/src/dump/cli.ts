@@ -48,7 +48,7 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === '--') continue;
-    if (token === undefined || !token.startsWith('--')) {
+    if (!token?.startsWith('--')) {
       throw new UsageError(`unexpected argument: ${token ?? '(end)'}`);
     }
     const name = token.slice(2);
@@ -59,7 +59,7 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
       continue;
     }
     const value = argv[i + 1];
-    if (value === undefined || value.startsWith('--')) {
+    if (value?.startsWith('--') !== false) {
       throw new UsageError(`--${name} needs a value`);
     }
     i += 1;
@@ -124,8 +124,7 @@ async function main(argv: readonly string[]): Promise<void> {
 }
 
 const entry = process.argv[1];
-const invoked =
-  entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).href;
+const invoked = entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).href;
 if (invoked) {
   main(process.argv.slice(2)).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : 'dump failed';

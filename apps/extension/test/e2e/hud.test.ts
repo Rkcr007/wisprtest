@@ -280,7 +280,10 @@ describe('local dump attach', () => {
 
       expect(servers.tokenRequests).toHaveLength(tokensBefore);
     } finally {
-      await options.locator('#clear').click().catch(() => undefined);
+      await options
+        .locator('#clear')
+        .click()
+        .catch(() => undefined);
       await dumped?.close().catch(() => undefined);
       await options.close().catch(() => undefined);
       await worker.evaluate(() => chrome.storage.local.remove('wispr:local-memory'));

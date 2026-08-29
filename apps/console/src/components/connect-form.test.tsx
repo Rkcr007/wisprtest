@@ -70,8 +70,21 @@ function emptyList(): Response {
   });
 }
 
-function isListGet(url: unknown, init?: RequestInit): boolean {
-  return String(url) === '/api/applications' && (init?.method === undefined || init.method === 'GET');
+function hrefOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function isListGet(input: RequestInfo | URL, init?: RequestInit): boolean {
+  return (
+    hrefOf(input) === '/api/applications' && (init?.method === undefined || init.method === 'GET')
+  );
+}
+
+function jsonBody(init: RequestInit | undefined): unknown {
+  if (typeof init?.body !== 'string') throw new Error('expected a JSON string body');
+  return JSON.parse(init.body);
 }
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -85,29 +98,30 @@ function jsonResponse(body: unknown, status: number): Response {
 function fetchWithList(
   handler: (url: string, init?: RequestInit) => Response,
 ): ReturnType<typeof vi.fn> {
-  return vi.fn((url: string, init?: RequestInit) => {
-    if (isListGet(url, init)) return Promise.resolve(emptyList());
-    return Promise.resolve(handler(url, init));
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (isListGet(input, init)) return Promise.resolve(emptyList());
+    return Promise.resolve(handler(hrefOf(input), init));
   });
 }
 
 function successfulIndexFetch(): ReturnType<typeof vi.fn> {
   return fetchWithList((url, init) => {
-    if (String(url) === '/api/applications' && init?.method === 'POST') {
+    if (url === '/api/applications' && init?.method === 'POST') {
       return jsonResponse(APPLICATION, 201);
     }
-    if (String(url) === `/api/applications/${APPLICATION_ID}/crawl`) {
+    if (url === `/api/applications/${APPLICATION_ID}/crawl`) {
       return jsonResponse(accepted, 202);
     }
     return new Response('not found', { status: 404 });
   });
 }
 
-function postCalls(fetchMock: ReturnType<typeof vi.fn>): [string, RequestInit | undefined][] {
-  return fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST') as [
-    string,
-    RequestInit | undefined,
-  ][];
+function postCalls(fetchMock: ReturnType<typeof vi.fn>): { url: string; init?: RequestInit }[] {
+  return fetchMock.mock.calls.flatMap((call) => {
+    const [input, init] = call as [RequestInfo | URL, RequestInit | undefined];
+    if (init?.method !== 'POST') return [];
+    return [{ url: hrefOf(input), init }];
+  });
 }
 
 function submit(): void {
@@ -217,22 +231,20 @@ describe('ConnectForm — the bounds gate', () => {
       expect(postCalls(fetchMock)).toHaveLength(2);
     });
     const posts = postCalls(fetchMock);
-    expect(posts[0]?.[0]).toBe('/api/applications');
-    const registered = JSON.parse(String(posts[0]?.[1]?.body)) as {
-      name: string;
-      baseUrl: string;
-      env: string;
-    };
-    expect(registered).toEqual({
+    expect(posts[0]?.url).toBe('/api/applications');
+    expect(jsonBody(posts[0]?.init)).toEqual({
       name: 'Orders',
       baseUrl: 'https://app.example.com',
       env: 'staging',
     });
-    expect(posts[1]?.[0]).toBe(`/api/applications/${APPLICATION_ID}/crawl`);
-    const body = JSON.parse(String(posts[1]?.[1]?.body)) as { bounds: Record<string, unknown> };
-    expect(body.bounds.maxPages).toBe(50);
-    expect(body.bounds.allowedOrigins).toEqual(['https://app.example.com']);
-    expect(body.bounds.neverInteractSelectors).toEqual(['button[data-action="delete"]']);
+    expect(posts[1]?.url).toBe(`/api/applications/${APPLICATION_ID}/crawl`);
+    expect(jsonBody(posts[1]?.init)).toMatchObject({
+      bounds: {
+        maxPages: 50,
+        allowedOrigins: ['https://app.example.com'],
+        neverInteractSelectors: ['button[data-action="delete"]'],
+      },
+    });
   });
 
   it('sends the browser to the indexing screen with the page cap it just set', async () => {
@@ -255,7 +267,7 @@ describe('ConnectForm — refusals from the server', () => {
     vi.stubGlobal(
       'fetch',
       fetchWithList((url, init) => {
-        if (String(url) === '/api/applications' && init?.method === 'POST') {
+        if (url === '/api/applications' && init?.method === 'POST') {
           return jsonResponse(APPLICATION, 201);
         }
         return jsonResponse(

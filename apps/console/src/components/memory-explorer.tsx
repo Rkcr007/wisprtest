@@ -134,8 +134,8 @@ export function MemoryExplorer({
       <section className="card" aria-labelledby="memory-aliases">
         <h2 id="memory-aliases">Vocabulary</h2>
         <p className="hint">
-          Phrases are listed with their source and hit count. Teaching a new phrase happens at
-          T2 write-back, not here — a console CRUD surface would skip the compounding loop.
+          Phrases are listed with their source and hit count. Teaching a new phrase happens at T2
+          write-back, not here — a console CRUD surface would skip the compounding loop.
         </p>
         <div className="scroll">
           <table>

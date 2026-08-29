@@ -14,7 +14,7 @@ export function assertExtensionMintCaller(request: Request, cfg: ConsoleConfig):
   const origin = request.headers.get('origin');
   const consoleOrigin = new URL(cfg.OIDC_REDIRECT_URI).origin;
   if (origin === consoleOrigin) return;
-  if (origin !== null && origin.startsWith('chrome-extension://')) return;
+  if (origin?.startsWith('chrome-extension://')) return;
 
   throw new ConsoleError(
     'auth_required',

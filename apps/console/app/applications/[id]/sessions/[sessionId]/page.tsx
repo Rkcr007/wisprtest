@@ -77,7 +77,10 @@ async function SessionLoaded({
 
     return <SessionTimelineView timeline={timeline} />;
   } catch (error: unknown) {
-    if (isAuthRequired(error) || (error instanceof ConsoleError && error.code === 'auth_required')) {
+    if (
+      isAuthRequired(error) ||
+      (error instanceof ConsoleError && error.code === 'auth_required')
+    ) {
       redirect(`/auth/login?next=${encodeURIComponent(next)}`);
     }
     return (

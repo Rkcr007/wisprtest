@@ -86,7 +86,9 @@ export function DriftQueue({
           }));
           throw new Error(failure.data.message);
         }
-        throw new Error(`the console could not record the decision (HTTP ${String(response.status)})`);
+        throw new Error(
+          `the console could not record the decision (HTTP ${String(response.status)})`,
+        );
       }
       const parsed = DriftDecisionResponse.safeParse(payload);
       if (!parsed.success) throw new Error('the gateway returned an unrecognised decision');
@@ -136,8 +138,8 @@ export function DriftQueue({
       <h2 id={`${prefix}-heading`}>Drift</h2>
       <p className="hint">
         Pending reports. Approving activates the candidate memory version the indexer built.
-        Rejecting leaves memory as it is. The gateway refuses a decision the caller is not
-        allowed to make; this screen does not guess that in advance.
+        Rejecting leaves memory as it is. The gateway refuses a decision the caller is not allowed
+        to make; this screen does not guess that in advance.
       </p>
 
       <div className="chips">
@@ -168,59 +170,59 @@ export function DriftQueue({
       ) : null}
 
       <div className="scroll">
-          <table>
-            <caption>Pending reports, newest first.</caption>
-            <thead>
+        <table>
+          <caption>Pending reports, newest first.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Route</th>
+              <th scope="col">Status</th>
+              <th scope="col">Alias survival</th>
+              <th scope="col">Detected</th>
+              <th scope="col">Raised</th>
+              <th scope="col">Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reports.length === 0 ? (
               <tr>
-                <th scope="col">Route</th>
-                <th scope="col">Status</th>
-                <th scope="col">Alias survival</th>
-                <th scope="col">Detected</th>
-                <th scope="col">Raised</th>
-                <th scope="col">Review</th>
+                <td colSpan={6} className="hint">
+                  No pending reports. A structural mismatch raised by the extension or a scheduled
+                  re-crawl will appear here once the gateway has one to show.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {reports.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="hint">
-                    No pending reports. A structural mismatch raised by the extension or a
-                    scheduled re-crawl will appear here once the gateway has one to show.
-                  </td>
-                </tr>
-              ) : (
-                reports.map((report) => (
-                  <ReportRow
-                    key={report.id}
-                    report={report}
-                    prefix={prefix}
-                    rejecting={rejectingId === report.id}
-                    reason={rejectingId === report.id ? reason : ''}
-                    reasonError={rejectingId === report.id ? issues.reason : undefined}
-                    busy={busy}
-                    onApprove={() => {
-                      submit(report.id, 'approve');
-                    }}
-                    onBeginReject={() => {
-                      setRejectingId(report.id);
-                      setReason('');
-                      setIssues({});
-                    }}
-                    onReasonChange={setReason}
-                    onConfirmReject={() => {
-                      submit(report.id, 'reject');
-                    }}
-                    onCancelReject={() => {
-                      setRejectingId(null);
-                      setReason('');
-                      setIssues({});
-                    }}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+            ) : (
+              reports.map((report) => (
+                <ReportRow
+                  key={report.id}
+                  report={report}
+                  prefix={prefix}
+                  rejecting={rejectingId === report.id}
+                  reason={rejectingId === report.id ? reason : ''}
+                  reasonError={rejectingId === report.id ? issues.reason : undefined}
+                  busy={busy}
+                  onApprove={() => {
+                    submit(report.id, 'approve');
+                  }}
+                  onBeginReject={() => {
+                    setRejectingId(report.id);
+                    setReason('');
+                    setIssues({});
+                  }}
+                  onReasonChange={setReason}
+                  onConfirmReject={() => {
+                    submit(report.id, 'reject');
+                  }}
+                  onCancelReject={() => {
+                    setRejectingId(null);
+                    setReason('');
+                    setIssues({});
+                  }}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -306,7 +308,9 @@ function DiffReview({ report }: { readonly report: DriftReport }) {
     return (
       <p className="hint">
         No reviewable diff yet
-        {report.status === 'reconciling' ? ' — the indexer is still reconciling this screen.' : '.'}{' '}
+        {report.status === 'reconciling'
+          ? ' — the indexer is still reconciling this screen.'
+          : '.'}{' '}
         Approving is refused until a candidate version exists.
       </p>
     );
@@ -346,9 +350,7 @@ function DiffLists({ diff }: { readonly diff: StructuralDiff }) {
       <DiffGroup
         title="Renamed"
         empty="None."
-        items={diff.renamed.map(
-          (item) => `${item.elementKey} · now ${item.toNameRedacted}`,
-        )}
+        items={diff.renamed.map((item) => `${item.elementKey} · now ${item.toNameRedacted}`)}
       />
       <DiffGroup
         title="Schema"

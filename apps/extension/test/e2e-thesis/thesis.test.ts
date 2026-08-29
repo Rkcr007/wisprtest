@@ -19,8 +19,8 @@ import { buildFixtureSnapshot } from './snapshot.js';
  * Remember → Execute, not of a unit.
  */
 
-let app: FixtureApp;
-let browser: Browser;
+let app: FixtureApp | undefined;
+let browser: Browser | undefined;
 let page: Page;
 let session: CDPSession;
 let harnessJs: string;
@@ -87,9 +87,11 @@ async function command(transcript: string): Promise<void> {
 
 beforeAll(async () => {
   harnessJs = await bundleHarness();
-  app = await startFixtureApp();
-  browser = await chromium.launch({ channel: 'chromium' });
-  page = await browser.newPage();
+  const fixture = await startFixtureApp();
+  app = fixture;
+  const launched = await chromium.launch({ channel: 'chromium' });
+  browser = launched;
+  page = await launched.newPage();
   session = await page.context().newCDPSession(page);
 
   await page.exposeFunction('wisprCdp', async (command: CdpCommand) => {
@@ -125,19 +127,20 @@ beforeAll(async () => {
         pageErrors.push(error instanceof Error ? error.message : 'addScriptTag failed');
       });
   });
-  await page.goto(app.url);
+  await page.goto(fixture.url);
   try {
     await ready();
   } catch (error) {
     throw new Error(
       `${error instanceof Error ? error.message : 'ready failed'}; page errors: ${pageErrors.join(' | ')}`,
+      { cause: error },
     );
   }
 }, 180_000);
 
 afterAll(async () => {
-  if (browser !== undefined) await browser.close();
-  if (app !== undefined) await app.close();
+  await browser?.close();
+  await app?.close();
 });
 
 describe('Remember → Execute against the fixture app', () => {
@@ -172,7 +175,7 @@ describe('Remember → Execute against the fixture app', () => {
 
     // 4. "approve it" — class C: staged, then confirmed.
     await command('approve it');
-    await page.waitForFunction(() => window.wisprView().awaitingConfirmation === true);
+    await page.waitForFunction(() => window.wisprView().awaitingConfirmation);
     await page.waitForTimeout(200);
     try {
       await page.evaluate(() => {

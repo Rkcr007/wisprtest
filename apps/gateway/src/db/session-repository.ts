@@ -88,7 +88,11 @@ export async function listSessions(
     readonly offset: number;
   },
 ): Promise<{ readonly sessions: readonly Session[]; readonly total: number }> {
-  let listed = db.selectFrom('sessions').selectAll().orderBy('startedAt', 'desc').orderBy('id', 'desc');
+  let listed = db
+    .selectFrom('sessions')
+    .selectAll()
+    .orderBy('startedAt', 'desc')
+    .orderBy('id', 'desc');
   let counted = db.selectFrom('sessions').select((eb) => eb.fn.countAll<string>().as('total'));
   if (filter.applicationId !== undefined) {
     listed = listed.where('applicationId', '=', filter.applicationId);

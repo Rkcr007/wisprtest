@@ -1,11 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ExtensionToken, ExtensionTokenRequest } from 'protocol';
 
-import {
-  mintExtensionToken,
-  originOf,
-  scopesForRole,
-} from '../auth/extension-token.js';
+import { mintExtensionToken, originOf, scopesForRole } from '../auth/extension-token.js';
 import type { GatewayConfig } from '../config.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { GatewayError } from '../errors.js';
@@ -89,9 +85,12 @@ export function registerExtensionTokenRoutes(
   );
 }
 
-function requirePrincipal(
-  request: FastifyRequest,
-): { tenantId: string; userId: string; email: string; role: Role } {
+function requirePrincipal(request: FastifyRequest): {
+  tenantId: string;
+  userId: string;
+  email: string;
+  role: Role;
+} {
   const principal = request.principal;
   if (principal === undefined || !isRole(principal.role)) {
     throw new GatewayError('unauthorized', 'authentication required');

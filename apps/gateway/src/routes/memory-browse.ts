@@ -176,7 +176,12 @@ export function registerMemoryBrowseRoutes(
         }
 
         const [rows, totalRow] = await Promise.all([
-          listed.orderBy('elements.elementKey').orderBy('elements.id').limit(page.limit).offset(page.offset).execute(),
+          listed
+            .orderBy('elements.elementKey')
+            .orderBy('elements.id')
+            .limit(page.limit)
+            .offset(page.offset)
+            .execute(),
           counted.executeTakeFirst(),
         ]);
 

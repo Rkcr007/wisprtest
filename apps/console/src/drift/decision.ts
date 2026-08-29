@@ -1,8 +1,4 @@
-import {
-  DriftDecisionRequest,
-  type DriftListResponse,
-  type DriftReport,
-} from 'protocol';
+import { DriftDecisionRequest, type DriftListResponse, type DriftReport } from 'protocol';
 
 /**
  * A human's decision on a pending drift report, parsed the way the Connect form parses bounds:

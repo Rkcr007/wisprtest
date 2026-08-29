@@ -37,9 +37,7 @@ export const STRUCTURAL_DIFF: StructuralDiff = {
       landmarkPath: ['main', 'region:orders'],
     },
   ],
-  removed: [
-    { elementKey: 'orders.filter.draft', elementId: REPORT_ID, role: 'button' },
-  ],
+  removed: [{ elementKey: 'orders.filter.draft', elementId: REPORT_ID, role: 'button' }],
   moved: [
     {
       elementKey: 'orders.detail.approve',

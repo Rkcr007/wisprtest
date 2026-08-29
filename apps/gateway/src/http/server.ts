@@ -11,8 +11,12 @@ import { createAnthropicProvider, type ModelProvider } from '../model/index.js';
 import { createS3EvidenceStore } from '../storage/s3-evidence-store.js';
 import type { EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
+import { registerAdminRoutes } from '../routes/admin.js';
+import { registerApplicationRoutes } from '../routes/applications.js';
 import { registerCrawlRoutes } from '../routes/crawl.js';
 import { registerDriftRoutes } from '../routes/drift.js';
+import { registerExtensionTokenRoutes } from '../routes/extension-token.js';
+import { registerMemoryBrowseRoutes } from '../routes/memory-browse.js';
 import { registerMemoryRoutes, snapshotKey } from '../routes/memory.js';
 import { registerResolveRoutes } from '../routes/resolve.js';
 import { registerSeedRoutes } from '../routes/seed.js';
@@ -97,6 +101,10 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     redis: options.redis,
     metrics,
   });
+  registerMemoryBrowseRoutes(app, { database: options.database });
+  registerApplicationRoutes(app, { database: options.database });
+  registerAdminRoutes(app, { database: options.database });
+  registerExtensionTokenRoutes(app, { config, database: options.database });
   registerCrawlRoutes(app, {
     config,
     database: options.database,

@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import { trace } from '@opentelemetry/api';
 import type { FastifyInstance } from 'fastify';
+import type { ExtensionTokenScope } from 'protocol';
 
+import {
+  assertExtensionScope,
+  isExtensionBearer,
+  verifyExtensionToken,
+} from '../auth/extension-token.js';
 import { createJwks, type Jwks } from '../auth/jwks.js';
 import { readBearerToken, verifyToken } from '../auth/verify.js';
 import type { GatewayConfig } from '../config.js';
@@ -38,6 +44,14 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** Set by the authentication hook. Absent on public routes. */
     principal?: { userId: string; tenantId: string; role: Role; email: string };
+    /**
+     * Set only when the bearer is a minted extension token. Console OIDC sessions leave this
+     * unset so role alone authorises them. `applicationId` is null when the origin is unindexed.
+     */
+    extension?: {
+      readonly scopes: readonly ExtensionTokenScope[];
+      readonly applicationId: string | null;
+    };
   }
   interface FastifyContextConfig {
     /** Opt out of authentication. Default is to require it. */
@@ -92,9 +106,16 @@ export function registerPipeline(app: FastifyInstance, options: PipelineOptions)
     if (request.routeOptions.config.public === true) return;
 
     const token = readBearerToken(request.headers.authorization);
-    const verified = await verifyToken(token, jwks, config);
+    const extension = isExtensionBearer(token)
+      ? await verifyExtensionToken(token, config)
+      : null;
+    const oidc = extension === null ? await verifyToken(token, jwks, config) : null;
+    const email = extension?.email ?? oidc?.email;
+    if (email === undefined) {
+      throw new UnauthorizedError('token has no email');
+    }
 
-    const principal = await findPrincipalByEmail(database, verified.email);
+    const principal = await findPrincipalByEmail(database, email);
     if (principal === null) {
       // The token is genuine but names somebody no tenant knows. Unauthenticated rather than
       // forbidden — there is no principal to authorise in the first place.
@@ -108,6 +129,12 @@ export function registerPipeline(app: FastifyInstance, options: PipelineOptions)
     }
 
     request.principal = { ...principal, role: principal.role };
+    if (extension !== null) {
+      request.extension = {
+        scopes: extension.scopes,
+        applicationId: extension.applicationId,
+      };
+    }
 
     // Fills in the context the `onRequest` hook created. Not a second `runWithContext`: a
     // context established inside a hook is gone by the time the handler runs, and the request
@@ -116,10 +143,13 @@ export function registerPipeline(app: FastifyInstance, options: PipelineOptions)
       tenantId: principal.tenantId,
       userId: principal.userId,
       role: principal.role,
-      sessionId: verified.sessionId,
+      sessionId: oidc?.sessionId ?? null,
     });
 
     const permission = request.routeOptions.config.permission;
-    if (permission !== undefined) assertPermission(principal.role, permission);
+    if (permission !== undefined) {
+      assertPermission(principal.role, permission);
+      assertExtensionScope(request.extension?.scopes, permission);
+    }
   });
 }

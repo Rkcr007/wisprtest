@@ -7,16 +7,20 @@ import {
   type SessionTimeline,
   type SignedEvidence,
 } from 'protocol';
+import { z } from 'zod';
 
 import type { TenantDatabase } from '../db/pool.js';
+import { listLedgerForSession } from '../db/seed-repository.js';
 import {
   closeSession,
   findSession,
   insertSteps,
+  listSessions,
   listSteps,
   openSession,
 } from '../db/session-repository.js';
 import { GatewayError } from '../errors.js';
+import { parsePage } from '../http/page.js';
 import { evidenceKey, keyBelongsToTenant, type EvidenceStore } from '../storage/evidence-store.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 
@@ -60,6 +64,10 @@ interface SessionParams {
   readonly id: string;
 }
 
+const SessionListQuery = z.object({
+  applicationId: z.uuid().optional(),
+});
+
 export function registerSessionRoutes(app: FastifyInstance, options: SessionRoutesOptions): void {
   const { database, metrics, evidence } = options;
 
@@ -82,6 +90,44 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
       issues: [{ path, message: detail }],
     });
   }
+
+  app.get('/v1/sessions', { config: { permission: 'memory:read' } }, async (request) => {
+    principalOf(request);
+    const page = parsePage(request.query);
+    const filter = SessionListQuery.safeParse(request.query);
+    if (!filter.success) {
+      throw new GatewayError('validation_failed', 'invalid session list query', {
+        issues: filter.error.issues.map((issue) => ({
+          path: issue.path.join('.') || 'root',
+          message: issue.message,
+        })),
+      });
+    }
+
+    return database.withTenant('session-list', (db) =>
+      listSessions(db, {
+        ...(filter.data.applicationId === undefined ? {} : { applicationId: filter.data.applicationId }),
+        limit: page.limit,
+        offset: page.offset,
+      }),
+    );
+  });
+
+  app.get<{ Params: SessionParams }>(
+    '/v1/sessions/:id/ledger',
+    { config: { permission: 'memory:read' } },
+    async (request) => {
+      principalOf(request);
+      return database.withTenant('session-ledger', async (db) => {
+        const session = await findSession(db, request.params.id);
+        if (session === null) {
+          throw invalid('unknown session', 'id', 'unknown session for this tenant');
+        }
+        const entries = await listLedgerForSession(db, session.id);
+        return { sessionId: session.id, entries };
+      });
+    },
+  );
 
   app.post('/v1/sessions', { config: { permission: 'session:write' } }, async (request, reply) => {
     const { tenantId, userId } = principalOf(request);

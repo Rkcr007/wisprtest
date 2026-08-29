@@ -41,6 +41,19 @@ const gatewayEnvSchema = z.object({
   /** Leeway for clock skew between this service and the identity provider. */
   OIDC_CLOCK_TOLERANCE_SECONDS: z.coerce.number().int().min(0).max(300),
 
+  /**
+   * HMAC key that signs scoped extension tokens. The extension is not an OIDC client — the
+   * console session mints these, and this key is what makes one ours. Anything that holds it
+   * can mint a credential for any tenant, so it is a secret: never logged, never defaulted.
+   */
+  EXTENSION_TOKEN_SIGNING_KEY: z.string().min(32),
+  /**
+   * Lifetime of one minted extension token. There is no revocation list; expiry *is* the
+   * revocation window. Floor one minute so a refresh cannot race its own mint; ceiling one
+   * hour so a leaked token in a customer's tab does not last a working day.
+   */
+  EXTENSION_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600),
+
   // ── Rate limiting ──────────────────────────────────────────────────────────────────────────
   /** Requests permitted per tenant per window — per tenant, not per process. */
   RATE_LIMIT_MAX: z.coerce.number().int().min(1),

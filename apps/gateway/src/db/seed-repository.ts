@@ -373,6 +373,27 @@ export async function listOutstandingForSession(
 }
 
 /**
+ * Every ledger row for a session, including already-reverted ones.
+ *
+ * The Data screen has to show what was seeded and what was undone. Filtering to outstanding
+ * would hide the history a lead needs before they approve another write.
+ */
+export async function listLedgerForSession(
+  db: ScopedDatabase,
+  sessionId: string,
+): Promise<SeedLedgerEntry[]> {
+  const rows = await db
+    .selectFrom('seedLedger')
+    .selectAll()
+    .where('sessionId', '=', sessionId)
+    .orderBy('createdAt', 'desc')
+    .orderBy('id', 'desc')
+    .execute();
+
+  return rows.map(toLedgerEntry);
+}
+
+/**
  * Stamp an entry reverted.
  *
  * Conditional on it not already being reverted, so two concurrent reverts of the same session

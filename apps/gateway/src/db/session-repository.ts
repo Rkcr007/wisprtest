@@ -80,6 +80,32 @@ export async function openSession(
   return toSession(row);
 }
 
+export async function listSessions(
+  db: ScopedDatabase,
+  filter: {
+    readonly applicationId?: string;
+    readonly limit: number;
+    readonly offset: number;
+  },
+): Promise<{ readonly sessions: readonly Session[]; readonly total: number }> {
+  let listed = db.selectFrom('sessions').selectAll().orderBy('startedAt', 'desc').orderBy('id', 'desc');
+  let counted = db.selectFrom('sessions').select((eb) => eb.fn.countAll<string>().as('total'));
+  if (filter.applicationId !== undefined) {
+    listed = listed.where('applicationId', '=', filter.applicationId);
+    counted = counted.where('applicationId', '=', filter.applicationId);
+  }
+
+  const [rows, totalRow] = await Promise.all([
+    listed.limit(filter.limit).offset(filter.offset).execute(),
+    counted.executeTakeFirst(),
+  ]);
+
+  return {
+    sessions: rows.map(toSession),
+    total: Number(totalRow?.total ?? 0),
+  };
+}
+
 export async function findSession(db: ScopedDatabase, sessionId: string): Promise<Session | null> {
   const row = await db
     .selectFrom('sessions')

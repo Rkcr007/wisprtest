@@ -21,6 +21,8 @@ const validEnv = {
   OIDC_ISSUER_URL: 'https://idp.example/realms/wispr',
   OIDC_AUDIENCE: 'wispr-gateway',
   OIDC_CLOCK_TOLERANCE_SECONDS: '60',
+  EXTENSION_TOKEN_SIGNING_KEY: 'test-extension-token-signing-key-32b',
+  EXTENSION_TOKEN_TTL_SECONDS: '900',
   RATE_LIMIT_MAX: '600',
   RATE_LIMIT_WINDOW_MS: '60000',
   MODEL_API_KEY: 'sk-ant-test',
@@ -85,6 +87,8 @@ describe('loadConfig', () => {
     ['OIDC_CLOCK_TOLERANCE_SECONDS', '-1'],
     // A five-minute tolerance is not skew, it is an expired token being accepted.
     ['OIDC_CLOCK_TOLERANCE_SECONDS', '3600'],
+    ['EXTENSION_TOKEN_SIGNING_KEY', 'too-short'],
+    ['EXTENSION_TOKEN_TTL_SECONDS', '30'],
     ['SHUTDOWN_TIMEOUT_MS', '-1'],
   ])('rejects %s=%j rather than defaulting', (key, value) => {
     expect(() => loadConfig({ ...validEnv, [key]: value })).toThrow(ConfigError);

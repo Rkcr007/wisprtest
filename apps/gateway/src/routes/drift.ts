@@ -20,6 +20,7 @@ import {
 } from '../db/drift-repository.js';
 import { findSessionScope, recordAudit } from '../db/seed-repository.js';
 import { DependencyUnavailableError, GatewayError } from '../errors.js';
+import { parsePage } from '../http/page.js';
 import type { DriftJobDispatcher } from '../redis/drift-queue.js';
 import type { GatewayMetrics } from '../telemetry/metrics.js';
 
@@ -71,9 +72,6 @@ interface Principal {
   readonly tenantId: string;
   readonly userId: string;
 }
-
-/** How many pending reports one page of the review queue returns. */
-const PAGE_SIZE = 100;
 
 export function registerDriftRoutes(app: FastifyInstance, options: DriftRoutesOptions): void {
   const { config, database, metrics, dispatcher, invalidateSnapshot } = options;
@@ -165,9 +163,10 @@ export function registerDriftRoutes(app: FastifyInstance, options: DriftRoutesOp
     { config: { permission: 'memory:read' } },
     async (request, reply) => {
       principalOf(request);
+      const page = parsePage(request.query);
 
       const listed = await database.withTenant('drift-list', (db) =>
-        listPendingReports(db, request.params.appId, PAGE_SIZE),
+        listPendingReports(db, request.params.appId, page.limit, page.offset),
       );
 
       const response: DriftListResponse = {

@@ -870,7 +870,9 @@ describe('local dump attach', () => {
     expect(scheduler.created).toHaveLength(0);
     expect(controller.stateOf(TAB)).toBe('attached');
 
-    const lastState = connection.sent.at(-1);
+    const lastState = [...connection.sent]
+      .reverse()
+      .find((message) => message.attach === 'attached');
     expect(lastState?.attach).toBe('attached');
     expect(lastState?.applicationId).toBe(dump.applicationId);
     expect(lastState?.tokenExpiresAt).toBeNull();

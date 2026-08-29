@@ -145,6 +145,7 @@ afterAll(async () => {
 
 describe('Remember → Execute against the fixture app', () => {
   it('runs the four demo sentences as a tester would', async () => {
+    if (app === undefined) throw new Error('fixture app did not start');
     expect(new URL(page.url()).pathname).toBe('/');
 
     // 1. "open orders" — class R navigate, no confirmation.

@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
  * A Server Component: the session is read on the server and the form is the only part that ships
  * as client code, so an unauthenticated visitor is never served the crawl form at all.
  *
- * Two of Phase 18's eight screens are built. There is no navigation here to the other six,
- * because a link to a route that does not exist is a worse answer than no link.
+ * The application nav appears once a tester opens an application. Drift and session detail
+ * are live; the other four screens are honest destinations, not 404s.
  */
 export default async function ConnectPage({
   searchParams,

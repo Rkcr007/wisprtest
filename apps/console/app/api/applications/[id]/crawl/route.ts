@@ -5,6 +5,7 @@ import { requireSession } from '../../../../../src/auth/current';
 import { StartCrawlRequest, StartCrawlResponse } from '../../../../../src/crawl/request';
 import { ConsoleError } from '../../../../../src/errors';
 import { callGatewayJson } from '../../../../../src/gateway/client';
+import { routeErrorResponse } from '../../../../../src/http/route-error';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,33 +62,6 @@ export async function POST(
 
     return NextResponse.json(started, { status: 202 });
   } catch (error: unknown) {
-    return errorResponse(error);
+    return routeErrorResponse(error, 'the console could not start the crawl');
   }
-}
-
-/**
- * A console error as JSON the Connect screen can render.
- *
- * `issues` is carried through from a gateway `validation_failed` so the form can attach the
- * gateway's own complaint to the field it names — the origin allowlist check in the crawl route
- * is the one that matters most, and it is worth showing on `bounds.allowedOrigins` rather than as
- * a banner.
- */
-function errorResponse(error: unknown): NextResponse {
-  if (error instanceof ConsoleError) {
-    const wispr = error.wispr;
-    return NextResponse.json(
-      {
-        code: wispr?.code ?? error.code,
-        message: error.message,
-        issues: wispr !== null && wispr.code === 'validation_failed' ? wispr.issues : [],
-      },
-      { status: error.status },
-    );
-  }
-
-  return NextResponse.json(
-    { code: 'internal', message: 'the console could not start the crawl', issues: [] },
-    { status: 500 },
-  );
 }

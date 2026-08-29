@@ -1,6 +1,7 @@
-import { AuthProfile, CrawlBounds } from 'protocol';
-import { z } from 'zod';
+import { AuthProfile, CrawlBounds, HttpUrl } from 'protocol';
 
+import { originOf } from '../applications/origin';
+import { ApplicationEnv } from '../applications/schema';
 import type { StartCrawlRequest } from './request';
 
 /**
@@ -31,7 +32,9 @@ import type { StartCrawlRequest } from './request';
  */
 
 export interface CrawlFormValues {
-  readonly applicationId: string;
+  readonly applicationName: string;
+  readonly baseUrl: string;
+  readonly env: '' | ApplicationEnv;
   readonly allowedOrigins: string;
   readonly routeAllowlist: string;
   readonly maxDepth: string;
@@ -64,7 +67,9 @@ export type CrawlFormField = keyof CrawlFormValues;
 export type CrawlFormIssues = Partial<Record<CrawlFormField | 'form', string>>;
 
 export const initialCrawlForm: CrawlFormValues = {
-  applicationId: '',
+  applicationName: '',
+  baseUrl: '',
+  env: '',
   // Empty on purpose — see the note above. These four are the crawl's blast radius.
   allowedOrigins: '',
   routeAllowlist: '',
@@ -94,7 +99,13 @@ export const initialCrawlForm: CrawlFormValues = {
 };
 
 export type CrawlFormResult =
-  | { readonly ok: true; readonly applicationId: string; readonly request: StartCrawlRequest }
+  | {
+      readonly ok: true;
+      readonly applicationName: string;
+      readonly baseUrl: string;
+      readonly env: ApplicationEnv;
+      readonly request: StartCrawlRequest;
+    }
   | { readonly ok: false; readonly issues: CrawlFormIssues };
 
 /** One entry per non-empty line, trimmed. The textareas are line-per-value throughout. */
@@ -114,9 +125,21 @@ function toNumber(value: string): number {
 export function parseCrawlForm(values: CrawlFormValues): CrawlFormResult {
   const issues: CrawlFormIssues = {};
 
-  const applicationId = z.uuid().safeParse(values.applicationId.trim());
-  if (!applicationId.success) {
-    issues.applicationId = 'Enter the application’s UUID.';
+  const applicationName = values.applicationName.trim();
+  if (applicationName.length === 0) {
+    issues.applicationName = 'Enter a name for this application.';
+  } else if (applicationName.length > 200) {
+    issues.applicationName = 'Keep the name under 200 characters.';
+  }
+
+  const baseUrl = HttpUrl.safeParse(values.baseUrl.trim());
+  if (!baseUrl.success) {
+    issues.baseUrl = 'Enter an absolute http(s) URL.';
+  }
+
+  const env = ApplicationEnv.safeParse(values.env);
+  if (!env.success) {
+    issues.env = 'Choose development, staging or production.';
   }
 
   const selectors = lines(values.neverInteractSelectors);
@@ -125,8 +148,13 @@ export function parseCrawlForm(values: CrawlFormValues): CrawlFormResult {
       'List the controls the crawl must never click, or confirm there are none.';
   }
 
+  const typedOrigins = lines(values.allowedOrigins);
+  const derivedOrigin = baseUrl.success ? originOf(baseUrl.data) : null;
+  const allowedOrigins =
+    typedOrigins.length > 0 ? typedOrigins : derivedOrigin === null ? [] : [derivedOrigin];
+
   const bounds = CrawlBounds.safeParse({
-    allowedOrigins: lines(values.allowedOrigins),
+    allowedOrigins,
     routeAllowlist: lines(values.routeAllowlist),
     maxDepth: toNumber(values.maxDepth),
     maxPages: toNumber(values.maxPages),
@@ -155,13 +183,21 @@ export function parseCrawlForm(values: CrawlFormValues): CrawlFormResult {
     }
   }
 
-  if (Object.keys(issues).length > 0 || !bounds.success || !profile.success) {
+  if (
+    Object.keys(issues).length > 0 ||
+    !baseUrl.success ||
+    !env.success ||
+    !bounds.success ||
+    !profile.success
+  ) {
     return { ok: false, issues };
   }
 
   return {
     ok: true,
-    applicationId: values.applicationId.trim(),
+    applicationName,
+    baseUrl: baseUrl.data,
+    env: env.data,
     request: { bounds: bounds.data, authProfile: profile.data },
   };
 }
@@ -274,10 +310,13 @@ export function issuesFromGateway(
         ? boundsField(rest)
         : scope === 'authProfile'
           ? authField('none', rest)
-          : // The crawl route reports an unknown application as an issue on `id`.
-            scope === 'id'
-            ? 'applicationId'
-            : 'form';
+          : scope === 'id' || scope === 'name'
+            ? 'applicationName'
+            : scope === 'baseUrl'
+              ? 'baseUrl'
+              : scope === 'env'
+                ? 'env'
+                : 'form';
     issues[field] ??= issue.message;
   }
 

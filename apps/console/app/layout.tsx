@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { currentSession } from '../src/auth/current';
+import { AppNav } from '../src/components/app-nav';
 import { DesignSystemStyles } from '../src/components/design-system-styles';
 import { Providers } from '../src/components/providers';
 
@@ -19,8 +20,8 @@ export const metadata: Metadata = {
  * Inlined rather than linked because it is small, it is render-blocking either way, and a
  * separate request would flash an unstyled console on every navigation.
  *
- * The header carries no navigation to screens that do not exist. Phase 18 specifies eight; two
- * are built, and a link to a route that 404s is worse than no link.
+ * The header lists the six application screens once the URL names an application. Screens
+ * that are not yet a gateway read are still destinations — they say so, rather than 404.
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const session = await currentSession();
@@ -35,7 +36,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           Skip to content
         </a>
         <header className="masthead">
-          <h1>WisprTest</h1>
+          <h1>
+            <a href="/">WisprTest</a>
+          </h1>
+          <AppNav />
           <span className="spacer" />
           {session === null ? null : (
             <form action="/auth/logout" method="post">

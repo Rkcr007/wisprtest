@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
 /**
- * TanStack Query, for the one thing the console mutates: starting a crawl.
+ * TanStack Query, for the mutations the console makes: starting a crawl, deciding drift.
  *
  * The client is created in state rather than at module scope so it is per-request on the server —
  * a module-level client would be shared between every tenant's render, which is exactly the kind

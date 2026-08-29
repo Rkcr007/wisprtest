@@ -11,7 +11,8 @@ import { asWisprError, ConsoleError } from '../errors';
  * reason: the access token. Handing the browser a token that authorises starting a crawl against
  * the customer's application — under the tenant's own login — is not a trade worth making for a
  * saved network hop, so the browser talks to the console's own routes and the console attaches
- * the credential.
+ * the credential. The packed extension mints the same way: it posts to this process, never to
+ * the gateway, and never holds the OIDC token.
  *
  * Errors arrive as protocol `WisprError`s (`apps/gateway/src/http/server.ts` sends nothing else),
  * so they are parsed with the contract and carried intact. A screen can then render the

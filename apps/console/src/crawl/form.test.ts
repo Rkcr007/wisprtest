@@ -18,12 +18,12 @@ import {
  * somebody chose.
  */
 
-const APPLICATION_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
-
 /** A form a tester has filled in completely. Every test below starts from this and breaks one thing. */
 const filled: CrawlFormValues = {
   ...initialCrawlForm,
-  applicationId: APPLICATION_ID,
+  applicationName: 'Orders',
+  baseUrl: 'https://app.example.com',
+  env: 'staging',
   allowedOrigins: 'https://app.example.com',
   routeAllowlist: '/orders\n/settings',
   maxDepth: '3',
@@ -56,7 +56,9 @@ describe('parseCrawlForm — the bounds are required', () => {
     expect(result.issues.maxPages).toBeDefined();
     // Plus the never-interact decision, and the application itself.
     expect(result.issues.neverInteractSelectors).toBeDefined();
-    expect(result.issues.applicationId).toBeDefined();
+    expect(result.issues.applicationName).toBeDefined();
+    expect(result.issues.baseUrl).toBeDefined();
+    expect(result.issues.env).toBeDefined();
   });
 
   it('ships no defaults for the four blast-radius bounds', () => {
@@ -69,7 +71,6 @@ describe('parseCrawlForm — the bounds are required', () => {
   });
 
   it.each([
-    ['allowedOrigins', { allowedOrigins: '' }],
     ['routeAllowlist', { routeAllowlist: '' }],
     ['maxDepth', { maxDepth: '' }],
     ['maxPages', { maxPages: '' }],
@@ -87,7 +88,9 @@ describe('parseCrawlForm — the bounds are required', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.applicationId).toBe(APPLICATION_ID);
+    expect(result.applicationName).toBe('Orders');
+    expect(result.baseUrl).toBe('https://app.example.com');
+    expect(result.env).toBe('staging');
     expect(result.request.bounds.allowedOrigins).toEqual(['https://app.example.com']);
     expect(result.request.bounds.routeAllowlist).toEqual(['/orders', '/settings']);
     expect(result.request.bounds.maxDepth).toBe(3);
@@ -191,23 +194,52 @@ describe('parseCrawlForm — values the contract rejects', () => {
     expect(result.issues.viewportWidth).toBeUndefined();
   });
 
-  it.each([['not-a-uuid'], [''], ['3f2504e0-4f89-41d3-9a0c']])(
-    'refuses %o as an application id',
-    (value) => {
-      const result = parseCrawlForm({ ...filled, applicationId: value });
+  it.each([[''], ['   ']])('refuses %o as an application name', (value) => {
+    const result = parseCrawlForm({ ...filled, applicationName: value });
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.issues.applicationId).toBeDefined();
-    },
-  );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.applicationName).toBeDefined();
+  });
 
-  it('trims the application id before validating it', () => {
-    const result = parseCrawlForm({ ...filled, applicationId: `  ${APPLICATION_ID}  ` });
+  it('trims the application name before accepting it', () => {
+    const result = parseCrawlForm({ ...filled, applicationName: '  Orders  ' });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.applicationId).toBe(APPLICATION_ID);
+    expect(result.applicationName).toBe('Orders');
+  });
+
+  it.each([['app.example.com'], [''], ['ftp://app.example.com']])(
+    'refuses %o as a base URL',
+    (value) => {
+      const result = parseCrawlForm({ ...filled, baseUrl: value });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.baseUrl).toBeDefined();
+    },
+  );
+
+  it('refuses an empty environment', () => {
+    const result = parseCrawlForm({ ...filled, env: '' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.env).toBeDefined();
+  });
+
+  it('fills the origin allowlist from the base URL when the tester left it empty', () => {
+    // Naming the URL is choosing that origin. Extra origins stay a typed decision.
+    const result = parseCrawlForm({
+      ...filled,
+      baseUrl: 'https://app.example.com/orders',
+      allowedOrigins: '',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.request.bounds.allowedOrigins).toEqual(['https://app.example.com']);
   });
 });
 
@@ -306,10 +338,18 @@ describe('issuesFromGateway', () => {
     expect(issues.form).toBeUndefined();
   });
 
-  it('maps an unknown application onto the application field', () => {
+  it('maps an unknown application onto the application name field', () => {
     const issues = issuesFromGateway([{ path: 'id', message: 'no such application' }]);
 
-    expect(issues.applicationId).toBe('no such application');
+    expect(issues.applicationName).toBe('no such application');
+  });
+
+  it('maps a duplicate-name refusal onto the name field', () => {
+    const issues = issuesFromGateway([
+      { path: 'name', message: 'an application with this name already exists' },
+    ]);
+
+    expect(issues.applicationName).toBe('an application with this name already exists');
   });
 
   it('maps a nested viewport issue onto its axis', () => {

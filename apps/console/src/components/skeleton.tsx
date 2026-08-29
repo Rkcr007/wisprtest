@@ -29,3 +29,81 @@ export function SkeletonChips({ count }: { count: number }) {
     </div>
   );
 }
+
+/**
+ * The Drift queue, empty of reports: same columns, same caption slot, same chip row.
+ *
+ * Suspense fallback for the server fetch. A spinner here would say "something" and then jump
+ * when the table arrived; this is already the table.
+ */
+export function DriftQueueSkeleton() {
+  return (
+    <section className="card" aria-busy="true">
+      <h2>Drift</h2>
+      <p className="visually-hidden" role="status">
+        Loading drift reports
+      </p>
+      <SkeletonChips count={2} />
+      <div className="scroll">
+        <table>
+          <caption>Pending reports, newest first.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Route</th>
+              <th scope="col">Status</th>
+              <th scope="col">Alias survival</th>
+              <th scope="col">Detected</th>
+              <th scope="col">Raised</th>
+              <th scope="col">Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SkeletonRow widths={['70%', '40%', '35%', '40%', '55%', '45%']} />
+            <SkeletonRow widths={['55%', '40%', '35%', '40%', '55%', '45%']} />
+            <SkeletonRow widths={['65%', '40%', '35%', '40%', '55%', '45%']} />
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The Session timeline, empty of steps: chips then the same seven columns the live table uses.
+ */
+export function SessionTimelineSkeleton() {
+  return (
+    <section className="card" aria-busy="true">
+      <h2>Session</h2>
+      <p className="visually-hidden" role="status">
+        Loading session timeline
+      </p>
+      <SkeletonChips count={4} />
+      <div className="scroll">
+        <table>
+          <caption>Recorded steps, in ordinal order.</caption>
+          <thead>
+            <tr>
+              <th scope="col" className="numeric">
+                #
+              </th>
+              <th scope="col">Utterance</th>
+              <th scope="col">Tier</th>
+              <th scope="col">Class</th>
+              <th scope="col">Outcome</th>
+              <th scope="col" className="numeric">
+                Latency
+              </th>
+              <th scope="col">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SkeletonRow widths={['20%', '80%', '30%', '25%', '40%', '35%', '50%']} />
+            <SkeletonRow widths={['20%', '65%', '30%', '25%', '40%', '35%', '50%']} />
+            <SkeletonRow widths={['20%', '75%', '30%', '25%', '40%', '35%', '50%']} />
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}

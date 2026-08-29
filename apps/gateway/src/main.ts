@@ -121,6 +121,16 @@ async function main(): Promise<void> {
     signals: SHUTDOWN_SIGNALS,
     process,
     onShutdown: (result) => {
+      for (const failure of result.failures) {
+        logger.error(
+          {
+            event: 'service.shutdown_hook_failed',
+            hook: failure.name,
+            err: failure.error,
+          },
+          'gateway shutdown hook failed',
+        );
+      }
       logger.info(
         {
           event: 'service.stopped',

@@ -38,13 +38,24 @@ export function startTelemetry(config: GatewayConfig, version = '0.0.0'): Teleme
       [ATTR_SERVICE_VERSION]: version,
       'deployment.environment.name': config.NODE_ENV,
     }),
+    // The gateway uses Pino for logs. An explicit empty processor list prevents NodeSDK from
+    // silently enabling its default OTLP log exporter.
+    logRecordProcessors: [],
     ...(endpoint === undefined
-      ? {}
+      ? {
+          // NodeSDK treats omitted exporter options as a request to use default OTLP exporters.
+          // Empty lists are the documented opt-out and keep local shutdown independent of a
+          // collector that is not configured.
+          metricReaders: [],
+          spanProcessors: [],
+        }
       : {
           traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
-          metricReader: new PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
-          }),
+          metricReaders: [
+            new PeriodicExportingMetricReader({
+              exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
+            }),
+          ],
         }),
     instrumentations: [
       // `/healthz` and `/readyz` are polled by the orchestrator every few seconds. Tracing them

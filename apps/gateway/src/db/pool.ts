@@ -38,9 +38,11 @@ import type { DB } from './schema.generated.js';
 
 /** A query builder that has already been scoped to a tenant. */
 export type ScopedDatabase = Transaction<DB>;
+/** Owning-role query builder, available only through a named `unscoped` callback. */
+export type UnscopedDatabase = Kysely<DB>;
 
 /** Why a caller is bypassing tenant scoping. A closed set, so the diff shows every use. */
-export type UnscopedReason = 'readiness-probe' | 'principal-lookup';
+export type UnscopedReason = 'readiness-probe' | 'principal-lookup' | 'operational-metrics';
 
 export interface TenantDatabase {
   /**
@@ -55,11 +57,11 @@ export interface TenantDatabase {
   /**
    * Run `work` with no tenant scoping, as the owning role.
    *
-   * The escape hatch, named to be conspicuous in a diff. Two callers genuinely have no tenant:
-   * the readiness probe, and the principal lookup that runs during authentication *before* a
-   * tenant is known. It is never reachable from a product route.
+   * The escape hatch, named to be conspicuous in a diff. Three callers genuinely have no tenant:
+   * the readiness probe, the principal lookup that runs before a tenant is known, and the
+   * fleet-wide operational metric refresh. It is never reachable from a product route.
    */
-  unscoped<T>(reason: UnscopedReason, work: (db: Kysely<DB>) => Promise<T>): Promise<T>;
+  unscoped<T>(reason: UnscopedReason, work: (db: UnscopedDatabase) => Promise<T>): Promise<T>;
 
   /** Close the pool. Called from the shutdown drain, after in-flight requests have finished. */
   close(): Promise<void>;

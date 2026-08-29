@@ -1,4 +1,5 @@
 import type { ScopedDatabase } from '../db/pool.js';
+import { LIVE_DRIFT_STATUSES } from '../db/drift-repository.js';
 
 /**
  * Live aggregates the Connect and Overview screens need.
@@ -22,8 +23,6 @@ export interface ApplicationRecord {
   readonly elementCount: number;
   readonly openDriftCount: number;
 }
-
-const LIVE_DRIFT = ['open', 'reconciling', 'diffed'] as const;
 
 export async function enrichApplications(
   db: ScopedDatabase,
@@ -76,7 +75,7 @@ export async function enrichApplications(
     .innerJoin('memoryVersions', 'memoryVersions.id', 'driftReports.memoryVersionId')
     .select(['memoryVersions.applicationId', (eb) => eb.fn.countAll<string>().as('n')])
     .where('memoryVersions.applicationId', 'in', ids)
-    .where('driftReports.status', 'in', [...LIVE_DRIFT])
+    .where('driftReports.status', 'in', [...LIVE_DRIFT_STATUSES])
     .groupBy('memoryVersions.applicationId')
     .execute();
   for (const row of drifts) driftCounts.set(row.applicationId, Number(row.n));

@@ -3,14 +3,15 @@ import {
   type Counter,
   type Histogram,
   type Meter,
+  type ObservableGauge,
   type UpDownCounter,
 } from '@opentelemetry/api';
 
 /**
  * The metrics from docs/ARCHITECTURE.md § 7 that the gateway is responsible for.
  *
- * § 7 names the metrics for the whole system; most are extension-side. Four of them are
- * recorded here, because the gateway is the process that knows their values:
+ * § 7 names the metrics for the whole system; most are extension-side. The gateway records the
+ * server-side values and refreshes fleet state from Postgres:
  *
  * | Metric                              | Recorded when                          | Fed from   |
  * |-------------------------------------|----------------------------------------|------------|
@@ -18,12 +19,11 @@ import {
  * | `wispr_seed_materialize_total`      | the materializer chain settles          | Phases 15–16 |
  * | `wispr_tier_total`                  | alias write-back and step ingest report a tier | Phases 11–12 |
  * | `wispr_false_execution_total`       | a step arrives with a false execution   | Phase 12   |
+ * | `wispr_drift_open_total`            | periodic fleet-state refresh             | Phase 19   |
+ * | `wispr_memory_staleness_hours`      | periodic fleet-state refresh             | Phase 19   |
  *
- * The instruments exist now even though their product call sites do not. That is deliberate and
- * it is not a placeholder: an instrument is an API, later phases increment it by importing it
- * from here, and a dashboard that starts reporting a metric only once it first fires cannot
- * distinguish "zero" from "not deployed yet". Each is exercised by a test that records a value
- * and reads it back through an in-memory reader, so none of this is unverified.
+ * Observable callbacks read an atomically replaced in-memory snapshot because OTel collection is
+ * synchronous. The asynchronous database refresh lives in `operational-metrics.ts`.
  *
  * `wispr_false_execution_total` is the one that matters most. CLAUDE.md makes false execution
  * rate a release gate and ARCHITECTURE § 7 says it "alerts at any nonzero rate", so it is
@@ -31,6 +31,30 @@ import {
  */
 
 export const METER_NAME = 'wispr.gateway';
+
+export interface ApplicationOperationalMetric {
+  readonly tenantId: string;
+  readonly applicationId: string;
+  readonly openDriftCount: number;
+  readonly memoryStalenessHours: number | null;
+}
+
+export interface OperationalMetricState {
+  read(): readonly ApplicationOperationalMetric[];
+  replace(values: readonly ApplicationOperationalMetric[]): void;
+}
+
+/** Atomic in-memory view read synchronously by OTel observable callbacks. */
+export function createOperationalMetricState(): OperationalMetricState {
+  let current: readonly ApplicationOperationalMetric[] = [];
+
+  return {
+    read: () => current,
+    replace: (values) => {
+      current = [...values];
+    },
+  };
+}
 
 export interface GatewayMetrics {
   /** Time to compose a plan. Budgeted at p95 < 1.2 s in CLAUDE.md § "Performance budgets". */
@@ -72,9 +96,42 @@ export interface GatewayMetrics {
   readonly indexProgressSubscribers: UpDownCounter;
   /** Progress events forwarded to a console, labelled by event kind. */
   readonly indexProgressEventsTotal: Counter;
+  /** Current live drift reports per application, including open, reconciling and diffed. */
+  readonly driftOpenTotal: ObservableGauge;
+  /** Hours since the newest screen in an application's active memory was indexed. */
+  readonly memoryStalenessHours: ObservableGauge;
 }
 
-export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): GatewayMetrics {
+export function createMetrics(
+  meter: Meter = metrics.getMeter(METER_NAME),
+  state: OperationalMetricState = createOperationalMetricState(),
+): GatewayMetrics {
+  const driftOpenTotal = meter.createObservableGauge('wispr_drift_open_total', {
+    description: 'Live drift reports awaiting a terminal human decision, per application.',
+  });
+  driftOpenTotal.addCallback((result) => {
+    for (const value of state.read()) {
+      result.observe(value.openDriftCount, {
+        tenant_id: value.tenantId,
+        app_id: value.applicationId,
+      });
+    }
+  });
+
+  const memoryStalenessHours = meter.createObservableGauge('wispr_memory_staleness_hours', {
+    description: 'Hours since the newest screen in the active memory version was indexed.',
+    unit: 'h',
+  });
+  memoryStalenessHours.addCallback((result) => {
+    for (const value of state.read()) {
+      if (value.memoryStalenessHours === null) continue;
+      result.observe(value.memoryStalenessHours, {
+        tenant_id: value.tenantId,
+        app_id: value.applicationId,
+      });
+    }
+  });
+
   return {
     seedPlanLatencyMs: meter.createHistogram('wispr_seed_plan_latency_ms', {
       description: 'Time to compose a CompositionPlan, in milliseconds.',
@@ -122,5 +179,7 @@ export function createMetrics(meter: Meter = metrics.getMeter(METER_NAME)): Gate
     indexProgressEventsTotal: meter.createCounter('wispr_index_progress_events_total', {
       description: 'Index progress events forwarded to a console, labelled by kind.',
     }),
+    driftOpenTotal,
+    memoryStalenessHours,
   };
 }

@@ -150,9 +150,7 @@ function Detail({ label, value }: { readonly label: string; readonly value: stri
       <dt>
         <label>{label}</label>
       </dt>
-      <dd className="path" style={{ margin: 0 }}>
-        {value}
-      </dd>
+      <dd className="path detail-value">{value}</dd>
     </div>
   );
 }

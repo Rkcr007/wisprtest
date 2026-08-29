@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
+import type { ReactElement, ReactNode } from 'react';
 
 import { currentSession } from '../src/auth/current';
 import { AppNav } from '../src/components/app-nav';
 import { DesignSystemStyles } from '../src/components/design-system-styles';
 import { Providers } from '../src/components/providers';
+import { ConsoleSecurityError } from '../src/security/headers';
 
 export const metadata: Metadata = {
   title: 'WisprTest',
@@ -23,13 +25,21 @@ export const metadata: Metadata = {
  * The header lists the six application screens once the URL names an application. Screens
  * that are not yet a gateway read are still destinations — they say so, rather than 404.
  */
-export default async function RootLayout({ children }: { children: ReactNode }) {
-  const session = await currentSession();
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}): Promise<ReactElement> {
+  const [session, requestHeaders] = await Promise.all([currentSession(), headers()]);
+  const nonce = requestHeaders.get('x-nonce');
+  if (nonce === null) {
+    throw new ConsoleSecurityError('rendered request has no CSP nonce');
+  }
 
   return (
     <html lang="en">
       <head>
-        <DesignSystemStyles />
+        <DesignSystemStyles nonce={nonce} />
       </head>
       <body>
         <a className="skip-link" href="#main">

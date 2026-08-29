@@ -260,9 +260,7 @@ function Detail({ label, value }: { label: string; value: string }) {
       <dt>
         <label>{label}</label>
       </dt>
-      <dd className="path" style={{ margin: 0 }}>
-        {value}
-      </dd>
+      <dd className="path detail-value">{value}</dd>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test bench lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas kind-up kind-down
+.PHONY: help dev build test bench lint typecheck ci load-test security-audit db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas kind-up kind-down
 
 COMPOSE := docker compose
 
@@ -69,6 +69,22 @@ lint:
 ## typecheck: tsc --noEmit across TS packages, mypy --strict for composer
 typecheck:
 	pnpm typecheck
+
+## ci: local fast gates (lint + typecheck). Merge CI is GitHub Actions job `ci`.
+# The workflow in `.github/workflows/ci.yml` also runs unit, integration and e2e. This
+# target does not replicate that graph locally — two tracks sharing Compose would collide.
+# See docs/STATUS.md.
+ci: lint typecheck
+	@echo "local fast gates passed. Merge still requires GitHub Actions (required check: ci)."
+
+## load-test: 50 concurrent production-shaped sessions against Compose + a spawned gateway
+# Needs a migrated, seeded stack. Owns its own gateway process; port 8080 must be free.
+load-test: .env db-up
+	node infra/load/run.mjs
+
+## security-audit: Phase 19 blocking security pass (advisories, CSP, RLS, redaction)
+security-audit: .env
+	node infra/security/audit.mjs
 
 ## db-up: start postgres, redis, qdrant and minio, blocking until all are healthy
 db-up: .env

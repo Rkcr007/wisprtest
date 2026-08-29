@@ -17,24 +17,21 @@ the indexer reconciles, and a human decides. Every step below is live.
 | Reconcile worker | `apps/indexer/src/drift/` | Clones the active version, re-crawls the one screen without interacting, diffs, leaves it `building` |
 | Degraded mode | `apps/extension/src/speculation/classify.ts` | A drifted screen classifies every resolution as `A` — pre-staged, explicit yes required |
 | Degraded resolution against drifted *elements* | `apps/extension/src/resolver/tier0.ts`, `candidate-binder.ts` | An alias whose bound element no longer matches its fingerprint is discounted, pushing toward disambiguation |
-| Metrics | `apps/gateway/src/telemetry/metrics.ts`, `apps/indexer/src/telemetry/metrics.ts` | `wispr_drift_reports_total{detected_by}`, `wispr_drift_decisions_total`, `wispr_indexer_drift_reconciles_total`, `wispr_indexer_drift_reconcile_duration_ms`, `wispr_indexer_drift_alias_migration_rate` |
+| Metrics | `apps/gateway/src/telemetry/metrics.ts`, `apps/indexer/src/telemetry/metrics.ts` | Counters: `wispr_drift_reports_total{detected_by}`, `wispr_drift_decisions_total`, indexer reconcile series. **Gauges (2026-08-30):** `wispr_drift_open_total`, `wispr_memory_staleness_hours` — emitted only if a collector is configured. SQL below remains the pager-proof source. |
+| Console Drift screen | `apps/console/app/applications/[id]/drift/page.tsx` | Review queue + approve/reject |
 | A `drift` tone in the HUD | `apps/extension/src/content/Hud.tsx` | The non-blocking notice on a changed screen, and attach failures |
 
-> ⚠️ **Two names in `docs/ARCHITECTURE.md § 7` do not exist.** The observability contract names
-> `wispr_drift_open_total` and `wispr_memory_staleness_hours`; what shipped is
-> `wispr_drift_reports_total` (a counter of raises, labelled `detected_by`, not a gauge of the open
-> queue) and no staleness metric at all. Neither is a gauge of *backlog depth*, which is the number
-> this runbook actually wants. Until one exists, use the SQL below — it is authoritative and the
-> metrics are not.
+> ⚠️ **`wispr_drift_open_total` and `wispr_memory_staleness_hours` are now gateway gauges**,
+> refreshed from Postgres. They still do not page: there is no collector or alert rule in the
+> stack. Until those exist, the SQL below is what an operator should trust. Raise counter
+> `wispr_drift_reports_total` is not backlog depth.
 
 > ⚠️ **`drift_approval_required` (409) is in the error taxonomy and is still never thrown.**
 > `apps/gateway/src/errors.ts` maps it; nothing raises it. A stale memory version does not block a
 > resolution by design, so there is no path that would.
 
-**The one gap that matters operationally:** there is no console screen for the review queue.
-`GET /v1/drift/:appId` returns the pending reports and `POST /v1/drift/:id/approve` records the
-decision, but a human has to reach both over the API. Phase 18's Drift screen is what closes this,
-and until it lands the *Immediate mitigation* section is where an operator actually works.
+**Review lives on the console Drift screen** (`/applications/[id]/drift`) as well as
+`GET /v1/drift/:appId` and `POST /v1/drift/:id/approve`. Use the API when the console is down.
 
 ---
 
@@ -66,8 +63,8 @@ and until it lands the *Immediate mitigation* section is where an operator actua
 
 ### 1. How stale is memory, per application?
 
-`wispr_memory_staleness_hours` is named in `docs/ARCHITECTURE.md § 7` and does not exist, but the
-underlying data does — `screens.indexed_at` and `memory_versions.created_at`:
+`wispr_memory_staleness_hours` is emitted by the gateway as an observable gauge, but there is
+no collector in Compose/kind, so treat Postgres as source of truth:
 
 ```sql
 SELECT a.name,
@@ -258,13 +255,11 @@ consumers at once, so treat it as a fingerprint change and not as a drift fix.
 
 ## Prevention
 
-- **Build the backlog-depth alert.** `wispr_drift_reports_total` counts raises; it does not measure
-  how many are waiting, and a counter cannot answer the question this runbook opens with. Either add
-  the gauge `docs/ARCHITECTURE.md § 7` calls `wispr_drift_open_total`, or alert off the SQL in
-  *Confirm* step 2. Age matters more than count: a queue of forty reviewed within a day is healthy,
-  a queue of three untouched for two weeks is not.
-- **Alert on staleness now.** The SQL in *Confirm* step 1 runs today against a live database, and
-  it does not need a metrics backend. Two days is the threshold Phase 19 names.
+- **Build the backlog-depth alert.** `wispr_drift_open_total` is the gauge; it still needs a
+  collector and a rule. Age matters more than count: a queue of forty reviewed within a day is
+  healthy, a queue of three untouched for two weeks is not. SQL in *Confirm* remains valid.
+- **Alert on staleness.** `wispr_memory_staleness_hours` is emitted; two days is the threshold
+  Phase 19 names. Until a collector exists, run the SQL in *Confirm* step 1.
 - **Watch the tier distribution as the leading indicator.** `wispr_tier_total{tier}` is emitted by
   the gateway today (`apps/gateway/src/routes/sessions.ts`). A falling T0 share is the earliest
   signal that memory has fallen behind, and it precedes anybody filing a complaint.

@@ -64,6 +64,9 @@ New decisions from here on get an ADR **before** the code, not after.
 
 ## Known divergences between this log and the code
 
+The living map of what shipped vs what remains is [`docs/STATUS.md`](../STATUS.md).
+Session protocol: read it after `CLAUDE.md`.
+
 Recording these here rather than quietly writing the ADRs around them.
 
 - **Screen-scoped aliases cannot be stored.** [ADR 0004](0004-tiered-resolution-and-alias-writeback.md)

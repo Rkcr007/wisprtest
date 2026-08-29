@@ -80,6 +80,9 @@ unconfirmed action against memory known to be stale.
 
 **Do not create directories outside this layout without asking.**
 
+Layout (apps, packages, `docs/`, `infra/`, `db/`) is in the root `README.md`. Session
+context lives in `docs/STATUS.md`. Operational procedures live in `docs/runbooks/`.
+
 ---
 
 ## Stack decisions, and why
@@ -162,14 +165,19 @@ See `docs/TEST-DATA-ENGINE.md` for the full treatment.
 
 At the start of every session:
 
-1. Read `CLAUDE.md`, `docs/ARCHITECTURE.md`, and the current phase in `docs/BUILD-PLAN.md`.
-2. Read `packages/protocol/src/**` — that is the contract you must honour.
-3. State which phase you are on and what the definition of done is.
-4. For any change over ~200 lines, produce a plan and wait for approval before writing code.
-5. Work one track at a time — see § "Parallel tracks" below.
-6. Finish by running the phase's `Done when` command and reporting the real output.
+1. Read `CLAUDE.md` (this file).
+2. Read `docs/STATUS.md` — what is shipped, what is open, and the priority order. That
+   file is the session bootstrap; do not reconstruct status from chat history.
+3. Read `docs/ARCHITECTURE.md` for the module you will touch, and the current phase
+   prompt in `docs/BUILD-PLAN.md` if you are delivering a named phase.
+4. Read `packages/protocol/src/**` — that is the contract you must honour.
+5. State which **track** (or phase leftover) you are on, and the definition of done.
+6. For any change over ~200 lines, produce a plan and wait for approval before writing code.
+7. Work one track at a time — see § "Parallel tracks" below.
+8. Finish by running the track's `Done when` command and reporting the real output.
+   If you change what is shipped or remaining, update `docs/STATUS.md` in the same PR.
 
-Do not refactor files outside the current phase's scope. If you believe a change is
+Do not refactor files outside the current track's scope. If you believe a change is
 needed elsewhere, say so and ask.
 
 ---
@@ -200,8 +208,10 @@ one branch, one PR.
 3. **Each track works in its own git worktree,** so branches cannot stomp one another's
    working directory.
 4. **Nothing merges to `main` without CI green.** `.github/workflows/ci.yml` runs lint,
-   typecheck, unit + coverage gates, integration, e2e, and the three benchmark gates.
-   The `ci` job is the single required check.
+   typecheck, unit + coverage gates, integration, and e2e. The `ci` aggregate job is the
+   single required check. The three extension benchmarks still **run** on every PR but
+   are report-only on shared GitHub runners; the blocking performance gate is
+   `make bench` on known hardware ([ADR 0014](docs/adr/0014-benchmarks-report-only-in-ci.md)).
 5. **A track that is blocked stays blocked.** Do not build against an interface that does
    not exist yet to look busy — writing against an imagined contract and rewriting it
    later is slower than waiting, and it is how the two sides drift.

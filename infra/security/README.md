@@ -24,7 +24,8 @@ that configuration files merely exist:
 Then run:
 
 ```sh
-node infra/security/audit.mjs
+make security-audit
+# equivalent: node infra/security/audit.mjs
 ```
 
 The Python audit uses the official OSV Scanner `v2.5.1` container pinned by digest. It does not

@@ -23,7 +23,8 @@ Prepare the idempotent local fixture:
 
 ```sh
 make db-up db-migrate db-seed
-node infra/load/run.mjs
+make load-test
+# equivalent: node infra/load/run.mjs
 ```
 
 The gate fails if any session operation returns a non-2xx status or if p95 for any operation is

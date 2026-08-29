@@ -228,8 +228,8 @@ recurs, that commit is the place to start.
 - **Wire up alerting.** Phase 19 owns it. The signals that matter, in order:
   `wispr_indexer_jobs_total{outcome="failed"}` by `code`; a `building` memory version older than a
   few hours; `wispr_indexer_jobs_total{outcome="cancelled"}` without matching completions.
-- **Alert on the derived staleness figure**, which is computable today even though
-  `wispr_memory_staleness_hours` does not exist:
+- **Alert on the derived staleness figure.** `wispr_memory_staleness_hours` is emitted by the
+  gateway when a collector is configured. Until then, compute it from Postgres:
 
   ```sql
   SELECT a.name, mv.version,

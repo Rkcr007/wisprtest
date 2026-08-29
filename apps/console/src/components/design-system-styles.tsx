@@ -27,6 +27,6 @@ import { consoleCss } from '../styles';
  * Client Components are still server-rendered, so the stylesheet is present in the initial HTML
  * and nothing flashes unstyled while React hydrates.
  */
-export function DesignSystemStyles() {
-  return <style>{`${uiCss}\n${consoleCss}`}</style>;
+export function DesignSystemStyles({ nonce }: { readonly nonce: string }) {
+  return <style nonce={nonce}>{`${uiCss}\n${consoleCss}`}</style>;
 }

@@ -6,12 +6,31 @@
  * appear and stops the page jumping when it does. Marked `aria-hidden` with a single polite
  * status beside it, because a screen reader should hear "loading progress", not sixty grey boxes.
  */
-export function SkeletonRow({ widths }: { widths: readonly string[] }) {
+type SkeletonWidth =
+  | '20%'
+  | '25%'
+  | '30%'
+  | '35%'
+  | '40%'
+  | '45%'
+  | '50%'
+  | '55%'
+  | '60%'
+  | '65%'
+  | '70%'
+  | '75%'
+  | '80%';
+
+function widthClass(width: SkeletonWidth): string {
+  return `skeleton-width-${width.slice(0, -1)}`;
+}
+
+export function SkeletonRow({ widths }: { widths: readonly SkeletonWidth[] }) {
   return (
     <tr aria-hidden="true">
       {widths.map((width, index) => (
         <td key={index}>
-          <span className="skeleton" style={{ display: 'block', width }} />
+          <span className={`skeleton skeleton-block ${widthClass(width)}`} />
         </td>
       ))}
     </tr>
@@ -23,7 +42,7 @@ export function SkeletonChips({ count }: { count: number }) {
     <div className="chips" aria-hidden="true">
       {Array.from({ length: count }, (_, index) => (
         <span key={index} className="chip">
-          <span className="skeleton" style={{ display: 'block', width: '72px', height: '24px' }} />
+          <span className="skeleton skeleton-chip" />
         </span>
       ))}
     </div>

@@ -230,6 +230,7 @@ th, td {
 th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--wispr-text-muted); font-weight: 600; }
 td.numeric, th.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 td.path { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+.detail-value { margin: 0; }
 .status-indexed { color: var(--wispr-commit); }
 .status-crawling { color: var(--wispr-signal); }
 .status-skipped { color: var(--wispr-text-muted); }
@@ -255,6 +256,21 @@ td.path { font-family: ui-monospace, SFMono-Regular, monospace; word-break: brea
   height: 1em;
   animation: pulse 1.4s var(--wispr-easing-standard) infinite;
 }
+.skeleton-block { display: block; }
+.skeleton-chip { display: block; width: 72px; height: 24px; }
+.skeleton-width-20 { width: 20%; }
+.skeleton-width-25 { width: 25%; }
+.skeleton-width-30 { width: 30%; }
+.skeleton-width-35 { width: 35%; }
+.skeleton-width-40 { width: 40%; }
+.skeleton-width-45 { width: 45%; }
+.skeleton-width-50 { width: 50%; }
+.skeleton-width-55 { width: 55%; }
+.skeleton-width-60 { width: 60%; }
+.skeleton-width-65 { width: 65%; }
+.skeleton-width-70 { width: 70%; }
+.skeleton-width-75 { width: 75%; }
+.skeleton-width-80 { width: 80%; }
 @keyframes pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.8; } }
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; opacity: 0.55; }

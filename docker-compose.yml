@@ -104,8 +104,42 @@ services:
       retries: 12
       start_period: 10s
 
+  # The identity provider. The console runs a real authorization-code + PKCE flow and the
+  # gateway verifies real OIDC bearer tokens; until this service existed neither could be
+  # exercised locally, because nothing in the stack could mint a token. Dex is an actual OIDC
+  # provider with a password-database connector — not a mock and not a bypass — so the sign-in
+  # path a developer drives by hand is the same one that runs in production, with a different
+  # issuer. Its clients, fixture users and the audience decision are in infra/dex/config.yaml.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.44.0
+    restart: unless-stopped
+    # The image's default command reads /etc/dex/config.docker.yaml. Named explicitly so the
+    # mount path below says what it is rather than matching an image's internal convention.
+    command: ['dex', 'serve', '/etc/dex/config.yaml']
+    ports:
+      # Not freely reassignable: the port is part of the issuer URL, which Dex signs into every
+      # token as `iss` and which both the console and the gateway verify. Moving it means moving
+      # `issuer` in infra/dex/config.yaml and OIDC_ISSUER_URL in .env at the same time.
+      - '${DEX_PORT:?DEX_PORT is required — copy .env.example to .env}:5556'
+    volumes:
+      - ./infra/dex/config.yaml:/etc/dex/config.yaml:ro
+      - dex-data:/var/dex
+    healthcheck:
+      # Unlike qdrant and minio, this image is Alpine-based and ships busybox wget, so the probe
+      # is an ordinary HTTP request. `/dex/healthz` is under the issuer path prefix and checks
+      # storage as well as the web server, which is what readiness means here: a Dex that cannot
+      # reach its database answers the port but cannot complete a sign-in.
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:5556/dex/healthz']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
 volumes:
   postgres-data:
   redis-data:
   qdrant-data:
   minio-data:
+  # Dex's signing keys, refresh tokens and in-flight auth requests. Persisted so a restart does
+  # not rotate the key every issued token was signed with.
+  dex-data:

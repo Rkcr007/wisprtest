@@ -129,14 +129,16 @@ export function SelectField<T extends string>(props: {
   readonly options: readonly { readonly value: T; readonly label: string }[];
   readonly onChange: (value: T) => void;
   readonly hint?: string | undefined;
+  readonly error?: string | undefined;
 }) {
-  const { id, label, value, options, onChange, hint } = props;
+  const { id, label, value, options, onChange, hint, error } = props;
   return (
-    <FieldShell id={id} label={label} hint={hint}>
+    <FieldShell id={id} label={label} hint={hint} error={error}>
       <select
         id={id}
         value={value}
-        aria-describedby={describedBy({ id, hint })}
+        aria-invalid={error !== undefined}
+        aria-describedby={describedBy({ id, hint, error })}
         onChange={(event) => {
           onChange(event.target.value as T);
         }}

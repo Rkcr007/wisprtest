@@ -1,0 +1,39 @@
+# Kind overlay. Assumes the Compose data plane is already up on the host
+# (`make db-up`) and that images have been `kind load`-ed (`make kind-up`).
+#
+# Connection strings and signing keys are not here. kind-up writes them into
+# the Secret named by global.envSecretName, rewriting localhost →
+# host.docker.internal. This file only sets in-cluster service URLs, bind
+# addresses, and the console NodePort.
+
+global:
+  imagePullPolicy: Never
+
+gateway:
+  extraEnv:
+    GATEWAY_HOST: '0.0.0.0'
+    OTEL_SERVICE_NAME: wispr-gateway
+    COMPOSER_URL: http://wisprtest-composer:8090
+
+indexer:
+  extraEnv:
+    INDEXER_HOST: '0.0.0.0'
+    OTEL_SERVICE_NAME: wispr-indexer
+    INDEXER_SECRET_ROOT: /var/wispr/secrets
+    INDEXER_HEADLESS: 'true'
+
+composer:
+  extraEnv:
+    COMPOSER_HOST: '0.0.0.0'
+
+console:
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30000
+  extraEnv:
+    HOSTNAME: '0.0.0.0'
+    PORT: '3000'
+    CONSOLE_PORT: '3000'
+    GATEWAY_URL: http://wisprtest-gateway:8080
+    OIDC_REDIRECT_URI: http://localhost:3000/auth/callback

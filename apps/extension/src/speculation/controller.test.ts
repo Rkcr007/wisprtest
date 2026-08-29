@@ -289,6 +289,33 @@ describe('SpeculationController — class R speculation and rollback', () => {
     expect(h.controller.view.value.actionClass).toBe('A');
   });
 
+  it('retries the full utterance when the stripped target resolves below the classify threshold', async () => {
+    // The advertised sentence parses as filter/`pending ones`. A T1 hit on the remnant can sit
+    // at 0.71 — resolved for the resolver, Class A for the taxonomy. The full sentence is what
+    // the fixture suite already proves ranks the filter control; taking it is what lets a
+    // reversible filter run instead of staging forever.
+    const link = document.createElement('a');
+    link.href = '/orders?status=pending';
+    link.textContent = 'Show pending only';
+    document.body.append(link);
+
+    const remnant = resolved(SEARCH_KEY, ID(2), 0.71);
+    const full = resolved(SEARCH_KEY, ID(2), 0.95);
+    const h = buildWith(
+      fakeResolver({
+        'pending ones': remnant,
+        'show me only the pending ones': full,
+      }),
+      new Map([[SEARCH_KEY, link]]),
+    );
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'show me only the pending ones' });
+
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]?.payload.verb).toBe('filter');
+    expect(h.controller.view.value).toMatchObject({ phase: 'executed', actionClass: 'R' });
+  });
+
   it('stages an ambiguous (below-threshold) result and never executes it', async () => {
     const button = document.createElement('button');
     document.body.append(button);

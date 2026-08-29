@@ -26,6 +26,8 @@ import { buildManifest } from './manifest.js';
  * dist/offscreen.js      ESM — the voice pipeline's document, owns getUserMedia (Phase 9)
  * dist/offscreen.html    the offscreen document's shell, copied verbatim
  * dist/audio-worklet.js  IIFE — runs on the audio thread, see src/voice/audio-worklet.ts
+ * dist/options.js        ESM — local dump import (developer dress-rehearsal)
+ * dist/options.html      the options page shell, copied verbatim
  * ```
  *
  * ## Build-time constants
@@ -38,6 +40,11 @@ import { buildManifest } from './manifest.js';
 export interface BuildConfig {
   readonly outDir: string;
   readonly gatewayOrigin: string;
+  /**
+   * Console origin for session-cookie mint. Empty in e2e so the HUD suite still hits the
+   * stub gateway. A live build passes `--console-origin` (or `CONSOLE_ORIGIN`).
+   */
+  readonly consoleOrigin: string;
   readonly env: 'development' | 'production' | 'test';
   readonly version: string;
   readonly watch: boolean;
@@ -76,9 +83,11 @@ export function buildOptions(config: BuildConfig): {
   routeBridge: BuildOptions;
   offscreen: BuildOptions;
   audioWorklet: BuildOptions;
+  options: BuildOptions;
 } {
   const define = {
     __WISPR_GATEWAY_ORIGIN__: JSON.stringify(config.gatewayOrigin),
+    __WISPR_CONSOLE_ORIGIN__: JSON.stringify(config.consoleOrigin),
     __WISPR_ENV__: JSON.stringify(config.env),
     __WISPR_VERSION__: JSON.stringify(config.version),
     __WISPR_ASR_TOKEN__: JSON.stringify(config.asrToken),
@@ -146,6 +155,12 @@ export function buildOptions(config: BuildConfig): {
       // system. It has no imports and touches no extension API — it only forwards samples.
       format: 'iife',
     },
+    options: {
+      ...shared,
+      entryPoints: [`${here}options/main.ts`],
+      outfile: `${config.outDir}/options.js`,
+      format: 'esm',
+    },
   };
 }
 
@@ -156,7 +171,11 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   await writeFile(
     `${config.outDir}/manifest.json`,
     `${JSON.stringify(
-      buildManifest({ version: config.version, gatewayOrigin: config.gatewayOrigin }),
+      buildManifest({
+        version: config.version,
+        gatewayOrigin: config.gatewayOrigin,
+        consoleOrigin: config.consoleOrigin,
+      }),
       null,
       2,
     )}\n`,
@@ -167,6 +186,10 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   await copyFile(
     fileURLToPath(new URL('./voice/offscreen.html', import.meta.url)),
     `${config.outDir}/offscreen.html`,
+  );
+  await copyFile(
+    fileURLToPath(new URL('./options/options.html', import.meta.url)),
+    `${config.outDir}/options.html`,
   );
 
   await copyModelAssets(config.outDir);
@@ -288,6 +311,15 @@ export function configFromArgs(argv: readonly string[], env: NodeJS.ProcessEnv):
       env.GATEWAY_ORIGIN ??
         `http://${env.GATEWAY_HOST ?? '127.0.0.1'}:${env.GATEWAY_PORT ?? '8080'}`,
     ),
+    // Development defaults to the local console so a `pnpm --filter extension build` can mint
+    // through the session cookie. e2e passes `--env test` and an explicit empty origin so the
+    // packed suite still hits the stub gateway.
+    consoleOrigin: requireString(
+      args['console-origin'],
+      'console-origin',
+      env.CONSOLE_ORIGIN ??
+        (envName === 'development' ? `http://127.0.0.1:${env.CONSOLE_PORT ?? '3000'}` : ''),
+    ),
     env: envName,
     version: requireString(args.version, 'version', '0.0.0'),
     watch: args.watch === true,
@@ -308,6 +340,7 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
         out_dir: config.outDir,
         env: config.env,
         gateway_origin: config.gatewayOrigin,
+        console_origin: config.consoleOrigin,
       })}\n`,
     );
   }

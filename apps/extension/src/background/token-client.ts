@@ -57,6 +57,14 @@ export class MalformedTokenError extends Error {
 export interface TokenClientOptions {
   /** Origin of the control plane. Must match the manifest's `host_permissions`. */
   readonly gatewayOrigin: string;
+  /**
+   * Console origin for session-cookie mint. Empty = post to the gateway (e2e stubs).
+   * When set, the worker posts `/api/auth/extension-token` and attaches the console session
+   * cookie; the OIDC access token never enters this process.
+   */
+  readonly consoleOrigin?: string;
+  /** The encrypted console session cookie, or null when the tester is not signed in. */
+  readonly readConsoleSession?: () => Promise<string | null>;
   /** Attempts per fetch, including the first. */
   readonly maxAttempts?: number;
   /** Base backoff, doubled per attempt. */
@@ -74,19 +82,30 @@ export interface TokenClient {
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BACKOFF_MS = 250;
 
-/** The route this client calls. Mirrors the `ExtensionTokenRequest` contract. */
+/** The route this client calls on the gateway. Mirrors the `ExtensionTokenRequest` contract. */
 export const TOKEN_PATH = '/v1/auth/extension-token';
+
+/** The console proxy. Same body; authenticated by the session cookie, not a bearer. */
+export const CONSOLE_TOKEN_PATH = '/api/auth/extension-token';
+
+/** Must match `apps/console/src/auth/session.ts` `SESSION_COOKIE`. */
+export const CONSOLE_SESSION_COOKIE = 'wispr_console_session';
 
 export function createTokenClient(options: TokenClientOptions): TokenClient {
   const {
     gatewayOrigin,
+    consoleOrigin = '',
+    readConsoleSession,
     maxAttempts = DEFAULT_MAX_ATTEMPTS,
     backoffMs = DEFAULT_BACKOFF_MS,
     sleep = defaultSleep,
     fetch: fetchImpl = globalThis.fetch.bind(globalThis),
   } = options;
 
-  const endpoint = new URL(TOKEN_PATH, gatewayOrigin).href;
+  const mintingViaConsole = consoleOrigin !== '';
+  const endpoint = mintingViaConsole
+    ? new URL(CONSOLE_TOKEN_PATH, consoleOrigin).href
+    : new URL(TOKEN_PATH, gatewayOrigin).href;
 
   return {
     async fetchToken(origin: string): Promise<ExtensionToken> {
@@ -94,12 +113,18 @@ export function createTokenClient(options: TokenClientOptions): TokenClient {
 
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         let response: Response;
+        const headers = new Headers({ 'content-type': 'application/json' });
+        if (mintingViaConsole) {
+          const cookie = readConsoleSession === undefined ? null : await readConsoleSession();
+          if (cookie === null || cookie === '') throw new UnauthenticatedError();
+          headers.set('cookie', `${CONSOLE_SESSION_COOKIE}=${cookie}`);
+        }
         try {
           response = await fetchImpl(endpoint, {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers,
             // The tester's console session authenticates this exchange. The extension holds no
-            // credential of its own to present.
+            // OIDC credential of its own to present.
             credentials: 'include',
             body: JSON.stringify({ origin }),
           });

@@ -67,13 +67,34 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
  */
 export type PolicyBounds = Pick<CrawlBounds, 'allowedOrigins' | 'routeAllowlist'>;
 
-export function createUrlPolicy(bounds: PolicyBounds, lookup: AddressLookup): UrlPolicy {
+export interface UrlPolicyOptions {
+  /**
+   * Permit an *allowlisted* hostname to resolve to a private address (Tailscale CGNAT, RFC1918).
+   *
+   * Default is off: a name that rebinds onto an internal network is rejected, and only a
+   * literal IP the tenant typed may be private. A local dump of a VPN staging app is the
+   * case that opts in — the operator named the host, metadata ranges stay blocked.
+   */
+  readonly allowPrivateOnAllowlist?: boolean;
+}
+
+export function createUrlPolicy(
+  bounds: PolicyBounds,
+  lookup: AddressLookup,
+  options: UrlPolicyOptions = {},
+): UrlPolicy {
   const origins = new Set(bounds.allowedOrigins.map(normalizeOrigin));
   // Hostnames the tenant named literally, and which therefore may resolve to a private address.
   const literalHosts = new Set(
     bounds.allowedOrigins.flatMap((origin) => {
       const hostname = hostnameOf(origin);
       return hostname !== undefined && isLiteralHost(hostname) ? [hostname] : [];
+    }),
+  );
+  const allowlistedHosts = new Set(
+    bounds.allowedOrigins.flatMap((origin) => {
+      const hostname = hostnameOf(origin);
+      return hostname === undefined ? [] : [hostname];
     }),
   );
   const resolved = new Map<string, Promise<readonly string[]>>();
@@ -112,8 +133,10 @@ export function createUrlPolicy(bounds: PolicyBounds, lookup: AddressLookup): Ur
       throw new SsrfError(url.href, 'path is outside the route allowlist');
     }
 
-    const hostname = stripBrackets(url.hostname);
-    const allowPrivate = literalHosts.has(hostname.toLowerCase());
+    const hostname = stripBrackets(url.hostname).toLowerCase();
+    const allowPrivate =
+      literalHosts.has(hostname) ||
+      (options.allowPrivateOnAllowlist === true && allowlistedHosts.has(hostname));
 
     for (const address of await addressesFor(hostname)) {
       const verdict = classify(address);

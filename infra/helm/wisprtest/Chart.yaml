@@ -1,0 +1,26 @@
+apiVersion: v2
+name: wisprtest
+description: >
+  WisprTest control plane — gateway, indexer, composer, console.
+  The data plane (postgres, redis, qdrant, minio, dex) is the existing Compose
+  stack. This chart does not install it. See docs/runbooks/deploy.md.
+type: application
+version: 0.1.0
+appVersion: '0.0.0'
+dependencies:
+  - name: gateway
+    version: 0.1.0
+    repository: file://charts/gateway
+    condition: gateway.enabled
+  - name: indexer
+    version: 0.1.0
+    repository: file://charts/indexer
+    condition: indexer.enabled
+  - name: composer
+    version: 0.1.0
+    repository: file://charts/composer
+    condition: composer.enabled
+  - name: console
+    version: 0.1.0
+    repository: file://charts/console
+    condition: console.enabled

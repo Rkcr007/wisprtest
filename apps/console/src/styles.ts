@@ -53,6 +53,7 @@ body {
 .masthead {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--wispr-space-3);
   padding: var(--wispr-space-3) var(--wispr-space-4);
   border-bottom: 1px solid var(--wispr-border);
@@ -64,8 +65,20 @@ body {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+.masthead h1 a { color: inherit; text-decoration: none; }
 .masthead .spacer { flex: 1; }
-.masthead nav { display: flex; gap: var(--wispr-space-3); }
+.masthead nav { display: flex; flex-wrap: wrap; gap: var(--wispr-space-3); align-items: center; }
+.masthead nav a {
+  color: var(--wispr-text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: var(--wispr-space-1) 0;
+}
+.masthead nav a:hover { color: var(--wispr-text); }
+.masthead nav a[aria-current="page"] {
+  color: var(--wispr-text);
+  box-shadow: inset 0 -2px 0 var(--wispr-signal);
+}
 
 .shell {
   max-width: 1080px;
@@ -220,6 +233,18 @@ td.path { font-family: ui-monospace, SFMono-Regular, monospace; word-break: brea
 .status-indexed { color: var(--wispr-commit); }
 .status-crawling { color: var(--wispr-signal); }
 .status-skipped { color: var(--wispr-text-muted); }
+.status-open, .status-reconciling { color: var(--wispr-signal); }
+.status-diffed { color: var(--wispr-drift); }
+.status-approved { color: var(--wispr-commit); }
+.status-rejected { color: var(--wispr-text-muted); }
+
+.decision-row { display: flex; flex-wrap: wrap; gap: var(--wispr-space-2); align-items: center; }
+.reject-form { margin-top: var(--wispr-space-2); display: flex; flex-direction: column; gap: var(--wispr-space-2); }
+.diff-review { display: flex; flex-direction: column; gap: var(--wispr-space-2); margin-top: var(--wispr-space-2); }
+.diff-list { margin: 0; padding-left: var(--wispr-space-4); }
+.diff-list li { margin: var(--wispr-space-1) 0; }
+.evidence-list { margin: 0; padding-left: var(--wispr-space-4); }
+.evidence-list li { margin: var(--wispr-space-1) 0; }
 
 .scroll { max-height: 420px; overflow-y: auto; }
 

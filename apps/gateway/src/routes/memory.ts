@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
 import { AliasWritebackBatch } from 'protocol';
 
+import { assertApplicationScope } from '../auth/extension-token.js';
 import type { GatewayConfig } from '../config.js';
 import type { TenantDatabase } from '../db/pool.js';
 import { loadSnapshot, upsertAliases } from '../db/memory-repository.js';
@@ -87,6 +88,7 @@ export function registerMemoryRoutes(app: FastifyInstance, options: MemoryRoutes
         throw new GatewayError('unauthorized', 'authentication required');
       }
       const { appId } = request.params;
+      assertApplicationScope(request.extension?.applicationId, appId);
 
       const payload = await database.withTenant('memory-snapshot', async (db) => {
         const active = await findActiveMemoryVersion(db, appId);
@@ -175,6 +177,8 @@ export function registerMemoryRoutes(app: FastifyInstance, options: MemoryRoutes
             ],
           });
         }
+
+        assertApplicationScope(request.extension?.applicationId, version.applicationId);
 
         const written = await upsertAliases(db, tenantId, batch.memoryVersionId, batch.items);
 

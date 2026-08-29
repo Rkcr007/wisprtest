@@ -454,6 +454,23 @@ export function createSpeculationController(
       return; // nothing named yet
     } else {
       resolution = await options.resolver.resolve(parse.targetPhrase);
+      // The parser strips the verb so "show me only the pending ones" resolves `pending ones`.
+      // T1 ranks the full sentence much more reliably — that is the phrasing the fixture suite
+      // already proves — so a miss, an ambiguous list, *or* a hit that cannot clear the classify
+      // bar on the remnant tries the utterance. A remnant at 0.717 is resolved for T1 and still
+      // Class A; acting on the weaker phrase would stage forever on the sentence the product
+      // advertises.
+      const remnantWeak =
+        resolution.outcome !== 'resolved' || resolution.confidence < classifyConfig.threshold;
+      if (remnantWeak && parse.targetPhrase !== hypothesis.transcript) {
+        const full = await options.resolver.resolve(hypothesis.transcript);
+        if (
+          full.outcome === 'resolved' &&
+          (resolution.outcome !== 'resolved' || full.confidence > resolution.confidence)
+        ) {
+          resolution = full;
+        }
+      }
       // A newer hypothesis overtook this one while resolving: its result is the current truth.
       if (rev < current.revision) return;
       // Remember the intent behind an unanswered question, and forget it the moment one resolves.

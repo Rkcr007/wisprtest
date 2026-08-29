@@ -107,6 +107,24 @@ describe('ActionExecutor — type', () => {
     expect(last.every((k) => k.key === 'Enter')).toBe(true);
     input.remove();
   });
+
+  it('clicks a filter chip or link rather than typing into it', async () => {
+    const { fake, executor } = setup();
+    const link = document.createElement('a');
+    link.href = '/orders?status=pending';
+    link.textContent = 'Show pending only';
+    document.body.append(link);
+
+    await executor.dispatch(
+      makeActionRequest({ payload: { verb: 'filter', text: 'pending ones' } }),
+      link,
+      context({ rawText: 'pending ones' }),
+    );
+
+    expect(fake.mouse.map((m) => m.type)).toEqual(['mousePressed', 'mouseReleased']);
+    expect(fake.key).toEqual([]);
+    link.remove();
+  });
 });
 
 describe('ActionExecutor — DOM verbs', () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startServers, type StubServers } from '../fixture-page/server.js';
+import { PAGE_ALT_PORT, startServers, type StubServers } from '../fixture-page/server.js';
 import { expectAttribute, expectContainsText, expectCount, expectText } from './expect-locator.js';
 
 /**
@@ -221,6 +221,73 @@ describe('collapsing', () => {
     await expectAttribute(hud(), 'data-collapsed', 'false');
     await expectCount(page.locator('[data-testid="wispr-hud-intent"]'), 1);
     await expectCount(page.locator('[data-testid="wispr-hud-telemetry"]'), 1);
+  });
+});
+
+describe('local dump attach', () => {
+  /**
+   * The alt origin is reserved for this and the unauthenticated path — the main page already
+   * minted a gateway token, and a dump bound to that origin would hide the token exchange the
+   * earlier tests assert. Clear the store afterwards so the failure suite still hits the stub.
+   */
+  it('attaches from an imported dump without calling the gateway', async () => {
+    const dumpPath = join(profileDir, 'dump.json');
+    await writeFile(
+      dumpPath,
+      JSON.stringify({
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        applicationId: '22222222-2222-4222-8222-222222222222',
+        memoryVersion: {
+          id: '33333333-3333-4333-8333-333333333333',
+          tenantId: '11111111-1111-4111-8111-111111111111',
+          applicationId: '22222222-2222-4222-8222-222222222222',
+          version: 1,
+          status: 'active',
+          createdAt: '2026-07-29T00:00:00.000Z',
+          approvedBy: null,
+          failureReason: null,
+        },
+        screens: [],
+        elements: [],
+        navEdges: [],
+        aliases: [],
+        generatedAt: '2026-07-29T00:00:00.000Z',
+      }),
+    );
+
+    const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+    const optionsUrl = new URL('options.html', worker.url()).href;
+    const dumpOrigin = `http://127.0.0.1:${String(PAGE_ALT_PORT)}`;
+    const options = await context.newPage();
+    let dumped: Page | undefined;
+    try {
+      await options.goto(optionsUrl);
+      await options.locator('#origin').fill(dumpOrigin);
+      await options.locator('#file').setInputFiles(dumpPath);
+      await options.locator('#import').click();
+      await expectContainsText(options.locator('#status'), `Loaded for ${dumpOrigin}`);
+
+      const tokensBefore = servers.tokenRequests.length;
+      dumped = await context.newPage();
+      await dumped.goto(servers.altPageUrl);
+      await dumped.locator('wispr-test-hud [data-testid="wispr-hud"]').waitFor();
+      await dumped.locator('[data-testid="wispr-hud-attach"]').click();
+      await expectAttribute(
+        dumped.locator('wispr-test-hud [data-testid="wispr-hud"]'),
+        'data-attach',
+        'attached',
+      );
+
+      expect(servers.tokenRequests).toHaveLength(tokensBefore);
+    } finally {
+      await options
+        .locator('#clear')
+        .click()
+        .catch(() => undefined);
+      await dumped?.close().catch(() => undefined);
+      await options.close().catch(() => undefined);
+      await worker.evaluate(() => chrome.storage.local.remove('wispr:local-memory'));
+    }
   });
 });
 

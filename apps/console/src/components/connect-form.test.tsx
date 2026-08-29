@@ -21,7 +21,17 @@ vi.mock('next/navigation', () => ({
 }));
 
 const APPLICATION_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const JOB_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+
+const APPLICATION = {
+  id: APPLICATION_ID,
+  tenantId: TENANT_ID,
+  name: 'Orders',
+  baseUrl: 'https://app.example.com',
+  env: 'staging',
+  createdAt: '2026-08-02T10:00:00.000Z',
+};
 
 function renderForm(): ReactElement {
   const client = new QueryClient({
@@ -43,12 +53,75 @@ function fill(label: RegExp, value: string): void {
 }
 
 function fillValidForm(): void {
-  fill(/^Application$/, APPLICATION_ID);
+  fill(/^Application name$/, 'Orders');
+  fill(/^Base URL$/, 'https://app.example.com');
+  fireEvent.change(screen.getByLabelText(/^Environment$/), { target: { value: 'staging' } });
   fill(/Allowed origins/, 'https://app.example.com');
   fill(/Route allowlist/, '/orders');
   fill(/Depth cap/, '3');
   fill(/Page cap/, '50');
   fill(/Never interact with/, 'button[data-action="delete"]');
+}
+
+function emptyList(): Response {
+  return new Response(JSON.stringify({ tenantId: TENANT_ID, applications: [] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function hrefOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function isListGet(input: RequestInfo | URL, init?: RequestInit): boolean {
+  return (
+    hrefOf(input) === '/api/applications' && (init?.method === undefined || init.method === 'GET')
+  );
+}
+
+function jsonBody(init: RequestInit | undefined): unknown {
+  if (typeof init?.body !== 'string') throw new Error('expected a JSON string body');
+  return JSON.parse(init.body);
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+/** Answers the registered-applications GET; every other call goes to `handler`. */
+function fetchWithList(
+  handler: (url: string, init?: RequestInit) => Response,
+): ReturnType<typeof vi.fn> {
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (isListGet(input, init)) return Promise.resolve(emptyList());
+    return Promise.resolve(handler(hrefOf(input), init));
+  });
+}
+
+function successfulIndexFetch(): ReturnType<typeof vi.fn> {
+  return fetchWithList((url, init) => {
+    if (url === '/api/applications' && init?.method === 'POST') {
+      return jsonResponse(APPLICATION, 201);
+    }
+    if (url === `/api/applications/${APPLICATION_ID}/crawl`) {
+      return jsonResponse(accepted, 202);
+    }
+    return new Response('not found', { status: 404 });
+  });
+}
+
+function postCalls(fetchMock: ReturnType<typeof vi.fn>): { url: string; init?: RequestInit }[] {
+  return fetchMock.mock.calls.flatMap((call) => {
+    const [input, init] = call as [RequestInfo | URL, RequestInit | undefined];
+    if (init?.method !== 'POST') return [];
+    return [{ url: hrefOf(input), init }];
+  });
 }
 
 function submit(): void {
@@ -73,7 +146,7 @@ afterEach(() => {
 
 describe('ConnectForm — the bounds gate', () => {
   it('does not send a crawl when the bounds are empty', async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = fetchWithList(() => new Response('unused', { status: 500 }));
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
 
@@ -83,7 +156,7 @@ describe('ConnectForm — the bounds gate', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(postCalls(fetchMock)).toHaveLength(0);
   });
 
   it('names each missing bound on its own field rather than in one banner', async () => {
@@ -122,12 +195,7 @@ describe('ConnectForm — the bounds gate', () => {
   });
 
   it('refuses an empty never-interact list until it is acknowledged', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), {
-        status: 202,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    const fetchMock = successfulIndexFetch();
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
 
@@ -140,24 +208,19 @@ describe('ConnectForm — the bounds gate', () => {
         'true',
       );
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(postCalls(fetchMock)).toHaveLength(0);
 
     // Ticking the acknowledgement makes the empty list a decision, and the crawl may start.
     fireEvent.click(screen.getByLabelText(/no destructive controls/i));
     submit();
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(postCalls(fetchMock)).toHaveLength(2);
     });
   });
 
   it('posts a contract-shaped request once the form is complete', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), {
-        status: 202,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    const fetchMock = successfulIndexFetch();
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
 
@@ -165,26 +228,27 @@ describe('ConnectForm — the bounds gate', () => {
     submit();
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(postCalls(fetchMock)).toHaveLength(2);
     });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`/api/applications/${APPLICATION_ID}/crawl`);
-    const body = JSON.parse(init.body as string) as { bounds: Record<string, unknown> };
-    expect(body.bounds.maxPages).toBe(50);
-    expect(body.bounds.allowedOrigins).toEqual(['https://app.example.com']);
-    expect(body.bounds.neverInteractSelectors).toEqual(['button[data-action="delete"]']);
+    const posts = postCalls(fetchMock);
+    expect(posts[0]?.url).toBe('/api/applications');
+    expect(jsonBody(posts[0]?.init)).toEqual({
+      name: 'Orders',
+      baseUrl: 'https://app.example.com',
+      env: 'staging',
+    });
+    expect(posts[1]?.url).toBe(`/api/applications/${APPLICATION_ID}/crawl`);
+    expect(jsonBody(posts[1]?.init)).toMatchObject({
+      bounds: {
+        maxPages: 50,
+        allowedOrigins: ['https://app.example.com'],
+        neverInteractSelectors: ['button[data-action="delete"]'],
+      },
+    });
   });
 
   it('sends the browser to the indexing screen with the page cap it just set', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(accepted), {
-          status: 202,
-          headers: { 'content-type': 'application/json' },
-        }),
-      ),
-    );
+    vi.stubGlobal('fetch', successfulIndexFetch());
     renderForm();
 
     fillValidForm();
@@ -202,18 +266,21 @@ describe('ConnectForm — refusals from the server', () => {
   it('attaches the gateway’s origin complaint to the origin field', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
+      fetchWithList((url, init) => {
+        if (url === '/api/applications' && init?.method === 'POST') {
+          return jsonResponse(APPLICATION, 201);
+        }
+        return jsonResponse(
+          {
             code: 'validation_failed',
             message: 'the crawl bounds do not allow the application’s own origin',
             issues: [
               { path: 'bounds.allowedOrigins', message: 'must include the registered origin' },
             ],
-          }),
-          { status: 400, headers: { 'content-type': 'application/json' } },
-        ),
-      ),
+          },
+          400,
+        );
+      }),
     );
     renderForm();
 
@@ -227,7 +294,13 @@ describe('ConnectForm — refusals from the server', () => {
   });
 
   it('announces a failure rather than leaving the screen looking idle', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (isListGet(url, init)) return Promise.resolve(emptyList());
+        return Promise.reject(new Error('offline'));
+      }),
+    );
     renderForm();
 
     fillValidForm();
@@ -240,7 +313,13 @@ describe('ConnectForm — refusals from the server', () => {
   });
 
   it('leaves no row suggesting a crawl is running after a refusal', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (isListGet(url, init)) return Promise.resolve(emptyList());
+        return Promise.reject(new Error('offline'));
+      }),
+    );
     renderForm();
 
     fillValidForm();
@@ -257,11 +336,12 @@ describe('ConnectForm — refusals from the server', () => {
     let release: (value: Response) => void = () => undefined;
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockReturnValue(
-        new Promise<Response>((resolve) => {
+      vi.fn((url: string, init?: RequestInit) => {
+        if (isListGet(url, init)) return Promise.resolve(emptyList());
+        return new Promise<Response>((resolve) => {
           release = resolve;
-        }),
-      ),
+        });
+      }),
     );
     renderForm();
 
@@ -274,12 +354,7 @@ describe('ConnectForm — refusals from the server', () => {
       ).toBe(true);
     });
 
-    release(
-      new Response(JSON.stringify(accepted), {
-        status: 202,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    release(jsonResponse(APPLICATION, 201));
   });
 });
 
@@ -288,7 +363,9 @@ describe('ConnectForm — keyboard and assistive technology', () => {
     renderForm();
 
     for (const label of [
-      /^Application$/,
+      /^Application name$/,
+      /^Base URL$/,
+      /^Environment$/,
       /Allowed origins/,
       /Route allowlist/,
       /Depth cap/,
@@ -348,12 +425,7 @@ describe('ConnectForm — keyboard and assistive technology', () => {
   });
 
   it('submits on Enter from a text field, without a mouse', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(accepted), {
-        status: 202,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    const fetchMock = successfulIndexFetch();
     vi.stubGlobal('fetch', fetchMock);
     renderForm();
 
@@ -362,7 +434,7 @@ describe('ConnectForm — keyboard and assistive technology', () => {
     fireEvent.submit(form as HTMLFormElement);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(postCalls(fetchMock)).toHaveLength(2);
     });
   });
 
@@ -398,10 +470,39 @@ describe('ConnectForm — keyboard and assistive technology', () => {
     expect(screen.getByLabelText(/Credentials reference/).getAttribute('type')).toBe('text');
   });
 
-  it('says plainly that the recent-applications list needs a route the gateway does not have', () => {
+  it('lists memory version and counts once the gateway returns them', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (isListGet(url, init)) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                tenantId: TENANT_ID,
+                applications: [
+                  {
+                    ...APPLICATION,
+                    memoryVersion: 1,
+                    memoryVersionId: APPLICATION_ID,
+                    indexedAt: '2026-08-02T10:00:00.000Z',
+                    screenCount: 4,
+                    elementCount: 12,
+                    openDriftCount: 1,
+                  },
+                ],
+              },
+              200,
+            ),
+          );
+        }
+        return Promise.resolve(new Response('not found', { status: 404 }));
+      }),
+    );
     renderForm();
 
-    // CLAUDE.md rule #1: an honest gap beats a table filled from a guess.
-    expect(screen.getByText(/GET \/v1\/applications/)).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /v1 · 4 screens · 12 elements/i })).toBeDefined();
+    });
+    expect(screen.queryByText(/identity only/i)).toBeNull();
   });
 });

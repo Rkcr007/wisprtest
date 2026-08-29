@@ -14,6 +14,8 @@ import type { ExtensionToken } from 'protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  CONSOLE_SESSION_COOKIE,
+  CONSOLE_TOKEN_PATH,
   createTokenClient,
   GatewayUnreachableError,
   isUsable,
@@ -253,6 +255,52 @@ describe('retrying', () => {
       GatewayUnreachableError,
     );
     expect(route.calls).toBe(2);
+  });
+});
+
+describe('minting through the console', () => {
+  it('posts to the console proxy with the session cookie, not a bearer', async () => {
+    const seen: { url: string | undefined; cookie: string | undefined }[] = [];
+    server = createServer((request, response) => {
+      seen.push({ url: request.url, cookie: request.headers.cookie });
+      if (request.url !== CONSOLE_TOKEN_PATH) {
+        response.writeHead(404).end();
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(validToken));
+    });
+    await new Promise<void>((resolve) => {
+      server?.listen(0, '127.0.0.1', resolve);
+    });
+    const { port } = server.address() as AddressInfo;
+    const consoleOrigin = `http://127.0.0.1:${String(port)}`;
+
+    const client = createTokenClient({
+      gatewayOrigin: 'http://gateway.invalid',
+      consoleOrigin,
+      readConsoleSession: () => Promise.resolve('sealed-session'),
+      sleep: noSleep,
+    });
+    await expect(client.fetchToken('https://orders.example')).resolves.toMatchObject({
+      token: 'a.scoped.token',
+    });
+    expect(seen).toEqual([
+      { url: CONSOLE_TOKEN_PATH, cookie: `${CONSOLE_SESSION_COOKIE}=sealed-session` },
+    ]);
+  });
+
+  it('refuses immediately when the tester has no console session', async () => {
+    const client = createTokenClient({
+      gatewayOrigin: 'http://gateway.invalid',
+      consoleOrigin: 'http://127.0.0.1:9',
+      readConsoleSession: () => Promise.resolve(null),
+      sleep: noSleep,
+    });
+
+    await expect(client.fetchToken('https://orders.example')).rejects.toBeInstanceOf(
+      UnauthenticatedError,
+    );
   });
 });
 

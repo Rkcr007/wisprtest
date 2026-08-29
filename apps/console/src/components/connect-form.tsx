@@ -6,6 +6,12 @@ import { useId, useState } from 'react';
 import { z } from 'zod';
 
 import {
+  ApplicationList as ApplicationListSchema,
+  ApplicationRecord as ApplicationRecordSchema,
+  type ApplicationList,
+  type ApplicationRecord,
+} from '../applications/schema';
+import {
   initialCrawlForm,
   issuesFromGateway,
   parseCrawlForm,
@@ -13,15 +19,17 @@ import {
   type CrawlFormValues,
 } from '../crawl/form';
 import { StartCrawlResponse, type StartCrawlRequest } from '../crawl/request';
+import { formatIndexAge } from '../format';
 import { NumberField, SelectField, TextAreaField, TextField } from './field';
 
 /**
  * Connect — name an application, bound the crawl, start indexing.
  *
- * The whole screen exists to make the gateway's refusal unnecessary: `POST
- * /v1/applications/:id/crawl` rejects a request whose bounds are incomplete, and this form is
- * where those bounds are decided, in the same order of importance the crawl route reasons about
- * them — where it may go, how far, how much, and what it must never touch.
+ * The whole screen exists to make the gateway's refusal unnecessary: a lead names a URL and
+ * environment, this form registers that application, then `POST /v1/applications/:id/crawl`
+ * rejects a request whose bounds are incomplete. Those bounds are decided here, in the same
+ * order of importance the crawl route reasons about them — where it may go, how far, how much,
+ * and what it must never touch.
  */
 
 /** What the console's own crawl route answers with when it refuses. */
@@ -34,6 +42,7 @@ const ConsoleRouteError = z.object({
 interface StartedJob {
   /** Identity before the gateway has given us one, so the optimistic row can be replaced. */
   readonly clientId: string;
+  readonly applicationName: string;
   readonly applicationId: string;
   readonly jobId: string | null;
   readonly pageCap: number;
@@ -42,6 +51,7 @@ interface StartedJob {
 }
 
 const STARTED_JOBS = ['started-jobs'] as const;
+const REGISTERED_APPS = ['registered-applications'] as const;
 
 export function ConnectForm() {
   const router = useRouter();
@@ -56,12 +66,30 @@ export function ConnectForm() {
   };
 
   /**
-   * The jobs started from this browser, in this session.
+   * Applications this tenant has already registered.
    *
-   * Not "recently worked on": that list needs memory versions, screen and element counts and an
-   * index age, and the gateway exposes no route that returns them (there is no
-   * `GET /v1/applications`). Rather than invent the shape or fill a table from a guess, this shows
-   * only what this console itself did, which it can vouch for.
+   * The gateway now attaches the active memory version, screen/element counts and index age.
+   * An app that has never been indexed shows zeros and "never indexed" — those are real
+   * answers, not invented coverage.
+   */
+  const registered = useQuery<ApplicationList>({
+    queryKey: REGISTERED_APPS,
+    queryFn: async () => {
+      const response = await fetch('/api/applications');
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const failure = ConsoleRouteError.safeParse(payload);
+        throw new Error(failure.success ? failure.data.message : 'could not load applications');
+      }
+      const parsed = ApplicationListSchema.safeParse(payload);
+      if (!parsed.success) throw new Error('the gateway returned an unrecognised application list');
+      return parsed.data;
+    },
+  });
+
+  /**
+   * Jobs started from this browser, in this session. Complementary to the registered list:
+   * that one is what the tenant owns, this one is what this console just enqueued.
    */
   const started = useQuery<StartedJob[]>({
     queryKey: STARTED_JOBS,
@@ -76,11 +104,37 @@ export function ConnectForm() {
   const startCrawl = useMutation<
     StartCrawlResponse,
     Error,
-    { applicationId: string; request: StartCrawlRequest; clientId: string },
+    {
+      applicationName: string;
+      baseUrl: string;
+      env: ApplicationRecord['env'];
+      request: StartCrawlRequest;
+      clientId: string;
+    },
     { previous: StartedJob[] }
   >({
-    mutationFn: async ({ applicationId, request }) => {
-      const response = await fetch(`/api/applications/${applicationId}/crawl`, {
+    mutationFn: async ({ applicationName, baseUrl, env, request }) => {
+      const registeredResponse = await fetch('/api/applications', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: applicationName, baseUrl, env }),
+      });
+      const registeredPayload: unknown = await registeredResponse.json().catch(() => null);
+      if (!registeredResponse.ok) {
+        const failure = ConsoleRouteError.safeParse(registeredPayload);
+        if (failure.success) {
+          setIssues((current) => ({ ...current, ...issuesFromGateway(failure.data.issues) }));
+          throw new Error(failure.data.message);
+        }
+        throw new Error(
+          `the console could not register the application (HTTP ${String(registeredResponse.status)})`,
+        );
+      }
+
+      const application = ApplicationRecordSchema.safeParse(registeredPayload);
+      if (!application.success) throw new Error('the gateway returned an unrecognised application');
+
+      const response = await fetch(`/api/applications/${application.data.id}/crawl`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(request),
@@ -103,12 +157,13 @@ export function ConnectForm() {
     },
 
     // Optimistic: the row appears the moment the request leaves, marked "starting".
-    onMutate: ({ applicationId, request, clientId }) => {
+    onMutate: ({ applicationName, request, clientId }) => {
       const previous = client.getQueryData<StartedJob[]>(STARTED_JOBS) ?? [];
       client.setQueryData<StartedJob[]>(STARTED_JOBS, [
         {
           clientId,
-          applicationId,
+          applicationName,
+          applicationId: '',
           jobId: null,
           pageCap: request.bounds.maxPages,
           at: new Date().toISOString(),
@@ -124,12 +179,21 @@ export function ConnectForm() {
       if (context !== undefined) client.setQueryData<StartedJob[]>(STARTED_JOBS, context.previous);
     },
 
-    onSuccess: (job, { clientId }) => {
+    onSuccess: (job, { clientId, applicationName }) => {
       client.setQueryData<StartedJob[]>(STARTED_JOBS, (current) =>
         (current ?? []).map((entry) =>
-          entry.clientId === clientId ? { ...entry, jobId: job.jobId, status: 'queued' } : entry,
+          entry.clientId === clientId
+            ? {
+                ...entry,
+                applicationName,
+                applicationId: job.applicationId,
+                jobId: job.jobId,
+                status: 'queued',
+              }
+            : entry,
         ),
       );
+      void client.invalidateQueries({ queryKey: REGISTERED_APPS });
       router.push(progressHref(job.applicationId, job.jobId, pageCapOf(client, clientId)));
     },
   });
@@ -145,10 +209,21 @@ export function ConnectForm() {
 
     setIssues({});
     startCrawl.mutate({
-      applicationId: parsed.applicationId,
+      applicationName: parsed.applicationName,
+      baseUrl: parsed.baseUrl,
+      env: parsed.env,
       request: parsed.request,
       clientId: crypto.randomUUID(),
     });
+  };
+
+  const applyRegistered = (application: ApplicationRecord): void => {
+    setValues((current) => ({
+      ...current,
+      applicationName: application.name,
+      baseUrl: application.baseUrl,
+      env: application.env,
+    }));
   };
 
   const busy = startCrawl.isPending;
@@ -164,15 +239,43 @@ export function ConnectForm() {
         </p>
 
         <TextField
-          id={field('applicationId')}
-          label="Application"
-          value={values.applicationId}
+          id={field('applicationName')}
+          label="Application name"
+          value={values.applicationName}
           onChange={(value) => {
-            set('applicationId', value);
+            set('applicationName', value);
           }}
-          error={issues.applicationId}
-          placeholder="00000000-0000-0000-0000-000000000000"
-          hint="The registered application's UUID. The crawl starts at the base URL held on that record — the gateway does not accept a start URL on the request."
+          error={issues.applicationName}
+          placeholder="Orders"
+          hint="A name this tenant will recognise. Re-submitting the same name at the same origin reuses the existing record."
+        />
+        <TextField
+          id={field('baseUrl')}
+          label="Base URL"
+          type="url"
+          value={values.baseUrl}
+          onChange={(value) => {
+            set('baseUrl', value);
+          }}
+          error={issues.baseUrl}
+          placeholder="https://app.example.com"
+          hint="Where the crawl starts. The gateway does not accept a start URL on the crawl request — this URL is stored on the application record."
+        />
+        <SelectField
+          id={field('env')}
+          label="Environment"
+          value={values.env}
+          error={issues.env}
+          options={[
+            { value: '', label: 'Choose an environment' },
+            { value: 'development', label: 'Development' },
+            { value: 'staging', label: 'Staging' },
+            { value: 'production', label: 'Production' },
+          ]}
+          onChange={(value) => {
+            set('env', value);
+          }}
+          hint="Which deployment this URL is. Two environments of the same product are two applications."
         />
 
         <h3>Bounds</h3>
@@ -185,7 +288,7 @@ export function ConnectForm() {
           }}
           error={issues.allowedOrigins}
           placeholder={'https://app.example.com'}
-          hint="One absolute URL per line. Must include the origin the application is registered at; a link anywhere else is recorded as skipped, never followed."
+          hint="One absolute URL per line. Leave empty to allow only the origin of the base URL you named. A link anywhere else is recorded as skipped, never followed."
         />
         <TextAreaField
           id={field('routeAllowlist')}
@@ -466,15 +569,51 @@ export function ConnectForm() {
         </div>
       </form>
 
+      <section className="card" aria-labelledby={field('registered-heading')}>
+        <h2 id={field('registered-heading')}>Registered applications</h2>
+        {registered.isError ? (
+          <p className="hint" role="alert">
+            {registered.error.message}
+          </p>
+        ) : registered.data === undefined || registered.data.applications.length === 0 ? (
+          <p className="hint">
+            No applications registered yet. Name one above. After an index, this list shows the
+            memory version, screen and element counts, and how old that index is.
+          </p>
+        ) : (
+          <>
+            <p className="hint">
+              Memory version, screen counts and index age come from the active version. Never
+              indexed means zeros, not a fabricated coverage score.
+            </p>
+            <ul>
+              {registered.data.applications.map((application) => (
+                <li key={application.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyRegistered(application);
+                    }}
+                  >
+                    {application.name} · {application.env} · {application.baseUrl} ·{' '}
+                    {application.memoryVersion === null
+                      ? 'never indexed'
+                      : `v${String(application.memoryVersion)}`}{' '}
+                    · {application.screenCount} screens · {application.elementCount} elements ·{' '}
+                    {formatIndexAge(application.indexedAt)}
+                  </button>{' '}
+                  <a href={`/applications/${application.id}`}>Open</a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
       <section className="card" aria-labelledby={field('started-heading')}>
         <h2 id={field('started-heading')}>Started from this browser</h2>
         {started.data.length === 0 ? (
-          <p className="hint">
-            No crawls started here yet. A list of recently-worked-on applications — memory version,
-            screen and element counts, index age — needs a route the gateway does not expose yet
-            (there is no <code>GET /v1/applications</code>), so this shows only what this console
-            has itself started.
-          </p>
+          <p className="hint">No crawls started here yet.</p>
         ) : (
           <table>
             <caption>Jobs this browser enqueued, newest first.</caption>
@@ -488,9 +627,9 @@ export function ConnectForm() {
             <tbody>
               {started.data.map((job) => (
                 <tr key={job.clientId}>
-                  <td className="path">{job.applicationId}</td>
+                  <td className="path">{job.applicationName}</td>
                   <td className="path">
-                    {job.jobId === null ? (
+                    {job.jobId === null || job.applicationId === '' ? (
                       <span className="status-crawling">starting…</span>
                     ) : (
                       <a href={progressHref(job.applicationId, job.jobId, job.pageCap)}>

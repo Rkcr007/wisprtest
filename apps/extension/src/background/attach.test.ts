@@ -11,6 +11,7 @@ import {
 } from './attach.js';
 import type { DriftClient } from './drift-client.js';
 import type { EscalateClient } from './escalate-client.js';
+import type { LocalMemoryEnvelope, LocalMemoryStore } from './local-memory.js';
 import type { MemoryClient } from './memory-client.js';
 import type { SessionClient } from './session-client.js';
 import { UnauthenticatedError } from './token-client.js';
@@ -813,5 +814,134 @@ describe('raising drift', () => {
     await Promise.resolve();
 
     expect(raise).not.toHaveBeenCalled();
+  });
+});
+
+describe('local dump attach', () => {
+  const dump: MemorySnapshot = {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    applicationId: '22222222-2222-4222-8222-222222222222',
+    memoryVersion: {
+      id: '33333333-3333-4333-8333-333333333333',
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      applicationId: '22222222-2222-4222-8222-222222222222',
+      version: 1,
+      status: 'active',
+      createdAt: '2026-07-29T00:00:00.000Z',
+      approvedBy: null,
+      failureReason: null,
+    },
+    screens: [],
+    elements: [],
+    navEdges: [],
+    aliases: [],
+    generatedAt: '2026-07-29T00:00:00.000Z',
+  };
+
+  function dumpedStore(origin: string): LocalMemoryStore {
+    const envelope: LocalMemoryEnvelope = { origin, snapshot: dump };
+    return {
+      read: () => Promise.resolve(envelope),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+  }
+
+  it('attaches from a matching dump without minting a token', async () => {
+    const fetchToken = vi.fn(() => Promise.resolve(token()));
+    const store = memoryStore();
+    const scheduler = alarms();
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken },
+      store,
+      alarms: scheduler,
+      localMemory: dumpedStore('https://orders.example'),
+    });
+
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchToken).not.toHaveBeenCalled();
+    expect(store.values.size).toBe(0);
+    expect(scheduler.created).toHaveLength(0);
+    expect(controller.stateOf(TAB)).toBe('attached');
+
+    const lastState = [...connection.sent]
+      .reverse()
+      .find((message) => message.attach === 'attached');
+    expect(lastState?.attach).toBe('attached');
+    expect(lastState?.applicationId).toBe(dump.applicationId);
+    expect(lastState?.tokenExpiresAt).toBeNull();
+
+    const snap = connection.sent.find((message) => {
+      return (message as { kind?: string }).kind === 'snapshot';
+    }) as { kind: string; state: string; snapshot?: MemorySnapshot } | undefined;
+    expect(snap?.state).toBe('loaded');
+    expect(snap?.snapshot?.applicationId).toBe(dump.applicationId);
+  });
+
+  it('falls through to the gateway when the dump is for a different origin', async () => {
+    const fetchToken = vi.fn(() => Promise.resolve(token()));
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken },
+      store: memoryStore(),
+      alarms: alarms(),
+      localMemory: dumpedStore('https://other.example'),
+    });
+
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+
+    expect(fetchToken).toHaveBeenCalledOnce();
+    expect(connection.sent.at(-1)?.attach).toBe('attached');
+  });
+
+  it('does not send the local placeholder to T2', async () => {
+    const escalate = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        response: {
+          elementId: '44444444-4444-4444-8444-444444444444',
+          confidence: 0.9,
+          reasoning: 'unused',
+        },
+      }),
+    );
+    const connection = fakePort();
+    const controller = createAttachController({
+      tokens: { fetchToken: vi.fn() },
+      store: memoryStore(),
+      alarms: alarms(),
+      localMemory: dumpedStore('https://orders.example'),
+      escalation: { escalate },
+    });
+
+    controller.connect(connection.port);
+    connection.emit({ kind: 'hello', origin: 'https://orders.example' });
+    await controller.toggle(TAB);
+    await Promise.resolve();
+
+    connection.emit({
+      kind: 'escalate',
+      requestId: 'req-local',
+      request: {
+        utterance: 'approve',
+        stateFingerprint: 'a'.repeat(64),
+        candidates: [],
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(escalate).not.toHaveBeenCalled();
+    const reply = connection.sent.at(-1) as unknown as { ok: boolean; reason: string };
+    expect(reply.ok).toBe(false);
+    expect(reply.reason).toBe('unavailable');
   });
 });

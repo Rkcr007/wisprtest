@@ -140,6 +140,30 @@ describe('rebinding and internal targets', () => {
     );
   });
 
+  it('permits an allowlisted name on a private address only when the dump opts in', async () => {
+    const dns = resolvesTo({ 'orders.northwind.example': ['100.64.1.1'] });
+    const closed = createUrlPolicy(bounds(), dns);
+    await expect(closed.assertAllowed('https://orders.northwind.example/orders')).rejects.toThrow(
+      /resolves to a private address/,
+    );
+
+    const open = createUrlPolicy(bounds(), dns, { allowPrivateOnAllowlist: true });
+    await expect(
+      open.assertAllowed('https://orders.northwind.example/orders'),
+    ).resolves.toBeInstanceOf(URL);
+  });
+
+  it('still blocks metadata when private-on-allowlist is on', async () => {
+    const policy = createUrlPolicy(
+      bounds(),
+      resolvesTo({ 'orders.northwind.example': ['169.254.169.254'] }),
+      { allowPrivateOnAllowlist: true },
+    );
+    await expect(policy.assertAllowed('https://orders.northwind.example/orders')).rejects.toThrow(
+      /resolves to a blocked address/,
+    );
+  });
+
   it('rejects an allowlisted name that resolves to the metadata service', async () => {
     const policy = createUrlPolicy(
       bounds(),

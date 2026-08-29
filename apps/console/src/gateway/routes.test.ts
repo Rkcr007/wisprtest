@@ -75,6 +75,33 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function isStringBodyInit(init: unknown): init is { body: string } {
+  return (
+    typeof init === 'object' && init !== null && 'body' in init && typeof init.body === 'string'
+  );
+}
+
+function isHeadersInit(init: unknown): init is { headers: Headers } {
+  return (
+    typeof init === 'object' &&
+    init !== null &&
+    'headers' in init &&
+    init.headers instanceof Headers
+  );
+}
+
+function jsonBodyFromFetchCall(call: unknown[] | undefined): unknown {
+  const init: unknown = call?.[1];
+  if (!isStringBodyInit(init)) throw new Error('expected a JSON string body');
+  return JSON.parse(init.body);
+}
+
+function authorizationFromFetchCall(call: unknown[] | undefined): string | null {
+  const init: unknown = call?.[1];
+  if (!isHeadersInit(init)) throw new Error('expected RequestInit headers');
+  return init.headers.get('authorization');
+}
+
 const bounds = {
   allowedOrigins: ['https://app.example.com'],
   routeAllowlist: ['/orders'],
@@ -465,6 +492,525 @@ describe('GET /api/applications/:id/index-progress', () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get('content-type')).not.toContain('text/event-stream');
+    await expect(response.json()).resolves.toMatchObject({ code: 'gateway_unreachable' });
+  });
+});
+
+const APPLICATION = {
+  id: APPLICATION_ID,
+  tenantId: '11111111-1111-4111-8111-111111111111',
+  name: 'Orders',
+  baseUrl: 'https://app.example.com',
+  env: 'staging',
+  createdAt: '2026-08-02T10:00:00.000Z',
+};
+
+describe('GET /api/applications', () => {
+  it('forwards the tenant list and attaches the session bearer', async () => {
+    await signIn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ tenantId: APPLICATION.tenantId, applications: [APPLICATION] }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/route');
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      applications: [{ id: APPLICATION_ID, name: 'Orders' }],
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://gateway.internal:8080/v1/applications');
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
+  });
+
+  it('refuses without a session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/route');
+
+    expect((await GET()).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/applications', () => {
+  function registerRequest(body: unknown): NextRequest {
+    return new NextRequest('http://localhost:3000/api/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('registers an application and answers 201', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(APPLICATION, 201));
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/applications/route');
+
+    const response = await POST(
+      registerRequest({ name: 'Orders', baseUrl: 'https://app.example.com', env: 'staging' }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ id: APPLICATION_ID });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://gateway.internal:8080/v1/applications');
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
+      name: 'Orders',
+      baseUrl: 'https://app.example.com',
+      env: 'staging',
+    });
+  });
+
+  it('reuses a name-and-origin match instead of surfacing the duplicate as a failure', async () => {
+    await signIn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            code: 'validation_failed',
+            message: 'an application with this name already exists',
+            retryable: false,
+            issues: [{ path: 'name', message: 'already exists' }],
+          },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ tenantId: APPLICATION.tenantId, applications: [APPLICATION] }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/applications/route');
+
+    const response = await POST(
+      registerRequest({ name: 'Orders', baseUrl: 'https://app.example.com', env: 'staging' }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ id: APPLICATION_ID });
+  });
+
+  it('refuses an incomplete body without calling the gateway', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/applications/route');
+
+    const response = await POST(registerRequest({ name: 'Orders' }));
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+const minted = {
+  token: 'a.scoped.token',
+  tokenType: 'Bearer',
+  expiresAt: '2026-08-02T10:15:00.000Z',
+  tenantId: APPLICATION.tenantId,
+  applicationId: APPLICATION_ID,
+  scopes: ['memory:read', 'session:write'],
+};
+
+describe('POST /api/auth/extension-token', () => {
+  function mintRequest(body: unknown, origin = 'http://localhost:3000'): NextRequest {
+    return new NextRequest('http://localhost:3000/api/auth/extension-token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('forwards the mint and never puts the OIDC token in the response', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(minted));
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/auth/extension-token/route');
+
+    const response = await POST(mintRequest({ origin: 'https://app.example.com' }));
+    const payload = (await response.json()) as { token: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.token).toBe('a.scoped.token');
+    expect(JSON.stringify(payload)).not.toContain('gateway-access-token');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://gateway.internal:8080/v1/auth/extension-token',
+    );
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
+  });
+
+  it('refuses a foreign Origin before touching the gateway', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/auth/extension-token/route');
+
+    const response = await POST(
+      mintRequest({ origin: 'https://app.example.com' }, 'https://evil.example'),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses without a session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/auth/extension-token/route');
+
+    expect((await POST(mintRequest({ origin: 'https://app.example.com' }))).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+import {
+  APPLICATION_ID as DRIFT_APP,
+  APPROVED,
+  DRIFT_LIST,
+  REJECTED,
+  REPORT_ID,
+  SESSION_ID,
+  SESSION_TIMELINE,
+} from '../drift/fixtures';
+
+describe('GET /api/applications/:id/drift', () => {
+  function driftParams(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it('forwards the pending list and attaches the session bearer', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(DRIFT_LIST));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/[id]/drift/route');
+
+    const response = await GET(
+      new Request(`http://localhost:3000/api/applications/${DRIFT_APP}/drift`),
+      driftParams(DRIFT_APP),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ total: 2 });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://gateway.internal:8080/v1/drift/${DRIFT_APP}`);
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
+  });
+
+  it('refuses without a session and never calls the gateway', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/[id]/drift/route');
+
+    const response = await GET(
+      new Request(`http://localhost:3000/api/applications/${DRIFT_APP}/drift`),
+      driftParams(DRIFT_APP),
+    );
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses an application id that is not a UUID', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/[id]/drift/route');
+
+    expect(
+      (
+        await GET(
+          new Request('http://localhost:3000/api/applications/nope/drift'),
+          driftParams('nope'),
+        )
+      ).status,
+    ).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('never puts the token in the query string', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(DRIFT_LIST));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/applications/[id]/drift/route');
+
+    await GET(
+      new Request(`http://localhost:3000/api/applications/${DRIFT_APP}/drift`),
+      driftParams(DRIFT_APP),
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('gateway-access-token');
+  });
+
+  it('reports an unreachable gateway as a 502, not as an empty success', async () => {
+    await signIn();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    const { GET } = await import('../../app/api/applications/[id]/drift/route');
+
+    const response = await GET(
+      new Request(`http://localhost:3000/api/applications/${DRIFT_APP}/drift`),
+      driftParams(DRIFT_APP),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ code: 'gateway_unreachable' });
+  });
+});
+
+describe('POST /api/drift/:id/approve', () => {
+  function decideRequest(body: unknown): NextRequest {
+    return new NextRequest(`http://localhost:3000/api/drift/${REPORT_ID}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function decideParams(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it('forwards an approval and answers with the decision', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(APPROVED));
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    const response = await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      newMemoryVersionId: APPROVED.newMemoryVersionId,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `http://gateway.internal:8080/v1/drift/${REPORT_ID}/approve`,
+    );
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
+      decision: 'approve',
+    });
+    expect(authorizationFromFetchCall(fetchMock.mock.calls[0])).toBe('Bearer gateway-access-token');
+  });
+
+  it('forwards a rejection with its reason', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(REJECTED));
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    const response = await POST(
+      decideRequest({ decision: 'reject', reason: 'the create form was mid-deploy' }),
+      decideParams(REPORT_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(jsonBodyFromFetchCall(fetchMock.mock.calls[0])).toEqual({
+      decision: 'reject',
+      reason: 'the create form was mid-deploy',
+    });
+  });
+
+  it('refuses a rejection with no reason without calling the gateway', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    const response = await POST(decideRequest({ decision: 'reject' }), decideParams(REPORT_ID));
+    const payload = (await response.json()) as { code: string; issues: { path: string }[] };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe('validation_failed');
+    expect(payload.issues.some((issue) => issue.path.includes('reason'))).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses auto_approve — that path does not exist on the contract', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    expect(
+      (await POST(decideRequest({ decision: 'auto_approve' }), decideParams(REPORT_ID))).status,
+    ).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses without a session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    expect(
+      (await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID))).status,
+    ).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a report id that is not a UUID', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    expect(
+      (await POST(decideRequest({ decision: 'approve' }), decideParams('not-a-uuid'))).status,
+    ).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes the gateway’s own validation_failed through with its issues intact', async () => {
+    await signIn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'validation_failed',
+            message: 'this report has already been decided',
+            retryable: false,
+            issues: [{ path: 'id', message: 'the report is already approved' }],
+          },
+          400,
+        ),
+      ),
+    );
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    const response = await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID));
+    const payload = (await response.json()) as { code: string; message: string; issues: unknown[] };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe('validation_failed');
+    expect(payload.message).toContain('already been decided');
+    expect(payload.issues).toEqual([{ path: 'id', message: 'the report is already approved' }]);
+  });
+
+  it('does not interpret a role — a forbidden decision is the gateway’s sentence', async () => {
+    await signIn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'forbidden',
+            message: 'drift:approve is required',
+            retryable: false,
+            requiredRole: 'lead',
+          },
+          403,
+        ),
+      ),
+    );
+    const { POST } = await import('../../app/api/drift/[id]/approve/route');
+
+    const response = await POST(decideRequest({ decision: 'approve' }), decideParams(REPORT_ID));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'forbidden',
+      message: 'drift:approve is required',
+    });
+  });
+});
+
+describe('GET /api/sessions/:sessionId', () => {
+  function sessionParams(sessionId: string) {
+    return { params: Promise.resolve({ sessionId }) };
+  }
+
+  it('forwards the timeline and attaches the session bearer', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SESSION_TIMELINE));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/sessions/[sessionId]/route');
+
+    const response = await GET(
+      new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`),
+      sessionParams(SESSION_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      session: { id: string };
+      evidence: { url: string }[];
+    };
+    expect(body.session.id).toBe(SESSION_ID);
+    expect(body.evidence[0]?.url).toContain('evidence.wisprtest.example');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `http://gateway.internal:8080/v1/sessions/${SESSION_ID}`,
+    );
+    expect(
+      ((fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers).get('authorization'),
+    ).toBe('Bearer gateway-access-token');
+  });
+
+  it('refuses without a session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/sessions/[sessionId]/route');
+
+    expect(
+      (
+        await GET(
+          new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`),
+          sessionParams(SESSION_ID),
+        )
+      ).status,
+    ).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a session id that is not a UUID', async () => {
+    await signIn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/sessions/[sessionId]/route');
+
+    expect(
+      (
+        await GET(
+          new Request('http://localhost:3000/api/sessions/not-a-uuid'),
+          sessionParams('not-a-uuid'),
+        )
+      ).status,
+    ).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('never puts the token in the query string', async () => {
+    await signIn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SESSION_TIMELINE));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('../../app/api/sessions/[sessionId]/route');
+
+    await GET(
+      new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`),
+      sessionParams(SESSION_ID),
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('gateway-access-token');
+  });
+
+  it('reports an unreachable gateway as a 502', async () => {
+    await signIn();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    const { GET } = await import('../../app/api/sessions/[sessionId]/route');
+
+    const response = await GET(
+      new Request(`http://localhost:3000/api/sessions/${SESSION_ID}`),
+      sessionParams(SESSION_ID),
+    );
+
+    expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ code: 'gateway_unreachable' });
   });
 });

@@ -60,6 +60,14 @@ export interface HudProps {
   /** Called when the tester approves a staged class-C action. */
   readonly onConfirm?: () => void;
   /**
+   * A typed command, already final.
+   *
+   * Voice is the fast path; this is the same resolver, the same taxonomy, and the same
+   * confirmation rules, without a microphone. Typed input is a finished transcript — there is
+   * no partial hypothesis and nothing speculative runs from it.
+   */
+  readonly onCommand?: (utterance: string) => void;
+  /**
    * The open disambiguation, when no tier could name an element (Phase 11).
    *
    * Numbered because the tester answers by *speaking* an ordinal — "one, two, or three" — while
@@ -162,6 +170,7 @@ export function Hud({
   voice = INITIAL_VOICE,
   speculation = IDLE_SPECULATION,
   onConfirm,
+  onCommand,
   disambiguation = null,
   onChoose,
   seed = IDLE_SEED_VIEW,
@@ -177,7 +186,15 @@ export function Hud({
   version,
 }: HudProps): ReactNode {
   const [collapsed, setCollapsed] = useState(true);
+  const [draft, setDraft] = useState('');
   const draggable = useDraggable({ initial: { x: 16, y: 16 } });
+
+  function submitCommand(): void {
+    const utterance = draft.trim();
+    if (utterance === '' || onCommand === undefined) return;
+    onCommand(utterance);
+    setDraft('');
+  }
 
   const attached = update.attach === 'attached';
   const busy = update.attach === 'attaching';
@@ -243,6 +260,19 @@ export function Hud({
           </span>
 
           <span className="wispr-hud__actions">
+            {attached && collapsed && onCommand ? (
+              <button
+                type="button"
+                className="wispr-hud__button"
+                onClick={() => {
+                  setCollapsed(false);
+                }}
+                aria-label="Type a command"
+                data-testid="wispr-hud-type"
+              >
+                Type
+              </button>
+            ) : null}
             <button
               type="button"
               className={`wispr-hud__button${attached ? '' : ' wispr-hud__button--primary'}`}
@@ -330,6 +360,41 @@ export function Hud({
                   </button>
                 ) : null}
               </span>
+              {attached && onCommand ? (
+                <form
+                  className="wispr-hud__command"
+                  data-testid="wispr-hud-command-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitCommand();
+                  }}
+                >
+                  <label className="wispr-hud__intent-label" htmlFor="wispr-hud-command">
+                    Command
+                  </label>
+                  <input
+                    id="wispr-hud-command"
+                    className="wispr-hud__command-input"
+                    type="text"
+                    value={draft}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                    }}
+                    placeholder="Type a command"
+                    autoComplete="off"
+                    spellCheck={false}
+                    data-testid="wispr-hud-command"
+                  />
+                  <button
+                    type="submit"
+                    className="wispr-hud__button wispr-hud__button--primary"
+                    disabled={draft.trim() === ''}
+                    data-testid="wispr-hud-command-submit"
+                  >
+                    Run
+                  </button>
+                </form>
+              ) : null}
             </div>
 
             {/* ── Disambiguation: only while a choice is open ─────────────────────────── */}
@@ -427,7 +492,7 @@ function renderTranscript(attached: boolean, voice: HudVoice): ReactNode {
   const partial = voice.partial?.text ?? '';
 
   if (final === '' && partial === '') {
-    return voice.phase === 'listening' ? 'Listening…' : 'Hold to talk';
+    return voice.phase === 'listening' ? 'Listening…' : 'Hold to talk, or type';
   }
 
   return (

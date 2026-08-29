@@ -29,6 +29,24 @@ describe('IntentParser — verbs', () => {
     expect(parse('show only pending').verb).toBe('filter');
   });
 
+  it('reads the demo paraphrase "show me only the pending ones" as a filter, not a navigation', () => {
+    // "show me" is also a navigate trigger. Longest prefix must win, or the sentence the product
+    // advertises is classified as a trip to a screen named "only the pending ones".
+    const intent = parse('show me only the pending ones');
+    expect(intent.verb).toBe('filter');
+    expect(intent.targetPhrase).toBe('pending ones');
+  });
+
+  it('treats a bare pronoun as the spoken verb, so "approve it" names the approve control', () => {
+    expect(parse('approve it')).toMatchObject({ verb: 'click', targetPhrase: 'approve' });
+    expect(parse('delete that')).toMatchObject({ verb: 'click', targetPhrase: 'delete' });
+    // A longer remainder still names the control; do not throw "this" away.
+    expect(parse('approve this order')).toMatchObject({
+      verb: 'click',
+      targetPhrase: 'this order',
+    });
+  });
+
   it('infers navigation for a bare phrase the app knows as a screen', () => {
     expect(parse('orders').verb).toBe('navigate');
   });

@@ -1,0 +1,42 @@
+# Image builds copy the workspace into a build stage. Anything listed here never reaches
+# that context, which is what keeps a `COPY . .` from dragging testers' .env, Playwright
+# reports, or a local node_modules into the layer.
+
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+
+node_modules
+.pnpm-store
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/.venv
+**/__pycache__
+**/*.tsbuildinfo
+
+apps/extension
+apps/console/.next
+apps/composer/.venv
+apps/composer/.mypy_cache
+apps/composer/.ruff_cache
+apps/composer/.pytest_cache
+
+docs
+*.md
+!apps/composer/README.md
+
+infra/grafana
+infra/helm
+infra/dex
+
+# Local Atlas / editor noise
+.idea
+.vscode
+.DS_Store

@@ -8,7 +8,9 @@
     "dev": "next dev --port $CONSOLE_PORT",
     "start": "next start --port $CONSOLE_PORT",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:a11y": "vitest run --config vitest.a11y.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.101.3",

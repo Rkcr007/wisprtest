@@ -11,6 +11,25 @@ import { buildManifest } from './manifest.js';
 const manifest = buildManifest({ version: '1.2.3', gatewayOrigin: 'https://gateway.example' });
 
 describe('permissions', () => {
+  it('asks for cookies only when this build mints through the console', () => {
+    const withConsole = buildManifest({
+      version: '1.2.3',
+      gatewayOrigin: 'https://gateway.example',
+      consoleOrigin: 'https://console.example',
+    });
+    expect(withConsole.permissions).toEqual([
+      'cookies',
+      'storage',
+      'alarms',
+      'offscreen',
+      'debugger',
+    ]);
+    expect(withConsole.host_permissions).toEqual([
+      'https://gateway.example/*',
+      'https://console.example/*',
+    ]);
+  });
+
   it('asks for storage, alarms, offscreen and debugger, and nothing else', () => {
     // Adding to this list should require changing this test, and changing this test should
     // require an answer to "what breaks without it?". `offscreen` is what breaks the microphone:
@@ -88,5 +107,9 @@ describe('the rest of the manifest', () => {
     // `chrome.storage.session.setAccessLevel` lands in 116. Below that the token could be read
     // by a content script, which is the one thing the storage design exists to prevent.
     expect(manifest.minimum_chrome_version).toBe('116');
+  });
+
+  it('exposes an options page in a tab for local dump import', () => {
+    expect(manifest.options_ui).toEqual({ page: 'options.html', open_in_tab: true });
   });
 });

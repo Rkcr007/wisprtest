@@ -14,10 +14,20 @@ export interface ManifestOptions {
   readonly version: string;
   /** Origin of the control plane, e.g. `https://gateway.wisprtest.dev`. */
   readonly gatewayOrigin: string;
+  /**
+   * Origin of the console, empty when this build mints at the gateway (e2e stubs, dump-only).
+   * When set, the worker posts `/api/auth/extension-token` here with the session cookie.
+   */
+  readonly consoleOrigin?: string;
 }
 
 export function buildManifest(options: ManifestOptions): Record<string, unknown> {
   const gateway = new URL(options.gatewayOrigin);
+  const consoleOrigin = options.consoleOrigin ?? '';
+  const hosts = new Set<string>([`${gateway.origin}/*`]);
+  if (consoleOrigin !== '') {
+    hosts.add(`${new URL(consoleOrigin).origin}/*`);
+  }
 
   return {
     manifest_version: 3,
@@ -30,14 +40,27 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
     minimum_chrome_version: '116',
 
     permissions: [
+      ...(consoleOrigin === ''
+        ? []
+        : [
+            /**
+             * `cookies` — only when this build mints through the console. The session cookie is
+             * HTTP-only and `SameSite=Lax`, so a `fetch` from `chrome-extension://` will not send
+             * it. `chrome.cookies.get` can read that cookie for the console origin and the worker
+             * attaches it as a `Cookie` header. The OIDC access token never leaves the console
+             * process; this permission reads the encrypted session envelope, not the bearer.
+             */
+            'cookies',
+          ]),
       /**
        * `storage` — the scoped gateway token lives in `chrome.storage.session`, which is
        * memory-backed and cleared when the browser closes. Without it the token would have to be
        * refetched every time Chrome terminates the idle service worker, which is roughly every
        * 30 seconds of quiet: a token request per pause in a tester's session.
        *
-       * Session storage specifically, never `local`: `local` is on disk, and a bearer token for a
-       * customer's tenant does not belong on disk.
+       * Session storage specifically for tokens, never `local`: `local` is on disk, and a bearer
+       * token for a customer's tenant does not belong on disk. `local` is used only for a dumped
+       * `MemorySnapshot` imported on the options page — Product Memory, structure, no credential.
        */
       'storage',
 
@@ -81,7 +104,7 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
      * requests to them — it operates their DOM in-process, which is the whole point of the hot
      * path being in the content script (CLAUDE.md rule #2).
      */
-    host_permissions: [`${gateway.origin}/*`],
+    host_permissions: [...hosts],
 
     background: {
       service_worker: 'background.js',
@@ -150,6 +173,16 @@ export function buildManifest(options: ManifestOptions): Record<string, unknown>
      */
     action: {
       default_title: 'Show or hide the WisprTest panel',
+    },
+
+    /**
+     * Developer import of a dumped snapshot. Not the tester sign-in path — that still goes
+     * through the console. This page exists so a packed extension can resolve against a live
+     * origin without a gateway token while that path is still being built.
+     */
+    options_ui: {
+      page: 'options.html',
+      open_in_tab: true,
     },
 
     /**

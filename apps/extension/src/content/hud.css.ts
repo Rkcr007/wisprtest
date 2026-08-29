@@ -146,6 +146,33 @@ export const hudCss = `
 
 .wispr-hud__intent { display: flex; flex-direction: column; gap: var(--wispr-space-1); }
 .wispr-hud__intent-row { display: flex; align-items: center; gap: var(--wispr-space-2); }
+
+.wispr-hud__command {
+  display: flex;
+  align-items: center;
+  gap: var(--wispr-space-2);
+  width: 100%;
+}
+
+.wispr-hud__command-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--wispr-space-1) var(--wispr-space-2);
+  border: 1px solid var(--wispr-border);
+  border-radius: var(--wispr-radius-sm);
+  background: var(--wispr-surface-sunken);
+  color: var(--wispr-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.wispr-hud__command-input:focus {
+  outline: 1px solid var(--wispr-memory);
+  border-color: var(--wispr-memory);
+}
+
+.wispr-hud__command-input::placeholder { color: var(--wispr-text-muted); }
 .wispr-hud__intent-label {
   color: var(--wispr-text-muted);
   font-size: 10px;

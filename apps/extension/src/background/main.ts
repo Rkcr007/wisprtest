@@ -6,6 +6,7 @@ import { createAttachController } from './attach.js';
 import { createCdpDispatchService } from './cdp-dispatch.js';
 import { createDriftClient } from './drift-client.js';
 import { createEscalateClient } from './escalate-client.js';
+import { createLocalMemoryStore } from './local-memory.js';
 import { createMemoryClient } from './memory-client.js';
 import { createEvidenceUploader } from './evidence-uploader.js';
 import { createSeedClient } from './seed-client.js';
@@ -30,6 +31,7 @@ import { createBufferStore } from '../session/index.js';
 
 /** Build-time constants, substituted by `src/build.ts`. */
 declare const __WISPR_GATEWAY_ORIGIN__: string;
+declare const __WISPR_CONSOLE_ORIGIN__: string;
 declare const __WISPR_ENV__: string;
 declare const __WISPR_ASR_TOKEN__: string;
 
@@ -92,9 +94,21 @@ const cdp = createCdpDispatchService({
 });
 
 const controller = createAttachController({
-  tokens: createTokenClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  tokens: createTokenClient({
+    gatewayOrigin: __WISPR_GATEWAY_ORIGIN__,
+    consoleOrigin: __WISPR_CONSOLE_ORIGIN__,
+    readConsoleSession: async () => {
+      if (__WISPR_CONSOLE_ORIGIN__ === '') return null;
+      const cookie = await chrome.cookies.get({
+        url: __WISPR_CONSOLE_ORIGIN__,
+        name: 'wispr_console_session',
+      });
+      return cookie?.value ?? null;
+    },
+  }),
   store: createTokenStore(chrome.storage.session),
   memory: createMemoryClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),
+  localMemory: createLocalMemoryStore(chrome.storage.local),
   // T2 and its write-back. Both live here rather than in the content script because both need the
   // scoped token, and the token never crosses into the page.
   escalation: createEscalateClient({ gatewayOrigin: __WISPR_GATEWAY_ORIGIN__ }),

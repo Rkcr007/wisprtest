@@ -1,0 +1,40 @@
+global:
+  envSecretName: wisprtest-runtime
+  hostAliasIP: ''
+  imagePullPolicy: IfNotPresent
+replicaCount: 1
+image:
+  repository: wisprtest/indexer
+  tag: kind
+service:
+  type: ClusterIP
+  port: 8081
+containerPort: 8081
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: '2'
+    memory: 2Gi
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 70
+pdb:
+  enabled: true
+  maxUnavailable: 1
+probes:
+  livenessPath: /healthz
+  readinessPath: /readyz
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+extraEnv: {}
+terminationGracePeriodSeconds: 90
+shmSizeLimit: 2Gi

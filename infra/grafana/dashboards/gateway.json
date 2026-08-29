@@ -1,0 +1,177 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "text",
+      "title": "Honesty",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Instruments from `apps/gateway/src/telemetry/metrics.ts` only.\n\n**Not on this dashboard, because they are not emitted:** `wispr_speech_to_reticle_ms`, `wispr_memory_staleness_hours`, `wispr_drift_open_total` (see `infra/grafana/README.md`).\n\n`wispr_false_execution_total` is registered and has **no production `.add()`**. A flat zero is not a clean bill of health.\n\n`wispr_tier_total` and `wispr_seed_plan_latency_ms` are also recorded by the composer. Queries filter `service_name=\"wispr-gateway\"`."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (route, status_class) (rate(wispr_gateway_requests_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "{{route}} {{status_class}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP duration p95 (budget: none stated for HTTP; seed preview is 1.2s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(wispr_gateway_request_duration_ms_bucket{service_name=\"wispr-gateway\"}[5m])))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Resolution tier (compounding-loop health)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (tier) (rate(wispr_tier_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "{{tier}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "T2 resolution latency p95 (budget 800ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, tier) (rate(wispr_resolution_latency_ms_bucket{service_name=\"wispr-gateway\"}[5m])))",
+          "legendFormat": "{{tier}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory snapshot cache",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(wispr_memory_snapshot_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Snapshot build p95 (cache miss)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_memory_snapshot_build_ms_bucket{service_name=\"wispr-gateway\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Seed plan latency p95 (budget 1.2s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_seed_plan_latency_ms_bucket{service_name=\"wispr-gateway\"}[5m])))",
+          "legendFormat": "gateway p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Seed materialize by adapter / outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (adapter, outcome) (rate(wispr_seed_materialize_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "{{adapter}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Drift reports raised vs decisions",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (detected_by) (rate(wispr_drift_reports_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "raised {{detected_by}}"
+        },
+        {
+          "expr": "sum by (decision) (rate(wispr_drift_decisions_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "decision {{decision}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Index jobs enqueued / progress events / open subscribers",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(wispr_index_jobs_enqueued_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "enqueued {{outcome}}"
+        },
+        {
+          "expr": "sum by (kind) (rate(wispr_index_progress_events_total{service_name=\"wispr-gateway\"}[5m]))",
+          "legendFormat": "event {{kind}}"
+        },
+        {
+          "expr": "sum(wispr_index_progress_subscribers{service_name=\"wispr-gateway\"})",
+          "legendFormat": "open subscribers"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "False executions (instrument exists; no call site)",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(wispr_false_execution_total{service_name=\"wispr-gateway\"}[1h]))",
+          "legendFormat": "last hour"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["wisprtest", "gateway"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "WisprTest / gateway",
+  "uid": "wispr-gateway",
+  "version": 1
+}

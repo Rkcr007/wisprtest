@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A static presentation walkthrough of how testers use WisprTest."
+    />
+    <title>WisprTest — Product Walkthrough</title>
+    <link rel="icon" href="media/logo-mark.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --signal: #ffb454;
+        --commit: #52e0ac;
+        --seed: #c88bff;
+        --memory: #7fa8ff;
+        --drift: #ff6b4a;
+        --ink: #f2f4f8;
+        --muted: #a6aebf;
+        --surface: rgba(18, 20, 26, 0.94);
+        --raised: rgba(31, 35, 45, 0.96);
+        --sunken: #0a0b0f;
+        --line: rgba(255, 255, 255, 0.12);
+        --radius: 14px;
+        --shadow: 0 26px 80px rgba(0, 0, 0, 0.38);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+        background: #000;
+      }
+
+      body {
+        margin: 0;
+        overflow-x: hidden;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 10% 10%, rgba(127, 168, 255, 0.13), transparent 28rem),
+          radial-gradient(circle at 90% 25%, rgba(255, 180, 84, 0.1), transparent 25rem), #000;
+        font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      a {
+        color: var(--memory);
+      }
+
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      :focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 3px;
+      }
+
+      .skip {
+        position: fixed;
+        z-index: 20;
+        top: 10px;
+        left: 10px;
+        transform: translateY(-150%);
+        padding: 10px 14px;
+        color: #111;
+        background: #fff;
+        border-radius: 8px;
+      }
+
+      .skip:focus {
+        transform: none;
+      }
+
+      .deck {
+        scroll-snap-type: y mandatory;
+      }
+
+      .slide {
+        min-width: 0;
+        min-height: 100svh;
+        padding: 82px 24px 92px;
+        display: grid;
+        align-items: center;
+        scroll-snap-align: start;
+        scroll-margin-top: 0;
+      }
+
+      .shell {
+        width: 100%;
+        max-width: 1120px;
+        min-width: 0;
+        margin: 0 auto;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--signal);
+        font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 920px;
+        margin-bottom: 22px;
+        font-size: clamp(42px, 8vw, 88px);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+      }
+
+      h2 {
+        margin-bottom: 14px;
+        font-size: clamp(32px, 5.2vw, 58px);
+        line-height: 1.04;
+        letter-spacing: -0.04em;
+      }
+
+      h3 {
+        font-size: 18px;
+      }
+
+      .lede {
+        max-width: 780px;
+        color: var(--muted);
+        font-size: clamp(18px, 2.4vw, 24px);
+      }
+
+      .gradient {
+        color: transparent;
+        background: linear-gradient(100deg, var(--signal), var(--commit));
+        -webkit-background-clip: text;
+        background-clip: text;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+
+      .gap-top {
+        margin-top: 18px;
+      }
+
+      .table-top {
+        margin-top: 20px;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+        align-items: stretch;
+      }
+
+      .split > *,
+      .grid > * {
+        min-width: 0;
+      }
+
+      .card,
+      .browser,
+      .hud {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .card p:last-child {
+        margin-bottom: 0;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .chip {
+        display: inline-flex;
+        gap: 7px;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 10px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        color: var(--muted);
+        font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .signal {
+        color: var(--signal);
+      }
+
+      .commit {
+        color: var(--commit);
+      }
+
+      .seed {
+        color: var(--seed);
+      }
+
+      .memory {
+        color: var(--memory);
+      }
+
+      .drift {
+        color: var(--drift);
+      }
+
+      .browser {
+        overflow: hidden;
+      }
+
+      .browser-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--line);
+        background: var(--sunken);
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #424754;
+      }
+
+      .address {
+        flex: 1;
+        margin-left: 8px;
+        padding: 6px 10px;
+        color: var(--muted);
+        background: #15171d;
+        border-radius: 6px;
+        font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .browser-body {
+        padding: 20px;
+      }
+
+      .field {
+        display: grid;
+        gap: 7px;
+        margin-bottom: 14px;
+      }
+
+      .field span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .input {
+        min-height: 42px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--sunken);
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 8px;
+        color: #17130e;
+        background: var(--signal);
+        font-weight: 800;
+      }
+
+      .bar {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #272a33;
+      }
+
+      .bar > span {
+        display: block;
+        width: 78%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--memory), var(--commit));
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .stat {
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--sunken);
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 23px;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .flow {
+        display: flex;
+        max-width: 100%;
+        gap: 10px;
+        align-items: center;
+        margin-top: 28px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+      }
+
+      .node {
+        min-width: 145px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--raised);
+        text-align: center;
+      }
+
+      .arrow {
+        color: var(--muted);
+        font-size: 22px;
+      }
+
+      .hud {
+        position: relative;
+        padding: 18px;
+        background: rgba(10, 11, 15, 0.97);
+      }
+
+      .hud-head {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .utterance {
+        padding: 18px;
+        border: 1px solid rgba(255, 180, 84, 0.35);
+        border-radius: 10px;
+        background: rgba(255, 180, 84, 0.08);
+        font-size: 19px;
+      }
+
+      .hud-result {
+        margin: 14px 0 0;
+      }
+
+      .reticle {
+        position: absolute;
+        right: 24px;
+        bottom: -48px;
+        width: 96px;
+        height: 96px;
+        border: 2px solid var(--signal);
+        border-radius: 18px;
+        box-shadow: 0 0 35px rgba(255, 180, 84, 0.35);
+        animation: aim 2.3s ease-in-out infinite;
+      }
+
+      .reticle::before,
+      .reticle::after {
+        position: absolute;
+        content: "";
+        background: var(--signal);
+      }
+
+      .reticle::before {
+        top: 50%;
+        left: 18px;
+        width: 58px;
+        height: 1px;
+      }
+
+      .reticle::after {
+        top: 18px;
+        left: 50%;
+        width: 1px;
+        height: 58px;
+      }
+
+      @keyframes aim {
+        50% {
+          transform: translate(-8px, 5px) scale(0.96);
+        }
+      }
+
+      .taxonomy {
+        display: grid;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .taxon {
+        display: grid;
+        grid-template-columns: 55px 1fr 1fr;
+        gap: 14px;
+        align-items: center;
+        padding: 15px 18px;
+        border: 1px solid var(--line);
+        border-left: 4px solid currentColor;
+        border-radius: 9px;
+        background: var(--surface);
+      }
+
+      .taxon strong {
+        font-size: 24px;
+      }
+
+      .timeline {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-top: 26px;
+      }
+
+      .step {
+        position: relative;
+        min-height: 180px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+
+      .step-number {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        margin-bottom: 24px;
+        place-items: center;
+        border-radius: 50%;
+        color: #111;
+        background: var(--signal);
+        font-weight: 900;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+        background: var(--surface);
+      }
+
+      caption {
+        padding: 12px;
+        text-align: left;
+        color: var(--muted);
+      }
+
+      th,
+      td {
+        padding: 13px 15px;
+        border-top: 1px solid var(--line);
+        text-align: left;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .controls {
+        position: fixed;
+        z-index: 10;
+        right: 18px;
+        bottom: 18px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(10, 11, 15, 0.88);
+        backdrop-filter: blur(16px);
+      }
+
+      .controls button {
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        color: var(--ink);
+        background: var(--raised);
+        cursor: pointer;
+      }
+
+      .progress {
+        min-width: 54px;
+        color: var(--muted);
+        text-align: center;
+        font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .note {
+        margin-top: 24px;
+        padding: 13px 16px;
+        border-left: 3px solid var(--signal);
+        color: var(--muted);
+        background: rgba(255, 180, 84, 0.07);
+      }
+
+      .links {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 12px;
+        margin-top: 26px;
+      }
+
+      .links a {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        text-decoration: none;
+        background: var(--surface);
+      }
+
+      .logo {
+        width: min(420px, 86vw);
+        margin-bottom: 42px;
+      }
+
+      .footer {
+        margin-top: 35px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      @media (max-width: 760px) {
+        .split,
+        .timeline {
+          grid-template-columns: 1fr;
+        }
+
+        .stats {
+          grid-template-columns: 1fr;
+        }
+
+        .taxon {
+          grid-template-columns: 45px 1fr;
+        }
+
+        .taxon span:last-child {
+          grid-column: 2;
+        }
+
+        .slide {
+          min-height: auto;
+          padding: 78px 18px 98px;
+        }
+
+        .reticle {
+          right: 18px;
+          bottom: -30px;
+          width: 72px;
+          height: 72px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        .reticle {
+          animation: none;
+        }
+      }
+
+      @media print {
+        :root {
+          color-scheme: light;
+          --ink: #11151b;
+          --muted: #495466;
+          --surface: #fff;
+          --raised: #f4f6fa;
+          --sunken: #eef1f6;
+          --line: rgba(0, 0, 0, 0.18);
+          --shadow: none;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        .slide {
+          min-height: 100vh;
+          break-after: page;
+        }
+
+        .controls,
+        .skip {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to presentation</a>
+    <main id="main" class="deck">
+      <section class="slide" aria-labelledby="title-1">
+        <div class="shell">
+          <img
+            class="logo"
+            src="media/logo-lockup-dark.svg"
+            alt="WisprTest — Remember, then execute"
+          />
+          <p class="eyebrow">Static product walkthrough · presentation mockup</p>
+          <h1 id="title-1">Manual QA, driven by <span class="gradient">voice and memory.</span></h1>
+          <p class="lede">
+            Name the app. WisprTest indexes it once. Then narrate what you are testing and
+            WisprTest resolves and dispatches against the live DOM in milliseconds.
+          </p>
+          <p class="note">
+            This file visualizes the intended experience. It is not a connected application and
+            performs no actions.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-2">
+        <div class="shell">
+          <p class="eyebrow">The thesis</p>
+          <h2 id="title-2"><span class="muted">Think → Execute</span> becomes Remember → Execute.</h2>
+          <p class="lede">
+            Expensive reasoning happens during indexing. Runtime becomes a scoped lookup and
+            dispatch problem inside the tester’s browser.
+          </p>
+          <div class="split">
+            <article class="card">
+              <span class="chip memory">Index once · control plane</span>
+              <h3>Learn structure, not customer content</h3>
+              <p class="muted">
+                Crawl allowed routes, fingerprint elements, infer schemas, and build a navigation
+                graph. Redaction runs before persistence or model use.
+              </p>
+            </article>
+            <article class="card">
+              <span class="chip commit">Run continuously · browser</span>
+              <h3>Resolve locally, then dispatch</h3>
+              <p class="muted">
+                Speech → scoped candidates → T0/T1/T2 → safety class → trusted CDP action. The hot
+                path never crosses the network.
+              </p>
+            </article>
+          </div>
+          <div class="flow" aria-label="WisprTest processing flow">
+            <div class="node">Playwright crawl</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="node memory">Product Memory</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="node signal">Scoped resolve</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="node commit">Trusted dispatch</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-3">
+        <div class="shell">
+          <p class="eyebrow">Step 1 · Connect</p>
+          <h2 id="title-3">Point WisprTest at the application—within explicit bounds.</h2>
+          <div class="split">
+            <div class="browser" aria-label="Illustrative Connect screen">
+              <div class="browser-bar">
+                <i class="dot"></i><i class="dot"></i><i class="dot"></i>
+                <span class="address">console.wisprtest.example</span>
+              </div>
+              <div class="browser-body">
+                <div class="field">
+                  <span>Application URL</span>
+                  <div class="input mono">https://erp.example.com</div>
+                </div>
+                <div class="field">
+                  <span>Environment</span>
+                  <div class="input">Staging</div>
+                </div>
+                <div class="field">
+                  <span>Crawl bounds</span>
+                  <div class="input mono">/orders/** · 80 pages · depth 4</div>
+                </div>
+                <span class="button">Start indexing</span>
+              </div>
+            </div>
+            <article class="card">
+              <span class="chip signal">Safety before discovery</span>
+              <h3>The crawler is bounded</h3>
+              <p class="muted">
+                URL allowlists, depth and page caps, rate limits, and “do not touch” selectors keep
+                discovery inside the application and away from destructive controls.
+              </p>
+              <p class="muted">
+                Authentication is referenced from a tenant-scoped secret provider; credentials are
+                never stored in Product Memory.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-4">
+        <div class="shell">
+          <p class="eyebrow">Step 2 · Index once</p>
+          <h2 id="title-4">Product Memory appears as the app is discovered.</h2>
+          <div class="browser">
+            <div class="browser-bar">
+              <i class="dot"></i><i class="dot"></i><i class="dot"></i>
+              <span class="address">/applications/acme/indexing</span>
+            </div>
+            <div class="browser-body">
+              <div class="hud-head">
+                <strong>Indexing Acme ERP</strong>
+                <span class="chip commit">Live</span>
+              </div>
+              <div
+                class="bar"
+                role="progressbar"
+                aria-label="Illustrative indexing progress"
+                aria-valuenow="78"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span></span>
+              </div>
+              <div class="stats">
+                <div class="stat"><strong>24</strong><span>screens discovered</span></div>
+                <div class="stat"><strong>1,842</strong><span>element fingerprints</span></div>
+                <div class="stat"><strong>7</strong><span>entity schemas</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="grid gap-top">
+            <article class="card">
+              <span class="chip memory">Structure</span>
+              <p>Routes, landmarks, roles, stable attributes, forms, and navigation edges.</p>
+            </article>
+            <article class="card">
+              <span class="chip seed">Data knowledge</span>
+              <p>Field types, constraints, enums, relationships, and materializer candidates.</p>
+            </article>
+            <article class="card">
+              <span class="chip commit">Vocabulary</span>
+              <p>Aliases compound over time: a successful novel phrase becomes a T0 hit next time.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-5">
+        <div class="shell">
+          <p class="eyebrow">Step 3 · Speak</p>
+          <h2 id="title-5">“Show me only the pending orders.”</h2>
+          <div class="split">
+            <div class="hud" aria-label="Illustrative extension HUD">
+              <div class="hud-head">
+                <span class="chip signal">Listening</span>
+                <span class="chip commit">T0 · 9 ms</span>
+              </div>
+              <div class="utterance mono">show me only the pending orders</div>
+              <p class="muted hud-result">orders.filter.pending · confidence 0.97</p>
+              <div class="reticle" aria-hidden="true"></div>
+            </div>
+            <div class="card">
+              <h3>Scoped before it resolves</h3>
+              <p class="muted">
+                Runtime state narrows thousands of DOM nodes to the dozens visible and reachable
+                in the current route, modal, and landmark.
+              </p>
+              <div class="taxonomy">
+                <div class="taxon commit">
+                  <strong>T0</strong><span>Exact / learned alias</span><span>&lt; 15 ms</span>
+                </div>
+                <div class="taxon memory">
+                  <strong>T1</strong><span>Local embedding kNN</span><span>&lt; 40 ms</span>
+                </div>
+                <div class="taxon seed">
+                  <strong>T2</strong><span>Redacted scoped candidates</span><span>&lt; 800 ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-6">
+        <div class="shell">
+          <p class="eyebrow">Trust contract</p>
+          <h2 id="title-6">Speed is conditional. Safety is not.</h2>
+          <p class="lede">
+            Every action carries a class. Only reversible actions may execute from a partial
+            transcript.
+          </p>
+          <div class="taxonomy">
+            <div class="taxon commit">
+              <strong>R</strong><span>Focus, hover, scroll, expand, read-only navigation</span
+              ><span>May speculate · rollback retained</span>
+            </div>
+            <div class="taxon signal">
+              <strong>C</strong><span>Submit, delete, approve, any state mutation</span
+              ><span>Never speculate · final + explicit yes</span>
+            </div>
+            <div class="taxon drift">
+              <strong>A</strong><span>Low confidence or structurally drifted screen</span
+              ><span>Pre-stage reticle · explicit yes</span>
+            </div>
+            <div class="taxon seed">
+              <strong>S</strong><span>Test-data creation</span
+              ><span>Preview first · explicit approval</span>
+            </div>
+          </div>
+          <p class="note">
+            Drift forces Class A before confidence is considered. A confident alias cannot prove
+            that remembered structure is still current.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-7">
+        <div class="shell">
+          <p class="eyebrow">One narrated flow</p>
+          <h2 id="title-7">From navigation to approval—without turning into an autonomous agent.</h2>
+          <div class="timeline">
+            <article class="step">
+              <span class="step-number">1</span>
+              <h3>“Open orders”</h3>
+              <p class="muted">Reversible navigation. Resolve locally and move immediately.</p>
+            </article>
+            <article class="step">
+              <span class="step-number">2</span>
+              <h3>“Show pending”</h3>
+              <p class="muted">Visible filter alias resolves at T0 and updates the live page.</p>
+            </article>
+            <article class="step">
+              <span class="step-number">3</span>
+              <h3>“An Acme order with three lines”</h3>
+              <p class="muted">Class S. Compose a constraint-aware preview; do not write yet.</p>
+            </article>
+            <article class="step">
+              <span class="step-number">4</span>
+              <h3>“Approve it” → “Yes”</h3>
+              <p class="muted">Class C waits for finalized intent and explicit confirmation.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-8">
+        <div class="shell">
+          <p class="eyebrow">Class S · Test data</p>
+          <h2 id="title-8">The tester sees exactly what will be created—and why.</h2>
+          <div class="split">
+            <article class="card">
+              <div class="hud-head">
+                <span class="chip seed">Preview awaiting approval</span>
+                <span class="chip">No write yet</span>
+              </div>
+              <div class="field">
+                <span>Customer</span>
+                <div class="input">Acme · explicit constraint</div>
+              </div>
+              <div class="field">
+                <span>Status</span>
+                <div class="input">Pending · learned enum</div>
+              </div>
+              <div class="field">
+                <span>Line items</span>
+                <div class="input">3 · explicit constraint</div>
+              </div>
+              <span class="button">Approve creation</span>
+            </article>
+            <article class="card">
+              <h3>Materialize, verify, ledger</h3>
+              <div class="flow">
+                <div class="node seed">Composer</div>
+                <span class="arrow">→</span>
+                <div class="node signal">Approval</div>
+                <span class="arrow">→</span>
+                <div class="node commit">Adapter</div>
+              </div>
+              <p class="muted">
+                API, UI, and fixture adapters are ordered by what indexing learned. Provenance and
+                the inverse operation are recorded so the tester can revert when supported.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-9">
+        <div class="shell">
+          <p class="eyebrow">Learning and evidence</p>
+          <h2 id="title-9">When the app changes, WisprTest degrades—then asks a human.</h2>
+          <div class="grid">
+            <article class="card">
+              <span class="chip drift">Structural hash mismatch</span>
+              <h3>Continue in Class A</h3>
+              <p class="muted">
+                The tester keeps working. Resolutions are pre-staged and require explicit
+                confirmation while memory is known to be stale.
+              </p>
+            </article>
+            <article class="card">
+              <span class="chip memory">Reconcile candidate</span>
+              <h3>Re-crawl one changed region</h3>
+              <p class="muted">
+                The indexer proposes a diff and alias migration rate. It cannot activate memory.
+              </p>
+            </article>
+            <article class="card">
+              <span class="chip commit">Human decision</span>
+              <h3>Approve or reject</h3>
+              <p class="muted">
+                Approval flips a version. Automatic self-healing is deliberately forbidden.
+              </p>
+            </article>
+          </div>
+          <div class="table-wrap table-top">
+            <table>
+              <caption>
+                Illustrative session timeline — evidence and measurements are recorded per step
+              </caption>
+              <thead>
+                <tr><th>Step</th><th>Tier</th><th>Class</th><th>Outcome</th><th>Latency</th><th>Evidence</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Open orders</td><td>T0</td><td>R</td><td class="commit">Executed</td><td>8 ms</td><td>DOM hash</td></tr>
+                <tr><td>Show pending</td><td>T0</td><td>R</td><td class="commit">Executed</td><td>9 ms</td><td>Screenshot</td></tr>
+                <tr><td>Create Acme order</td><td>—</td><td>S</td><td class="seed">Approved</td><td>Preview 612 ms</td><td>Ledger entry</td></tr>
+                <tr><td>Approve order</td><td>T0</td><td>C</td><td class="commit">Confirmed</td><td>12 ms</td><td>Screenshot</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-10">
+        <div class="shell">
+          <p class="eyebrow">Architecture</p>
+          <h2 id="title-10">A fast browser runtime with a separate control plane.</h2>
+          <div class="split">
+            <article class="card">
+              <span class="chip commit">Tester’s browser · hot path</span>
+              <div class="flow">
+                <div class="node">Speech</div><span class="arrow">→</span
+                ><div class="node signal">Resolve</div><span class="arrow">→</span
+                ><div class="node commit">Dispatch</div>
+              </div>
+              <p class="muted">Extension runtime, scoped index, resolver, safety controller, HUD, CDP.</p>
+            </article>
+            <article class="card">
+              <span class="chip memory">Control plane</span>
+              <div class="flow">
+                <div class="node">Gateway</div><span class="arrow">↔</span
+                ><div class="node memory">Memory</div>
+              </div>
+              <p class="muted">
+                Indexer, composer, console, PostgreSQL, Redis, evidence storage, telemetry. Cloud
+                work never enters speech → resolve → dispatch.
+              </p>
+            </article>
+          </div>
+          <p class="note">
+            WisprTest is not a chatbot, test recorder, autonomous agent, or RPA tool. It remembers
+            an indexed application and executes tester intent under explicit safety rules.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" aria-labelledby="title-11">
+        <div class="shell">
+          <p class="eyebrow">Continue the conversation</p>
+          <h2 id="title-11">The code, decisions, deployment plan, and open work live together.</h2>
+          <div class="links">
+            <a href="../README.md"><strong>Product README</strong><br /><span class="muted">Story, budgets, local setup</span></a>
+            <a href="STATUS.md"><strong>Current status</strong><br /><span class="muted">Shipped, remaining, priority</span></a>
+            <a href="ARCHITECTURE.md"><strong>Architecture</strong><br /><span class="muted">Boundaries, loops, security</span></a>
+            <a href="GCP-DEPLOYMENT.md"><strong>GCP deployment</strong><br /><span class="muted">Pilot plan, costs, rollout</span></a>
+            <a href="TEST-DATA-ENGINE.md"><strong>Test-data engine</strong><br /><span class="muted">Compose, materialize, revert</span></a>
+            <a href="adr/README.md"><strong>Decision log</strong><br /><span class="muted">Trade-offs and known divergence</span></a>
+          </div>
+          <p class="footer">
+            Proprietary — all rights reserved. · Remember → Execute · Use ← and → to present.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="controls" aria-label="Presentation controls">
+      <button id="previous" type="button" aria-label="Previous slide">←</button>
+      <span id="progress" class="progress" aria-live="polite">1 / 11</span>
+      <button id="next" type="button" aria-label="Next slide">→</button>
+    </nav>
+
+    <script>
+      (() => {
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const progress = document.getElementById("progress");
+        let current = 0;
+
+        const show = (index) => {
+          current = Math.max(0, Math.min(slides.length - 1, index));
+          slides[current].scrollIntoView({ behavior: "smooth", block: "start" });
+          progress.textContent = `${current + 1} / ${slides.length}`;
+        };
+
+        document.getElementById("previous").addEventListener("click", () => show(current - 1));
+        document.getElementById("next").addEventListener("click", () => show(current + 1));
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowRight" || event.key === "PageDown") show(current + 1);
+          if (event.key === "ArrowLeft" || event.key === "PageUp") show(current - 1);
+          if (event.key === "Home") show(0);
+          if (event.key === "End") show(slides.length - 1);
+        });
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const visible = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+            if (!visible) return;
+            current = slides.indexOf(visible.target);
+            progress.textContent = `${current + 1} / ${slides.length}`;
+          },
+          { threshold: [0.55] },
+        );
+
+        slides.forEach((slide) => observer.observe(slide));
+      })();
+    </script>
+  </body>
+</html>

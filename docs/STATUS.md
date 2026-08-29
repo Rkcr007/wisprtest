@@ -146,7 +146,9 @@ cycle. Do not edit `packages/protocol` except for item 1, and that item must lan
    indexer throughput > 8 routes/min, composition preview p95 < 1.2 s.
 10. Runtime `wispr_speech_to_reticle_ms` (or a documented decision that the bench is
     enough).
-11. Cloud Terraform — only if we are actually deploying beyond kind.
+11. Implement the GCP pilot blueprint in [`GCP-DEPLOYMENT.md`](GCP-DEPLOYMENT.md):
+    Terraform, GCP Helm overlay, ingress, secret projection, collector, and rollout.
+    The plan exists; the infrastructure does not.
 12. Chrome Web Store / enterprise force-install packaging.
 
 ---
@@ -205,6 +207,8 @@ Short version:
 |------|------|
 | `CLAUDE.md` | Non-negotiable rules. Do not silently deviate. |
 | `docs/STATUS.md` | **This file** — done / remaining / priority. |
+| `docs/demo.html` | Static, keyboard-navigable product presentation (not a live app). |
+| `docs/GCP-DEPLOYMENT.md` | GCP pilot architecture, cost estimate, implementation and go-live plan. |
 | `docs/ARCHITECTURE.md` | System map, data model, observability contract. |
 | `docs/BUILD-PLAN.md` | Phase prompts (what to build). Status notes at Phase 18–19. |
 | `docs/TEST-DATA-ENGINE.md` | Generic vs per-app; adapters. |

@@ -30,6 +30,7 @@
 <br/><br/>
 
 <a href="docs/STATUS.md"><b>Status</b></a> ·
+<a href="docs/demo.html"><b>Presentation</b></a> ·
 <a href="#-see-it-in-action"><b>See it in action</b></a> ·
 <a href="#-the-thesis"><b>The thesis</b></a> ·
 <a href="#-safety--speed"><b>Safety &amp; speed</b></a> ·
@@ -446,6 +447,8 @@ blocker, not a nice-to-have.
 | ------------------------------------------------------ | ----------------------------------------------------------------- |
 | [`CLAUDE.md`](CLAUDE.md)                               | Product contract, engineering rules, taxonomy, budgets            |
 | [`docs/STATUS.md`](docs/STATUS.md)                     | **Start here every session** — shipped, remaining, priority       |
+| [`docs/demo.html`](docs/demo.html)                     | Static visual walkthrough for presentations and demos             |
+| [`docs/GCP-DEPLOYMENT.md`](docs/GCP-DEPLOYMENT.md)     | GCP pilot architecture, rollout, security, operations, costs      |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)         | System map, boundaries, extension internals, data model, security |
 | [`docs/TEST-DATA-ENGINE.md`](docs/TEST-DATA-ENGINE.md) | Generic vs per-app data engine, adapters, composition             |
 | [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md)             | The phased build plan (prompts remain authoritative)              |

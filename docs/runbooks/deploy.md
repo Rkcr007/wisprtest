@@ -1,7 +1,12 @@
 # Runbook — Deploy (kind-first)
 
 How to run the control plane on a local kind cluster, and how a tester then uses
-the console and the extension. Cloud Terraform is out of scope.
+the console and the extension.
+
+This runbook is the **implemented kind path**. For the proposed Mumbai GCP pilot,
+managed-service mapping, rollout, security controls, and monthly estimate, see
+[`../GCP-DEPLOYMENT.md`](../GCP-DEPLOYMENT.md). That document is a plan; cloud
+Terraform and a production GCP overlay are not implemented yet.
 
 ## What exists today
 

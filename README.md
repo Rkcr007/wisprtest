@@ -373,18 +373,18 @@ timeline
         Cloud : Terraform (explicitly later)
 ```
 
-|   #   | Phase                                                   |         Status          |
-| :---: | ------------------------------------------------------- | :---------------------: |
-|  0–2  | Scaffold · Protocol · Fingerprint                       |           ✅            |
-|  3–5  | DB + RLS · Gateway · Indexer                            |           ✅            |
-|  6–7  | Extension shell + HUD · Runtime state engine            |           ✅            |
-| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution  |           ✅            |
-| 11–13 | T2 write-back · Sessions · Schema observation           |           ✅            |
-|  14   | Composer — contract, sampler, solver, provenance DAG    |           ✅            |
-|  15   | Seed plan, approve, revert · UI materializer · ledger   |           ✅            |
-|  16   | Materializer chain — API + fixture, verification TTL    |           ✅            |
-|  17   | Drift detection and relearn — the learning loop, closed |           ✅            |
-|  18   | Console — all eight screens + nonce CSP                 |           ✅            |
+|   #   | Phase                                                   |          Status           |
+| :---: | ------------------------------------------------------- | :-----------------------: |
+|  0–2  | Scaffold · Protocol · Fingerprint                       |            ✅             |
+|  3–5  | DB + RLS · Gateway · Indexer                            |            ✅             |
+|  6–7  | Extension shell + HUD · Runtime state engine            |            ✅             |
+| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution  |            ✅             |
+| 11–13 | T2 write-back · Sessions · Schema observation           |            ✅             |
+|  14   | Composer — contract, sampler, solver, provenance DAG    |            ✅             |
+|  15   | Seed plan, approve, revert · UI materializer · ledger   |            ✅             |
+|  16   | Materializer chain — API + fixture, verification TTL    |            ✅             |
+|  17   | Drift detection and relearn — the learning loop, closed |            ✅             |
+|  18   | Console — all eight screens + nonce CSP                 |            ✅             |
 |  19   | Production hardening                                    | 🚧 leftovers in STATUS.md |
 
 > **Phase 17** closed the learning loop. A drifted screen degrades to Class `A` rather

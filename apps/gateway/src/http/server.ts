@@ -26,7 +26,6 @@ import { createDriftJobDispatcher } from '../redis/drift-queue.js';
 import { createSeedJobDispatcher, createSeedPlanStore } from '../redis/seed-queue.js';
 import { registerHealth } from './health.js';
 import { registerPipeline } from './plugins.js';
-import { registerRateLimit } from './rate-limit.js';
 
 /**
  * Assembles the HTTP server.
@@ -36,8 +35,9 @@ import { registerRateLimit } from './rate-limit.js';
  * binding a port. What the tests exercise is what runs in production; the only difference is
  * `app.inject` in place of a socket.
  *
- * Registration order is load-bearing: the pipeline installs the request context before anything
- * else, so the rate limiter's key generator and every log line can see it.
+ * Registration order is load-bearing: the pipeline registers `@fastify/rate-limit` before the
+ * auth hook (CodeQL), then installs request context on `onRequest` so the limiter's `preHandler`
+ * key generator and every log line can see the tenant.
  */
 export interface ServerOptions {
   readonly config: GatewayConfig;
@@ -88,12 +88,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     bodyLimit: 1_048_576,
   }) as unknown as FastifyInstance;
 
-  registerPipeline(app, {
+  await registerPipeline(app, {
     config,
     database: options.database,
+    redis: options.redis,
     ...(options.jwks === undefined ? {} : { jwks: options.jwks }),
   });
-  await registerRateLimit(app, { config, redis: options.redis });
   registerHealth(app, { config, database: options.database, redis: options.redis });
   registerMemoryRoutes(app, {
     config,

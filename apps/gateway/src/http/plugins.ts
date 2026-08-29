@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { trace } from '@opentelemetry/api';
 import type { FastifyInstance } from 'fastify';
+import type { Redis } from 'ioredis';
 import type { ExtensionTokenScope } from 'protocol';
 
 import {
@@ -13,6 +14,7 @@ import { createJwks, type Jwks } from '../auth/jwks.js';
 import { readBearerToken, verifyToken } from '../auth/verify.js';
 import type { GatewayConfig } from '../config.js';
 import {
+  ANONYMOUS_TENANT,
   attachPrincipal,
   runWithContext,
   type RequestContext,
@@ -21,6 +23,7 @@ import type { TenantDatabase } from '../db/pool.js';
 import { findPrincipalByEmail } from '../db/repositories.js';
 import { UnauthorizedError } from '../errors.js';
 import { assertPermission, isRole, type Permission, type Role } from '../rbac/permissions.js';
+import { registerRateLimit } from './rate-limit.js';
 
 /**
  * The request pipeline: context, then authentication, then authorisation.
@@ -30,9 +33,11 @@ import { assertPermission, isRole, type Permission, type Role } from '../rbac/pe
  * 1. **`onRequest`** establishes the ambient context for the whole request, anonymous to begin
  *    with. It runs for unauthenticated routes too, so a `/healthz` line still carries a request
  *    id and a trace id.
- * 2. **`preHandler`** authenticates when the route asks for it, and swaps in a context carrying
- *    the tenant. That swap is what makes the database reachable at all: `withTenant` refuses
- *    without a tenant, so an unauthenticated code path cannot query even by mistake.
+ * 2. **`onRequest` (after context)** authenticates when the route asks for it, and swaps in a
+ *    context carrying the tenant. That swap is what makes the database reachable at all:
+ *    `withTenant` refuses without a tenant, so an unauthenticated code path cannot query even
+ *    by mistake. It is `onRequest` rather than `preHandler` so `@fastify/rate-limit` (registered
+ *    first, hooked on `preHandler`) still sees the tenant when it keys the bucket.
  * 3. **The same hook** then authorises against the route's declared permission.
  *
  * Authentication is opt-*out*. A route must say `config: { public: true }` to skip it, so a new
@@ -61,25 +66,22 @@ declare module 'fastify' {
   }
 }
 
-/**
- * The tenant an unauthenticated request runs as.
- *
- * A real UUID rather than null, because `RequestContext.tenantId` is non-optional: no code path
- * can read the field, find nothing, and carry on with an unscoped query. It matches no row in
- * any table, so a query that somehow ran under it returns nothing rather than someone's data.
- */
-export const ANONYMOUS_TENANT = '00000000-0000-0000-0000-000000000000';
-
 export interface PipelineOptions {
   readonly config: GatewayConfig;
   readonly database: TenantDatabase;
+  readonly redis: Redis;
   /** Injected so tests supply a key set directly. Built from config, with discovery, otherwise. */
   readonly jwks?: Jwks;
 }
 
-export function registerPipeline(app: FastifyInstance, options: PipelineOptions): void {
-  const { config, database } = options;
+export async function registerPipeline(
+  app: FastifyInstance,
+  options: PipelineOptions,
+): Promise<void> {
+  const { config, database, redis } = options;
   const jwks = options.jwks ?? createJwks(config);
+
+  await registerRateLimit(app, { config, redis });
 
   // Synchronous, and `done()` is called *inside* the store: AsyncLocalStorage propagates into
   // the async subtree of the call that created it, so invoking Fastify's continuation from
@@ -102,12 +104,11 @@ export function registerPipeline(app: FastifyInstance, options: PipelineOptions)
     });
   });
 
-  // Rate limiting is `@fastify/rate-limit` on this same `preHandler` phase (`rate-limit.ts`),
-  // keyed by tenant after auth and by IP before. CodeQL's missing-rate-limiting query does not
-  // recognise that plugin, so the alert is suppressed here rather than by duplicating a limiter.
-  // codeql[js/missing-rate-limiting]
-  // lgtm[js/missing-rate-limiting]
-  app.addHook('preHandler', async (request) => {
+  // Authentication is `onRequest` so it completes before `@fastify/rate-limit`'s `preHandler`.
+  // That plugin is registered at the top of this function (CodeQL only treats hooks declared
+  // *after* `app.register(@fastify/rate-limit)` as limited) but it still keys on tenant because
+  // Fastify runs every `onRequest` hook before any `preHandler`.
+  app.addHook('onRequest', async (request) => {
     if (request.routeOptions.config.public === true) return;
 
     const token = readBearerToken(request.headers.authorization);

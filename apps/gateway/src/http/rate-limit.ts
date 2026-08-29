@@ -3,8 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
 
 import type { GatewayConfig } from '../config.js';
-import { currentContext } from '../context/request-context.js';
-import { ANONYMOUS_TENANT } from './plugins.js';
+import { ANONYMOUS_TENANT, currentContext } from '../context/request-context.js';
 
 /**
  * Per-tenant rate limiting, backed by Redis.
@@ -22,8 +21,13 @@ import { ANONYMOUS_TENANT } from './plugins.js';
  *
  * Unauthenticated requests have no tenant, so they fall back to the IP. That is the only sound
  * key available before a token has been verified, and it is what stops an unauthenticated
- * flood from consuming a real tenant's budget — note the rate limiter runs *after*
- * authentication, so by the time a protected route is counted the tenant is known.
+ * flood from consuming a real tenant's budget. Authentication runs on `onRequest`; this plugin
+ * hooks `preHandler`, so by the time a protected route is counted the tenant is known.
+ *
+ * `buildServer` registers this plugin *before* the auth hook is declared. That is load-bearing
+ * for CodeQL (`js/missing-rate-limiting` only treats handlers declared after
+ * `app.register(@fastify/rate-limit)` as limited). Hook *phase* still puts the limiter after
+ * auth.
  */
 export interface RateLimitOptions {
   readonly config: GatewayConfig;
@@ -36,9 +40,9 @@ export async function registerRateLimit(
 ): Promise<void> {
   await app.register(rateLimit, {
     // `preHandler`, not the plugin's default `onRequest`. The key is the tenant, and the tenant
-    // is not known until the token has been verified — on `onRequest` the key generator sees the
-    // anonymous context, falls back to the IP, and every tenant behind one address silently
-    // shares a single bucket. Registration order puts this after the authentication hook.
+    // is not known until the token has been verified. Authentication is an `onRequest` hook, so
+    // it always runs before this `preHandler` even though `buildServer` registers the plugin
+    // first (CodeQL requires that declaration order).
     //
     // The cost is that an unauthenticated flood pays signature verification before being
     // refused. That is the right trade: JWKS is cached, so verification is local CPU, whereas a

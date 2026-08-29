@@ -97,3 +97,13 @@ export function currentContext(): RequestContext | undefined {
 export function currentTenantId(): string | undefined {
   return storage.getStore()?.tenantId;
 }
+
+/**
+ * The tenant an unauthenticated request runs as.
+ *
+ * A real UUID rather than null, because `RequestContext.tenantId` is non-optional: no code path
+ * can read the field, find nothing, and carry on with an unscoped query. It matches no row in
+ * any table, so a query that somehow ran under it returns nothing rather than someone's data.
+ * Rate limiting treats this as "no tenant" and keys by IP instead.
+ */
+export const ANONYMOUS_TENANT = '00000000-0000-0000-0000-000000000000';

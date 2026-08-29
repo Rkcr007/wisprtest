@@ -1,4 +1,5 @@
 import { loadConfig } from './config.js';
+import { readApplicationOperationalMetrics } from './db/operational-metrics-repository.js';
 import { createTenantDatabase } from './db/pool.js';
 import { ConfigError, GatewayError } from './errors.js';
 import { buildServer } from './http/server.js';
@@ -6,7 +7,8 @@ import { createS3EvidenceStore } from './storage/s3-evidence-store.js';
 import { Lifecycle, installSignalHandlers } from './lifecycle.js';
 import { createLogger } from './logger.js';
 import { createRedis } from './redis/client.js';
-import { createMetrics } from './telemetry/metrics.js';
+import { createMetrics, createOperationalMetricState } from './telemetry/metrics.js';
+import { startOperationalMetricsRefresh } from './telemetry/operational-metrics.js';
 import { startTelemetry } from './telemetry/otel.js';
 
 const SHUTDOWN_SIGNALS: readonly NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
@@ -22,8 +24,8 @@ const SHUTDOWN_SIGNALS: readonly NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
  *
  * Hooks drain LIFO, which is why they are registered in this order:
  *
- *   telemetry → redis → database → http server        (registered)
- *   http server → database → redis → telemetry        (drained)
+ *   telemetry → redis → database → operational metrics → http server        (registered)
+ *   http server → operational metrics → database → redis → telemetry        (drained)
  *
  * The server closes first, so it stops accepting and lets in-flight requests finish. Only then
  * are the pools closed — the reverse would pull the database out from under requests that are
@@ -64,6 +66,17 @@ async function main(): Promise<void> {
   const database = createTenantDatabase(config);
   lifecycle.onShutdown('database', () => database.close());
 
+  const operationalMetricState = createOperationalMetricState();
+  const metrics = createMetrics(undefined, operationalMetricState);
+  const operationalMetrics = startOperationalMetricsRefresh({
+    read: () =>
+      database.unscoped('operational-metrics', (db) => readApplicationOperationalMetrics(db)),
+    state: operationalMetricState,
+    logger,
+  });
+  lifecycle.onShutdown('operational-metrics', () => operationalMetrics.stop());
+  await operationalMetrics.refresh();
+
   // Session evidence needs a bucket to land in. Created at boot rather than lazily on the first
   // capture, so a misconfigured endpoint or a wrong key is a loud line here instead of a failed
   // upload in the middle of a tester's session. Boot continues on failure for the same reason it
@@ -82,7 +95,7 @@ async function main(): Promise<void> {
     logger,
     database,
     redis,
-    metrics: createMetrics(),
+    metrics,
     evidence,
   });
   lifecycle.onShutdown('http-server', () => app.close());

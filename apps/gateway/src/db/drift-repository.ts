@@ -24,7 +24,7 @@ import type { ScopedDatabase } from './pool.js';
  */
 
 /** The statuses that mean a report is still in play, and therefore deduplicates a new sighting. */
-const LIVE_STATUSES: readonly DriftStatus[] = ['open', 'reconciling', 'diffed'];
+export const LIVE_DRIFT_STATUSES: readonly DriftStatus[] = ['open', 'reconciling', 'diffed'];
 
 interface DriftRow {
   readonly id: string;
@@ -158,7 +158,7 @@ export async function raiseDriftReport(
     .where('memoryVersionId', '=', input.memoryVersionId)
     .where('screenId', '=', input.screenId)
     .where('observedStructuralHash', '=', input.observedStructuralHash)
-    .where('status', 'in', [...LIVE_STATUSES])
+    .where('status', 'in', [...LIVE_DRIFT_STATUSES])
     .orderBy('createdAt', 'desc')
     .executeTakeFirst();
 
@@ -200,7 +200,7 @@ export async function listPendingReports(
     .innerJoin('memoryVersions', 'memoryVersions.id', 'driftReports.memoryVersionId')
     .select(COLUMNS.map((column) => `driftReports.${column}` as const))
     .where('memoryVersions.applicationId', '=', applicationId)
-    .where('driftReports.status', 'in', [...LIVE_STATUSES])
+    .where('driftReports.status', 'in', [...LIVE_DRIFT_STATUSES])
     .orderBy('driftReports.createdAt', 'desc')
     .limit(limit)
     .offset(offset)
@@ -211,7 +211,7 @@ export async function listPendingReports(
     .innerJoin('memoryVersions', 'memoryVersions.id', 'driftReports.memoryVersionId')
     .select((eb) => eb.fn.countAll<string>().as('total'))
     .where('memoryVersions.applicationId', '=', applicationId)
-    .where('driftReports.status', 'in', [...LIVE_STATUSES])
+    .where('driftReports.status', 'in', [...LIVE_DRIFT_STATUSES])
     .executeTakeFirst();
 
   return {

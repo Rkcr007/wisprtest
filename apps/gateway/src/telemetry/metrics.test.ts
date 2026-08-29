@@ -6,7 +6,13 @@ import {
 } from '@opentelemetry/sdk-metrics';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createMetrics, METER_NAME, type GatewayMetrics } from './metrics.js';
+import {
+  createMetrics,
+  createOperationalMetricState,
+  METER_NAME,
+  type GatewayMetrics,
+  type OperationalMetricState,
+} from './metrics.js';
 
 /**
  * The § 7 instruments, exercised rather than merely declared.
@@ -24,6 +30,7 @@ let provider: MeterProvider;
 let exporter: InMemoryMetricExporter;
 let reader: PeriodicExportingMetricReader;
 let metrics: GatewayMetrics;
+let operationalState: OperationalMetricState;
 
 beforeEach(() => {
   exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
@@ -33,7 +40,16 @@ beforeEach(() => {
     exportIntervalMillis: 60_000,
   });
   provider = new MeterProvider({ readers: [reader] });
-  metrics = createMetrics(provider.getMeter(METER_NAME));
+  operationalState = createOperationalMetricState();
+  operationalState.replace([
+    {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      applicationId: '33333333-3333-4333-8333-333333333331',
+      openDriftCount: 2,
+      memoryStalenessHours: 49.5,
+    },
+  ]);
+  metrics = createMetrics(provider.getMeter(METER_NAME), operationalState);
 });
 
 afterEach(async () => {
@@ -104,6 +120,46 @@ describe('the metrics named in ARCHITECTURE § 7', () => {
     const metric = (await collect()).find((entry) => entry.name === 'wispr_false_execution_total');
     expect(metric?.points[0]?.value).toBe(1);
   });
+
+  it('observes restart-safe drift backlog and memory staleness by tenant and application', async () => {
+    const collected = await collect();
+    const attributes = {
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      app_id: '33333333-3333-4333-8333-333333333331',
+    };
+
+    expect(
+      collected.find((entry) => entry.name === 'wispr_drift_open_total')?.points,
+    ).toContainEqual({ value: 2, attributes });
+    expect(
+      collected.find((entry) => entry.name === 'wispr_memory_staleness_hours')?.points,
+    ).toContainEqual({ value: 49.5, attributes });
+  });
+
+  it('atomically replaces state and omits staleness when an active memory has no screens', async () => {
+    operationalState.replace([
+      {
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        applicationId: '33333333-3333-4333-8333-333333333332',
+        openDriftCount: 0,
+        memoryStalenessHours: null,
+      },
+    ]);
+
+    const collected = await collect();
+    expect(collected.find((entry) => entry.name === 'wispr_drift_open_total')?.points).toEqual([
+      {
+        value: 0,
+        attributes: {
+          tenant_id: '11111111-1111-4111-8111-111111111111',
+          app_id: '33333333-3333-4333-8333-333333333332',
+        },
+      },
+    ]);
+    expect(
+      collected.find((entry) => entry.name === 'wispr_memory_staleness_hours'),
+    ).toBeUndefined();
+  });
 });
 
 describe('the gateway-native metrics', () => {
@@ -159,6 +215,7 @@ describe('the instrument names', () => {
     metrics.indexProgressEventsTotal.add(1, {});
 
     expect((await collect()).map((entry) => entry.name).sort()).toEqual([
+      'wispr_drift_open_total',
       'wispr_false_execution_total',
       'wispr_gateway_request_duration_ms',
       'wispr_gateway_requests_total',
@@ -167,6 +224,7 @@ describe('the instrument names', () => {
       'wispr_index_progress_subscribers',
       'wispr_memory_snapshot_build_ms',
       'wispr_memory_snapshot_total',
+      'wispr_memory_staleness_hours',
       'wispr_resolution_latency_ms',
       'wispr_seed_materialize_total',
       'wispr_seed_plan_latency_ms',

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 /**
- * The six Phase 18 application screens, in the order the masthead lists them.
+ * The five application screens, in the order the masthead lists them.
  *
- * Paths are relative to `/applications/:id`. Overview is the application root. Indexing is a
- * live job view, not one of these six, so it is deliberately absent — a tester reaches it from
- * Connect after starting a crawl.
+ * Paths are relative to `/applications/:id`. Overview is the application root. Admin is
+ * tenant-wide and lives at `/admin`, not under an application. Indexing is a live job view,
+ * not one of these five — a tester reaches it from Connect after starting a crawl.
  */
 export const APPLICATION_SCREENS = [
   { key: 'overview', label: 'Overview', path: '' },
@@ -13,7 +13,6 @@ export const APPLICATION_SCREENS = [
   { key: 'data', label: 'Data', path: '/data' },
   { key: 'sessions', label: 'Sessions', path: '/sessions' },
   { key: 'drift', label: 'Drift', path: '/drift' },
-  { key: 'admin', label: 'Admin', path: '/admin' },
 ] as const;
 
 export type ApplicationScreenKey = (typeof APPLICATION_SCREENS)[number]['key'];
@@ -45,6 +44,11 @@ export function applicationHref(applicationId: string, key: ApplicationScreenKey
  * Overview is exact: `/applications/:id/indexing` is the crawl view, not the overview.
  * Sessions includes `/sessions/:sessionId` so the detail view keeps the parent current.
  */
+/** Whether the tenant-wide Admin screen is current. */
+export function isAdminActive(pathname: string): boolean {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
+}
+
 export function isScreenActive(
   pathname: string,
   applicationId: string,

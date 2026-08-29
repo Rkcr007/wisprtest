@@ -19,6 +19,7 @@ import {
   type CrawlFormValues,
 } from '../crawl/form';
 import { StartCrawlResponse, type StartCrawlRequest } from '../crawl/request';
+import { formatIndexAge } from '../format';
 import { NumberField, SelectField, TextAreaField, TextField } from './field';
 
 /**
@@ -67,9 +68,9 @@ export function ConnectForm() {
   /**
    * Applications this tenant has already registered.
    *
-   * Identity only — name, URL, env, created-at. Memory version, screen and element counts and
-   * index age are not on the gateway payload, so they are not shown. Inventing them would be
-   * the empty table this list exists to replace.
+   * The gateway now attaches the active memory version, screen/element counts and index age.
+   * An app that has never been indexed shows zeros and "never indexed" — those are real
+   * answers, not invented coverage.
    */
   const registered = useQuery<ApplicationList>({
     queryKey: REGISTERED_APPS,
@@ -572,19 +573,18 @@ export function ConnectForm() {
         <h2 id={field('registered-heading')}>Registered applications</h2>
         {registered.isError ? (
           <p className="hint" role="alert">
-            {registered.error.message}. Memory version, screen counts and index age are not on
-            this list yet — the gateway returns identity only.
+            {registered.error.message}
           </p>
         ) : registered.data === undefined || registered.data.applications.length === 0 ? (
           <p className="hint">
-            No applications registered yet. Name one above. This list is identity only — name,
-            URL, environment, created-at. Memory version, screen counts and index age are not on
-            the gateway payload, so they are not shown.
+            No applications registered yet. Name one above. After an index, this list shows the
+            memory version, screen and element counts, and how old that index is.
           </p>
         ) : (
           <>
             <p className="hint">
-              Identity only. Memory version, screen counts and index age are not on this payload.
+              Memory version, screen counts and index age come from the active version. Never
+              indexed means zeros, not a fabricated coverage score.
             </p>
             <ul>
               {registered.data.applications.map((application) => (
@@ -595,7 +595,12 @@ export function ConnectForm() {
                       applyRegistered(application);
                     }}
                   >
-                    {application.name} · {application.env} · {application.baseUrl}
+                    {application.name} · {application.env} · {application.baseUrl} ·{' '}
+                    {application.memoryVersion === null
+                      ? 'never indexed'
+                      : `v${String(application.memoryVersion)}`}{' '}
+                    · {application.screenCount} screens · {application.elementCount} elements ·{' '}
+                    {formatIndexAge(application.indexedAt)}
                   </button>{' '}
                   <a href={`/applications/${application.id}`}>Open</a>
                 </li>

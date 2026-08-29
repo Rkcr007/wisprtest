@@ -648,7 +648,6 @@ describe('POST /api/auth/extension-token', () => {
 import {
   APPLICATION_ID as DRIFT_APP,
   APPROVED,
-  DIFFED_REPORT,
   DRIFT_LIST,
   REJECTED,
   REPORT_ID,
@@ -876,7 +875,7 @@ describe('POST /api/drift/:id/approve', () => {
             code: 'forbidden',
             message: 'drift:approve is required',
             retryable: false,
-            permission: 'drift:approve',
+            requiredRole: 'lead',
           },
           403,
         ),

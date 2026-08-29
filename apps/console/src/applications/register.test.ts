@@ -14,6 +14,12 @@ const APPLICATION: ApplicationRecord = {
   baseUrl: 'https://app.example.com',
   env: 'staging',
   createdAt: '2026-08-02T10:00:00.000Z',
+  memoryVersion: null,
+  memoryVersionId: null,
+  indexedAt: null,
+  screenCount: 0,
+  elementCount: 0,
+  openDriftCount: 0,
 };
 
 const session = { accessToken: 'token', expiresAt: Date.now() + 60_000 };

@@ -458,15 +458,39 @@ describe('ConnectForm — keyboard and assistive technology', () => {
     expect(screen.getByLabelText(/Credentials reference/).getAttribute('type')).toBe('text');
   });
 
-  it('says plainly that the registered list is identity only', async () => {
-    vi.stubGlobal('fetch', fetchWithList(() => new Response('unused', { status: 500 })));
+  it('lists memory version and counts once the gateway returns them', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (isListGet(url, init)) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                tenantId: TENANT_ID,
+                applications: [
+                  {
+                    ...APPLICATION,
+                    memoryVersion: 1,
+                    memoryVersionId: APPLICATION_ID,
+                    indexedAt: '2026-08-02T10:00:00.000Z',
+                    screenCount: 4,
+                    elementCount: 12,
+                    openDriftCount: 1,
+                  },
+                ],
+              },
+              200,
+            ),
+          );
+        }
+        return Promise.resolve(new Response('not found', { status: 404 }));
+      }),
+    );
     renderForm();
 
-    // Memory version / screen counts / index age are not on GET /v1/applications. Inventing
-    // them would be the empty table this copy replaced.
     await waitFor(() => {
-      expect(screen.getByText(/identity only/i)).toBeDefined();
+      expect(screen.getByRole('button', { name: /v1 · 4 screens · 12 elements/i })).toBeDefined();
     });
-    expect(screen.queryByText(/GET \/v1\/applications/)).toBeNull();
+    expect(screen.queryByText(/identity only/i)).toBeNull();
   });
 });

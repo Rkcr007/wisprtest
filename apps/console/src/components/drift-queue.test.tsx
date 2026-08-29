@@ -50,13 +50,13 @@ describe('DriftQueue', () => {
     renderQueue();
 
     expect(screen.getByRole('heading', { name: 'Drift' })).toBeTruthy();
-    expect(screen.getByText('/orders/:id')).toBeTruthy();
-    expect(screen.getByText('/orders/4903')).toBeTruthy();
+    expect(screen.getAllByText('/orders/:id').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('/orders/4903').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(2);
   });
 
   it('posts an approval and removes the row immediately', async () => {
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
         return Promise.resolve(jsonResponse(APPROVED));
       }
@@ -68,14 +68,14 @@ describe('DriftQueue', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0]!);
 
     await waitFor(() => {
-      expect(screen.queryByText('/orders/4903')).toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
     });
 
     const posted = fetchMock.mock.calls.find(
-      ([url]) => String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`,
+      (call) => String(call[0]) === `/api/drift/${DIFFED_REPORT.id}/approve`,
     );
     expect(posted).toBeDefined();
-    expect(JSON.parse(String((posted?.[1] as RequestInit).body))).toEqual({ decision: 'approve' });
+    expect(JSON.parse(String(posted?.[1]?.body))).toEqual({ decision: 'approve' });
   });
 
   it('puts the row back when the gateway refuses the approval', async () => {
@@ -106,7 +106,7 @@ describe('DriftQueue', () => {
         screen.getByText('this report has not been reconciled yet, so there is nothing to activate'),
       ).toBeTruthy();
     });
-    expect(screen.getByText('/orders/4903')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(2);
   });
 
   it('does not call the BFF when Reject is confirmed with no reason', async () => {
@@ -124,7 +124,7 @@ describe('DriftQueue', () => {
   });
 
   it('posts a rejection with the reason and removes the row', async () => {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`) {
         return Promise.resolve(jsonResponse(REJECTED));
       }
@@ -140,13 +140,13 @@ describe('DriftQueue', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }));
 
     await waitFor(() => {
-      expect(screen.queryByText('/orders/4903')).toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
     });
 
     const posted = fetchMock.mock.calls.find(
-      ([url]) => String(url) === `/api/drift/${DIFFED_REPORT.id}/approve`,
+      (call) => String(call[0]) === `/api/drift/${DIFFED_REPORT.id}/approve`,
     );
-    expect(JSON.parse(String((posted?.[1] as RequestInit).body))).toEqual({
+    expect(JSON.parse(String(posted?.[1]?.body))).toEqual({
       decision: 'reject',
       reason: 'the create form was mid-deploy',
     });

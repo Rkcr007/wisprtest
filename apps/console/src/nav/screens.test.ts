@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { applicationHref, isScreenActive, parseApplicationId } from './screens';
+import { applicationHref, isAdminActive, isScreenActive, parseApplicationId } from './screens';
 
 const APP = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
@@ -34,6 +34,14 @@ describe('isScreenActive', () => {
   it('builds hrefs the nav actually uses', () => {
     expect(applicationHref(APP, 'overview')).toBe(`/applications/${APP}`);
     expect(applicationHref(APP, 'drift')).toBe(`/applications/${APP}/drift`);
-    expect(applicationHref(APP, 'admin')).toBe(`/applications/${APP}/admin`);
+    expect(applicationHref(APP, 'sessions')).toBe(`/applications/${APP}/sessions`);
+  });
+});
+
+describe('isAdminActive', () => {
+  it('is current only on the tenant-wide admin route', () => {
+    expect(isAdminActive('/admin')).toBe(true);
+    expect(isAdminActive(`/applications/${APP}/admin`)).toBe(false);
+    expect(isAdminActive('/')).toBe(false);
   });
 });

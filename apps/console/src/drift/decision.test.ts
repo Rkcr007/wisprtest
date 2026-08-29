@@ -1,4 +1,4 @@
-import { DriftDecisionRequest, DriftListResponse } from 'protocol';
+import { DriftDecisionRequest, DriftListResponse, DriftReport } from 'protocol';
 import { describe, expect, it } from 'vitest';
 
 import {

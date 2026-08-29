@@ -80,11 +80,14 @@ describe('callGateway', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await callGateway(session, { method: 'POST', path: '/v1/x', body: { a: 1 } });
+    await callGateway(session, { method: 'PATCH', path: '/v1/x', body: { role: 'lead' } });
     await callGateway(session, { method: 'GET', path: '/v1/x' });
 
-    const [post, get] = fetchMock.mock.calls.map((call) => call[1] as RequestInit);
+    const [post, patch, get] = fetchMock.mock.calls.map((call) => call[1] as RequestInit);
     expect((post?.headers as Headers).get('content-type')).toBe('application/json');
     expect(post?.body).toBe('{"a":1}');
+    expect(patch?.method).toBe('PATCH');
+    expect(patch?.body).toBe('{"role":"lead"}');
     expect((get?.headers as Headers).get('content-type')).toBeNull();
     expect(get?.body).toBeUndefined();
   });

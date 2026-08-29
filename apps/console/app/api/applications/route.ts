@@ -12,8 +12,8 @@ export const runtime = 'nodejs';
 /**
  * `GET /api/applications` — the applications this tenant has registered.
  *
- * Identity only: name, URL, env, created-at. Memory version, screen counts and index age are not
- * on the gateway payload, so they are not invented here.
+ * Includes the active memory version, screen/element counts, index time and open drift when
+ * those rows exist. Zeros and nulls are the honest answer for an app that has never been indexed.
  */
 export async function GET(): Promise<NextResponse> {
   try {

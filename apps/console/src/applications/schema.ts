@@ -26,6 +26,12 @@ export const ApplicationRecord = z.object({
   baseUrl: HttpUrl,
   env: ApplicationEnv,
   createdAt: z.iso.datetime(),
+  memoryVersion: z.number().int().nullable().default(null),
+  memoryVersionId: z.uuid().nullable().default(null),
+  indexedAt: z.iso.datetime().nullable().default(null),
+  screenCount: z.number().int().min(0).default(0),
+  elementCount: z.number().int().min(0).default(0),
+  openDriftCount: z.number().int().min(0).default(0),
 });
 export type ApplicationRecord = z.infer<typeof ApplicationRecord>;
 

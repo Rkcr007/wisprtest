@@ -286,15 +286,17 @@ Every service emits:
   `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total{adapter,outcome}`,
   `wispr_drift_open_total`, `wispr_memory_staleness_hours`.
 
-  Three of those are **specified but not emitted**: `wispr_speech_to_reticle_ms` exists only as a
-  build-time benchmark, `wispr_memory_staleness_hours` is computable from Postgres but has no
-  instrument, and `wispr_drift_open_total` is a *gauge of queue depth* that nothing produces — what
-  shipped instead is `wispr_drift_reports_total{detected_by}`, a counter of raises, alongside
-  `wispr_drift_decisions_total` and the indexer's `wispr_indexer_drift_reconciles_total`,
+  **Emitted as of 2026-08-30:** `wispr_drift_open_total` and `wispr_memory_staleness_hours` are
+  Postgres-backed observable gauges on the gateway (`apps/gateway/src/telemetry/operational-metrics.ts`).
+  Raise/decision counters remain: `wispr_drift_reports_total{detected_by}`,
+  `wispr_drift_decisions_total`, plus the indexer's `wispr_indexer_drift_reconciles_total`,
   `wispr_indexer_drift_reconcile_duration_ms` and `wispr_indexer_drift_alias_migration_rate`.
-  `wispr_false_execution_total` is registered with no call site. See
-  `docs/runbooks/README.md` § "Alerts that cannot fire yet" for the full status, and treat that
-  table as authoritative over this list.
+
+  **Still not a runtime series:** `wispr_speech_to_reticle_ms` exists only as a build-time
+  benchmark. **Still no producer:** `wispr_false_execution_total` is registered with no call
+  site — a tester cannot yet mark a step as the wrong element. See `docs/STATUS.md` and
+  `docs/runbooks/README.md` § "Alerts that cannot fire yet". Instruments export only when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is set; there is no collector in Compose or kind.
 - **Logs** — structured JSON, `tenant_id`/`session_id`/`trace_id` on every line.
   Element text content is never logged.
 - **Health** — `/healthz` (liveness), `/readyz` (dependencies checked).
@@ -315,9 +317,14 @@ Every service emits:
 
 ## 9. Deployment
 
-Each service is a container with a Helm chart. Extension ships through the Chrome Web
-Store (or enterprise force-install policy). Postgres, Redis, and Qdrant are managed
-services in production, Compose locally.
+Each control-plane service is a container with a Helm subchart under
+`infra/helm/wisprtest/`. Local/kind deploy is **hybrid**: the app plane runs in kind
+(`make kind-up`); Postgres, Redis, Qdrant, MinIO and Dex stay on Compose and are reached
+at `host.docker.internal`. There is no Terraform and no in-cluster data plane. The
+extension is an unpacked Chrome MV3 build — it is not shipped by kind. Chrome Web Store
+/ enterprise force-install is not built.
 
 `make dev` brings up gateway, composer, indexer, console, and dependencies, and builds
 the extension in watch mode for unpacked loading.
+
+See `docs/runbooks/deploy.md` and `docs/STATUS.md`.

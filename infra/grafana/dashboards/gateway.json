@@ -12,7 +12,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "Instruments from `apps/gateway/src/telemetry/metrics.ts` only.\n\n**Not on this dashboard, because they are not emitted:** `wispr_speech_to_reticle_ms`, `wispr_memory_staleness_hours`, `wispr_drift_open_total` (see `infra/grafana/README.md`).\n\n`wispr_false_execution_total` is registered and has **no production `.add()`**. A flat zero is not a clean bill of health.\n\n`wispr_tier_total` and `wispr_seed_plan_latency_ms` are also recorded by the composer. Queries filter `service_name=\"wispr-gateway\"`."
+        "content": "Instruments from `apps/gateway/src/telemetry/metrics.ts`.\n\n**Emitted but not on this dashboard yet:** `wispr_memory_staleness_hours`, `wispr_drift_open_total` (see `infra/grafana/README.md`).\n\n**Not a runtime series:** `wispr_speech_to_reticle_ms`.\n\n`wispr_false_execution_total` is registered and has **no production `.add()`**. A flat zero is not a clean bill of health.\n\n`wispr_tier_total` and `wispr_seed_plan_latency_ms` are also recorded by the composer. Queries filter `service_name=\"wispr-gateway\"`."
       }
     },
     {

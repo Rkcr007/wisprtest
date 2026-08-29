@@ -17,10 +17,12 @@ written to be unambiguous and to reference the contract files rather than restat
 >
 > **The phase prompts below are unchanged and remain authoritative** for *what* each phase
 > must deliver and for its `Done when` command. Only the scheduling around them moved.
+> **Whether a phase is done lives in [`STATUS.md`](STATUS.md).** Do not infer it from this file.
 
 **The rule that saves the most time:** context lives in files, not in your messages.
-`CLAUDE.md` and `docs/*` are re-read every session. If you find yourself re-explaining
-something in chat for the second time, stop and put it in a file instead.
+`CLAUDE.md`, `docs/STATUS.md` and `docs/*` are re-read every session. If you find yourself
+re-explaining something in chat for the second time, stop and put it in a file instead.
+**What is done vs remaining lives in `docs/STATUS.md`**, not in this file's phase prompts.
 
 **One phase per session** *(Phases 0–14; superseded by the track protocol above)*. Start a
 new session for the next phase. Long sessions accumulate context that makes the model
@@ -868,6 +870,9 @@ Show me the plan and the route structure before writing components.
 pnpm --filter console build && pnpm --filter console test:e2e && pnpm --filter console test:a11y
 ```
 
+**Status (2026-08-30):** shipped. All eight screens exist under `apps/console/app/`, plus
+nonce CSP. See `docs/STATUS.md`.
+
 ---
 
 ## Phase 19 — Production hardening
@@ -904,6 +909,16 @@ Report anything you could not complete rather than marking it done.
 ```bash
 make ci && make load-test && make security-audit
 ```
+
+**Status (2026-08-30):** the `Done when` commands exist as Makefile targets. GitHub Actions
+is still the merge gate; `make ci` locally is lint + typecheck only.
+
+Shipped: CI workflow, Helm/kind, Grafana JSON (no collector), console CSP, security audit,
+load gate, operational gauges, runbooks, log redaction.
+
+Not shipped: Terraform, in-stack Prometheus/Grafana, alert rule files, false-execution
+producer, runtime speech-to-reticle metric, blocking CI benches. Full leftover list and
+priority: [`docs/STATUS.md`](STATUS.md).
 
 ---
 

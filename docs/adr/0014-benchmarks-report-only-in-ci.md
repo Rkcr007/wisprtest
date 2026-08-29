@@ -108,7 +108,7 @@ This is the part that makes it a trade-off rather than a fix.
   the three benchmark gates. The `ci` job is the single required check."* Both sentences are true
   in isolation and misleading together — the workflow does run the three benchmarks, and the `ci`
   job is the required check, but `bench` is not among its `needs`, so the benchmarks gate nothing.
-  Corrected here rather than in `CLAUDE.md`, which this track does not own.
+  Corrected in `CLAUDE.md` § "Parallel tracks" rule 4 (2026-08-30 docs sync) and here.
 
 ### What would reverse it
 

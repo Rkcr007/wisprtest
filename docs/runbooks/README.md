@@ -7,7 +7,7 @@ root-cause investigation, prevention.
 | Runbook | Covers | Buildable today? |
 |---------|--------|------------------|
 | [deploy.md](deploy.md) | kind-up / kind-down, how a tester uses console + extension | **Yes** — kind-first; cloud Terraform is out of scope |
-| [drift-backlog.md](drift-backlog.md) | Memory going stale because drift reports are not being reviewed | **Yes** — though the review itself is an API call until Phase 18's Drift screen lands |
+| [drift-backlog.md](drift-backlog.md) | Memory going stale because drift reports are not being reviewed | **Yes** — console Drift screen + API |
 | [indexer-failure.md](indexer-failure.md) | Crawl jobs failing, stalling, or leaving memory versions stuck `building` | **Yes** |
 | [asr-provider-outage.md](asr-provider-outage.md) | Deepgram unreachable or degraded; testers cannot talk | **Partly** — no gateway-side ASR provisioning |
 | [seed-materializer-failure.md](seed-materializer-failure.md) | Seeding failing across a tenant | **Yes** — all three adapters and the fallback chain are live |
@@ -16,19 +16,16 @@ root-cause investigation, prevention.
 
 ## Read this before using any of them
 
-**These runbooks describe the system as of Phase 17 plus Track I of Phase 18–19.** Phases 0–17
-are complete; Phase 18 has more than Connect and Indexing now, and Phase 19 has CI, these
-runbooks, and a kind-first `infra/`. All four incident scenarios above can occur.
+**These runbooks describe the system as of 2026-08-30.** Phases 0–18 are complete; Phase 19
+is mostly complete. Leftovers and priority: [`docs/STATUS.md`](../STATUS.md).
 
 Each runbook opens with a *What exists today* section naming what is live and what is not. Where a
 step depends on something unbuilt, it says so inline rather than describing tooling that is not
 there. **A runbook step that names a command, table or endpoint has been checked against the
 source.** Anything that could not be checked is marked.
 
-**The operationally significant gap is the console.** The gateway exposes the drift review queue
-(`GET /v1/drift/:appId`) and the decision endpoint (`POST /v1/drift/:id/approve`), and the seed
-ledger is queryable, but there are only two console screens — Connect and Indexing. Everything else
-an operator needs is an API call or a SQL query, and the runbooks are written that way on purpose.
+The console now has Overview, Memory, Data, Sessions, Drift, and Admin in addition to Connect and
+Indexing. Operators should use those screens first; API and SQL remain for when the UI is down.
 
 `infra/helm/wisprtest/` is a kind-first Helm umbrella for the four app-plane services. The data
 plane is still Compose. Grafana dashboard JSON lives in `infra/grafana/` for series that are
@@ -36,10 +33,9 @@ actually emitted; there is still no collector in the stack, so "check the dashbo
 "import those files into a Grafana that has a Prometheus once one is wired up." There is no
 Terraform. See [deploy.md](deploy.md).
 
-The `make` targets that exist are: `dev`, `build`, `test`, `bench`, `lint`, `typecheck`, `db-up`,
-`db-down`, `db-logs`, `db-migrate`, `db-reset`, `db-seed`, `db-codegen`, `kind-up`, `kind-down`.
-`make ci`, `make load-test` and `make security-audit` are named in Phase 19's `Done when` and still
-do not exist.
+The `make` targets that exist include: `dev`, `build`, `test`, `bench`, `lint`, `typecheck`,
+`ci` (local lint+typecheck), `load-test`, `security-audit`, `db-up`, `db-down`, `db-logs`,
+`db-migrate`, `db-reset`, `db-seed`, `db-codegen`, `kind-up`, `kind-down`.
 
 **The CI pipeline** (`.github/workflows/ci.yml`) is a merge gate and not an operational one — it tells you a change is safe to land, not that a
 deployment is healthy. Two things about it are worth knowing while holding a pager:
@@ -55,20 +51,22 @@ deployment is healthy. Two things about it are worth knowing while holding a pag
 
 ## Alerts that cannot fire yet
 
-`docs/ARCHITECTURE.md § 7` and Phase 19 name three alerts. Their current status:
+`docs/ARCHITECTURE.md § 7` and Phase 19 name three alerts. Gauges for drift-open and
+memory-staleness now exist; they still cannot *page* without a collector and a rule file.
+False-execution and speech-to-reticle remain incomplete. Current status:
 
 | Alert | Metric | Status |
 |-------|--------|--------|
 | `wispr_false_execution_total > 0` pages immediately | `wispr_false_execution_total` | **Instrument exists, nothing increments it.** Registered in `apps/gateway/src/telemetry/metrics.ts` and covered by a unit test, but no production code path calls `.add()`, and `ActionOutcome` has no member meaning "wrong element". The release gate in `CLAUDE.md` is currently enforced by the Phase 10 speculation test, not by a measurement. See [ADR 0005](../adr/0005-reversibility-taxonomy.md). |
-| p95 speech-to-reticle > 400 ms warns | `wispr_speech_to_reticle_ms` | **Metric does not exist.** It is named in `docs/ARCHITECTURE.md § 7` and nowhere in the code. What exists is a build-time benchmark, `apps/extension/test/bench/speech-to-reticle.bench.ts`, run by `pnpm --filter extension bench:speech-to-reticle`. The nearest runtime metric is `wispr_speech_to_partial_ms`, which measures speech onset to first ASR partial and excludes resolution. |
-| memory staleness > 48 h warns | `wispr_memory_staleness_hours` | **Metric does not exist.** Named in § 7 only. `screens.indexed_at` and `memory_versions.created_at` hold the underlying data, so it is computable from Postgres today (see [drift-backlog.md](drift-backlog.md)). |
-| — | `wispr_drift_open_total` | **Metric does not exist under this name.** § 7 names it; what shipped is `wispr_drift_reports_total{detected_by}`, a counter of raises rather than a gauge of the open queue. Backlog depth is computable from `drift_reports` (see [drift-backlog.md](drift-backlog.md)). |
+| p95 speech-to-reticle > 400 ms warns | `wispr_speech_to_reticle_ms` | **Runtime metric does not exist.** Build-time benchmark only (`apps/extension/test/bench/speech-to-reticle.bench.ts`). Nearest runtime series is `wispr_speech_to_partial_ms` (excludes resolution). |
+| memory staleness > 48 h warns | `wispr_memory_staleness_hours` | **Gauge is emitted** from Postgres (`apps/gateway/src/telemetry/operational-metrics.ts`). No alert rule and no collector, so it will not page. SQL in [drift-backlog.md](drift-backlog.md) still works. |
+| open drift queue | `wispr_drift_open_total` | **Gauge is emitted** (open reports per tenant/app). Raise counter `wispr_drift_reports_total` still exists. No alert rule file yet. |
 
 Metrics that *are* emitted, and by which service:
 
 | Service | Metrics |
 |---------|---------|
-| gateway (`apps/gateway/src/telemetry/metrics.ts`) | `wispr_gateway_requests_total`, `wispr_gateway_request_duration_ms`, `wispr_tier_total`, `wispr_resolution_latency_ms`, `wispr_false_execution_total`, `wispr_memory_snapshot_total`, `wispr_memory_snapshot_build_ms`, `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total`, `wispr_drift_reports_total`, `wispr_drift_decisions_total`, `wispr_index_jobs_enqueued_total`, `wispr_index_progress_events_total`, `wispr_index_progress_subscribers` |
+| gateway (`apps/gateway/src/telemetry/metrics.ts`) | `wispr_gateway_requests_total`, `wispr_gateway_request_duration_ms`, `wispr_tier_total`, `wispr_resolution_latency_ms`, `wispr_false_execution_total`, `wispr_memory_snapshot_total`, `wispr_memory_snapshot_build_ms`, `wispr_seed_plan_latency_ms`, `wispr_seed_materialize_total`, `wispr_drift_reports_total`, `wispr_drift_decisions_total`, `wispr_drift_open_total`, `wispr_memory_staleness_hours`, `wispr_index_jobs_enqueued_total`, `wispr_index_progress_events_total`, `wispr_index_progress_subscribers` |
 | indexer (`apps/indexer/src/telemetry/metrics.ts`) | `wispr_indexer_routes_total`, `wispr_indexer_route_duration_ms`, `wispr_indexer_elements_total`, `wispr_indexer_edges_total`, `wispr_indexer_entity_schemas_total`, `wispr_indexer_field_specs_total`, `wispr_indexer_materializers_total`, `wispr_indexer_jobs_total`, `wispr_indexer_job_duration_ms`, `wispr_indexer_drift_reconciles_total`, `wispr_indexer_drift_reconcile_duration_ms`, `wispr_indexer_drift_alias_migration_rate` |
 | extension (`apps/extension/src/voice/messages.ts`) | `wispr_speech_to_partial_ms`, forwarded through the service worker |
 | composer (`apps/composer/src/composer/telemetry.py`) | `wispr_seed_plan_latency_ms`, `wispr_tier_total`, `wispr_compose_outcome_total` |
@@ -78,7 +76,8 @@ composer, deliberately: the gateway measures the round trip a tester waits on an
 measures its own share of it. Aggregating them without a `service` dimension will double-count.
 
 `wispr_false_execution_total` is the one § 7 instrument still with no call site — see the alert
-table above.
+table above. Drift-open and memory-staleness gauges now exist; they still cannot fire an alert
+without a collector and a rule.
 
 ---
 

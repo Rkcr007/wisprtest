@@ -13,7 +13,7 @@
 
 <br/>
 
-<img alt="Phase" src="https://img.shields.io/badge/build_plan-18%20%2F%2020%20phases-FFB454?style=flat-square" />
+<img alt="Phase" src="https://img.shields.io/badge/build_plan-19%20%2F%2020%20phases-FFB454?style=flat-square" />
 <img alt="Hot path" src="https://img.shields.io/badge/hot_path-in--browser,_no_network-52E0AC?style=flat-square" />
 <img alt="False execution" src="https://img.shields.io/badge/false_execution_rate-%3C%200.1%25%20(gated)-FF6B4A?style=flat-square" />
 <img alt="License" src="https://img.shields.io/badge/license-proprietary-7FA8FF?style=flat-square" />
@@ -29,6 +29,7 @@
 
 <br/><br/>
 
+<a href="docs/STATUS.md"><b>Status</b></a> ·
 <a href="#-see-it-in-action"><b>See it in action</b></a> ·
 <a href="#-the-thesis"><b>The thesis</b></a> ·
 <a href="#-safety--speed"><b>Safety &amp; speed</b></a> ·
@@ -179,8 +180,10 @@ flowchart TD
 | Indexer throughput                                |    **> 8 routes/min**     |
 | **False execution rate**                          | **< 0.1% — release gate** |
 
-Latency regressions cost satisfaction; false executions cost the account. Benchmarks fail
-the build on regression.
+Latency regressions cost satisfaction; false executions cost the account. `make bench`
+fails on regression on known hardware. GitHub CI **publishes** those numbers but does
+not block merge ([ADR 0014](docs/adr/0014-benchmarks-report-only-in-ci.md)). False
+execution is not yet measured — see [`docs/STATUS.md`](docs/STATUS.md).
 
 ---
 
@@ -228,11 +231,12 @@ Full system map, data model, and per-service responsibilities:
 wisprtest/
 ├── CLAUDE.md                  ← engineering rules & product contract (read first)
 ├── docs/
+│   ├── STATUS.md              ← what shipped, what remains, priority (read every session)
 │   ├── ARCHITECTURE.md        ← system map, boundaries, data model
 │   ├── TEST-DATA-ENGINE.md    ← generic vs per-app split, adapters
-│   ├── BUILD-PLAN.md          ← phased prompts, in order
+│   ├── BUILD-PLAN.md          ← phased prompts (what to deliver)
 │   ├── adr/                   ← decision log: what was decided, and what it cost
-│   └── runbooks/              ← drift backlog, indexer failure, ASR outage, seed failure
+│   └── runbooks/              ← drift backlog, indexer failure, ASR outage, seed failure, deploy
 ├── packages/
 │   ├── protocol/              ← Zod schemas + derived TS types (the contract)
 │   ├── fingerprint/           ← element fingerprinting + scoring resolver (SHARED verbatim)
@@ -244,7 +248,7 @@ wisprtest/
 │   ├── indexer/               ← Node + Playwright: crawl, fingerprint, observe schemas
 │   └── composer/              ← FastAPI: schema inference, constraint solve, compose
 ├── db/                        ← SQL migrations (Atlas), seed fixtures
-└── infra/                     ← Docker, Helm, Terraform (Phase 19 — not yet populated)
+└── infra/                     ← Compose extras, Helm/kind, Grafana JSON, security + load gates
 ```
 
 ### Stack
@@ -301,9 +305,15 @@ make build         # regenerate contract/schema types, then build every package
 make test          # every workspace test suite
 make lint          # ESLint + Prettier + ruff
 make typecheck     # tsc --noEmit across TS, mypy --strict for composer
-make db-up         # start Postgres / Redis / Qdrant / MinIO
+make ci            # local fast gates: lint + typecheck (merge CI is GitHub Actions)
+make bench         # blocking latency budgets — known hardware, quiet machine
+make load-test     # 50 concurrent sessions against Compose + a spawned gateway
+make security-audit
+make db-up         # start Postgres / Redis / Qdrant / MinIO / Dex
 make db-migrate    # apply Atlas migrations
 make db-reset      # drop, recreate, migrate, seed (destructive; Compose DB only)
+make kind-up       # kind cluster + Helm control plane (data plane stays Compose)
+make kind-down
 ```
 
 </details>
@@ -343,86 +353,50 @@ cd apps/composer && uv run mypy --strict src && uv run pytest -q
 ## 📈 Build progress
 
 Built in the phased order defined in [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md).
-**Phases 0–17 shipped; 18 and 19 partially landed.**
+**Phases 0–18 shipped; Phase 19 mostly landed.** The living list of leftovers and
+priorities is [`docs/STATUS.md`](docs/STATUS.md) — read that before starting work.
 
 ```mermaid
 timeline
     title WisprTest build plan
-    section ✅ Shipped
+    section Shipped
         Foundations : Scaffold : Protocol : Fingerprint
         Backend : DB + RLS : Gateway : Indexer
-        Extension : HUD + design system : Runtime state engine : T0/T1 resolution : Voice pipeline : Speculation + CDP
-        Learning : T2 write-back : Sessions : Drift detection + relearn
-        Data engine : Schema observation : Composer : Seed preview + approval + ledger : Materializer chain
-    section 🚧 Partly landed
-        Product : Console — 2 of 8 screens : Hardening — CI + runbooks
-    section 🔜 Planned
-        Product : Remaining console screens : Helm / Terraform / load test
+        Extension : HUD : Runtime : T0/T1 : Voice : Speculation + CDP
+        Learning : T2 write-back : Sessions : Drift + relearn
+        Data engine : Schema observation : Composer : Seed + ledger : Materializer chain
+        Product : Console (all eight screens) + CSP
+        Hardening : CI : Helm/kind : Security audit : Load gate : Operational gauges
+    section Open
+        Contract : Tester-reported false execution
+        Ops : Collector + alerts : kind-up verification
+        Cloud : Terraform (explicitly later)
 ```
 
-|   #   | Phase                                                   |         Status          |
-| :---: | ------------------------------------------------------- | :---------------------: |
-|  0–2  | Scaffold · Protocol · Fingerprint                       |           ✅            |
-|  3–5  | DB + RLS · Gateway · Indexer                            |           ✅            |
-|  6–7  | Extension shell + HUD · Runtime state engine            |           ✅            |
-| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution  |           ✅            |
-| 11–13 | T2 write-back · Sessions · Schema observation           |           ✅            |
-|  14   | Composer — contract, sampler, solver, provenance DAG    |           ✅            |
-|  15   | Seed plan, approve, revert · UI materializer · ledger   |           ✅            |
-|  16   | Materializer chain — API + fixture, verification TTL    |           ✅            |
-|  17   | Drift detection and relearn — the learning loop, closed |           ✅            |
-|  18   | Console — Connect + Indexing screens                    |    🚧 2 of 8 screens    |
-|  19   | Production hardening — CI + runbooks landed early       | 🚧 `infra/` still empty |
+|   #   | Phase                                                   |          Status           |
+| :---: | ------------------------------------------------------- | :-----------------------: |
+|  0–2  | Scaffold · Protocol · Fingerprint                       |            ✅             |
+|  3–5  | DB + RLS · Gateway · Indexer                            |            ✅             |
+|  6–7  | Extension shell + HUD · Runtime state engine            |            ✅             |
+| 8–10  | T0/T1 resolution · Voice · Speculation + CDP execution  |            ✅             |
+| 11–13 | T2 write-back · Sessions · Schema observation           |            ✅             |
+|  14   | Composer — contract, sampler, solver, provenance DAG    |            ✅             |
+|  15   | Seed plan, approve, revert · UI materializer · ledger   |            ✅             |
+|  16   | Materializer chain — API + fixture, verification TTL    |            ✅             |
+|  17   | Drift detection and relearn — the learning loop, closed |            ✅             |
+|  18   | Console — all eight screens + nonce CSP                 |            ✅             |
+|  19   | Production hardening                                    | 🚧 leftovers in STATUS.md |
 
-> **Phase 17** closed the learning loop, across six PRs. The contract went first and alone. Then the
-> gateway learned to raise a report, queue a reconcile and record a human's decision. Then the
-> indexer gained the worker on the other side of that queue: it clones the active memory version,
-> re-crawls the one drifted screen _without ever interacting with it_, classifies what changed, and
-> leaves the result `building`. Then the extension gained the half that observes — a hash comparison
-> on route settle, costing two map lookups against a hash the state engine already computes.
+> **Phase 17** closed the learning loop. A drifted screen degrades to Class `A` rather
+> than stopping. Nothing mutates memory without a human. [ADR 0007](docs/adr/0007-human-approved-drift-only.md).
 >
-> Nothing in it can change memory on its own. A reconcile proposes a candidate version; approving it
-> flips a status rather than editing the active one, so a session mid-flight keeps resolving and a
-> bad approval is a version to roll back rather than a change to reconstruct.
-> [ADR 0007](docs/adr/0007-human-approved-drift-only.md) has the argument: automatic self-healing is
-> what destroyed trust in the previous generation of QA tools, because it made tests pass that
-> should have failed.
+> **Phase 18** is the full console, not a two-screen slice: Connect, Indexing, Overview,
+> Memory, Data, Sessions, Drift, and Admin.
 >
-> A drifted screen degrades rather than stopping. Every resolution on it is classified `A` —
-> pre-staged with a reticle, executed only on an explicit yes — regardless of verb or score.
-> Confidence cannot express staleness on its own: a T0 alias hit is _more_ confident, not less, when
-> it names an element that has since moved, because the score says the phrase matched what memory
-> holds and nothing about whether memory is still true. The tester keeps working; what stops is
-> unconfirmed action against memory known to be stale.
->
-> **Phase 18** is a deliberate slice: Connect (crawl bounds + start) and Indexing (live SSE
-> progress) are built and tested, so an application can be indexed without touching a
-> terminal. Of the other six, the Data screen now has a materializer chain to configure and a ledger
-> to show, and Drift has a queue of pending reports with diffs to review — the loop runs end to end
-> in code, and the approve/reject decision is the one step that still has no screen to make it from.
->
-> **Phase 15** landed as two PRs, as Phase 14 did. The gateway half is the three seed routes, the
-> fallback chain, the ledger, the audited production policy, and the UI materializer that drives a
-> customer's own create form using the fingerprints the crawl stored. The extension half is the
-> preview card — every field with the reason it holds its value, the adapter that will run, and
-> whether the record can be removed — behind an approval gate that is the only path to a write, and
-> the class-S wiring that keeps seeding off the speculative path entirely.
->
-> **Phase 16** landed as three PRs. The contract went first and alone, because
-> `packages/protocol` is what every other module is checked against. Then the indexer gained the
-> API and fixture adapters, which issue their requests from inside the browser context that is
-> already logged in — so a replay carries the session the application itself established, and no
-> credential is stored anywhere. Then the gateway gained the chain that orders all three and the
-> verification lifecycle that demotes one that stopped working, so a broken endpoint stops being
-> tried first without anyone deciding to disable it.
->
-> Two limits are deliberate and recorded in
-> [ADR 0016](docs/adr/0016-writes-go-through-the-indexer.md): an API observed behind a bearer token
-> cannot be replayed, because the token was never captured; and a failed materializer is demoted
-> but no re-crawl is queued, because crawl bounds are not stored per application.
->
-> **Phase 19** landed out of order — the CI pipeline and all four operational runbooks are
-> in, while the Helm charts, Terraform, Grafana dashboards and load test are not.
+> **Phase 19** has CI, runbooks, kind-first Helm, Grafana JSON (no collector), security
+> audit, 50-session load gate, console CSP, and gateway drift/staleness gauges. It does
+> **not** have Terraform, an in-stack metrics backend, false-execution measurement, or
+> blocking CI benchmarks. Details and priority: [`docs/STATUS.md`](docs/STATUS.md).
 
 Since Phase 14 the unit of work is a **track**, not a phase — one owner, one module, one
 branch, one PR, several running concurrently. See [ADR 0012](docs/adr/0012-parallel-tracks.md)
@@ -471,11 +445,12 @@ blocker, not a nice-to-have.
 | Document                                               | What's in it                                                      |
 | ------------------------------------------------------ | ----------------------------------------------------------------- |
 | [`CLAUDE.md`](CLAUDE.md)                               | Product contract, engineering rules, taxonomy, budgets            |
+| [`docs/STATUS.md`](docs/STATUS.md)                     | **Start here every session** — shipped, remaining, priority       |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)         | System map, boundaries, extension internals, data model, security |
 | [`docs/TEST-DATA-ENGINE.md`](docs/TEST-DATA-ENGINE.md) | Generic vs per-app data engine, adapters, composition             |
-| [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md)             | The phased build plan, in order                                   |
+| [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md)             | The phased build plan (prompts remain authoritative)              |
 | [`docs/adr/`](docs/adr/README.md)                      | The decision log — what was decided, why, and what it cost        |
-| [`docs/runbooks/`](docs/runbooks/README.md)            | Four operational runbooks, plus what is and is not instrumented   |
+| [`docs/runbooks/`](docs/runbooks/README.md)            | Operational runbooks plus what is and is not instrumented         |
 
 ---
 

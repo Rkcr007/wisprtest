@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Local memory import. Developer surface, not the tester UX.
+
+  A dump file plus the origin it was crawled from lets the packed extension resolve
+  against live memory without a gateway token. The tester path is still: install,
+  sign in, lead names a URL. This page exists so we can dress-rehearse the HUD first.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WisprTest — local memory</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12141a;
+        --surface: #1b1e27;
+        --border: #2d3340;
+        --text: #e8ebf2;
+        --muted: #8b93a7;
+        --accent: #7dd3c0;
+        --danger: #f0a0a0;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      main {
+        max-width: 40rem;
+        margin: 2.5rem auto;
+        padding: 0 1.25rem 3rem;
+      }
+      h1 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0 0 0.35rem;
+      }
+      p.lead,
+      p.note {
+        color: var(--muted);
+        margin: 0 0 1.25rem;
+      }
+      p.note {
+        font-size: 0.85rem;
+      }
+      label {
+        display: block;
+        font-weight: 550;
+        margin: 1rem 0 0.35rem;
+      }
+      input[type='url'],
+      input[type='text'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+      }
+      input[type='file'] {
+        display: block;
+        margin-top: 0.35rem;
+      }
+      .actions {
+        display: flex;
+        gap: 0.6rem;
+        margin-top: 1.25rem;
+      }
+      button {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        padding: 0.5rem 0.85rem;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #10201c;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      #status {
+        margin-top: 1.25rem;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      #status[data-tone='error'] {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      #status[data-tone='ok'] {
+        border-color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Local memory</h1>
+      <p class="lead">
+        Import a dump from the indexer CLI so the HUD can attach on a matching origin without
+        signing in to the gateway.
+      </p>
+      <label for="origin">Page origin</label>
+      <input
+        id="origin"
+        type="url"
+        name="origin"
+        placeholder="https://staging.example.com"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <label for="file">Memory snapshot (JSON)</label>
+      <input id="file" type="file" accept="application/json,.json" />
+      <div class="actions">
+        <button id="import" class="primary" type="button">Import</button>
+        <button id="clear" type="button">Clear</button>
+      </div>
+      <p id="status" role="status">No local dump is loaded.</p>
+      <p class="note">
+        Structure only. The file is a <code>MemorySnapshot</code> — or
+        <code>{ origin, snapshot }</code> — and is stored in extension local storage, never sent
+        to the page. Open the application, show the HUD, and attach.
+      </p>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

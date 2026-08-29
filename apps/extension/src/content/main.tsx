@@ -914,6 +914,21 @@ function HudApp({
       }}
       stateFingerprint={engine?.state.value.stateFingerprint ?? null}
       onConfirm={() => controllerRef.current?.confirm()}
+      onCommand={(utterance) => {
+        // Typed input is already a final transcript. Reset any in-flight speculation so a
+        // previous staged class-C cannot steal the confirmation for this one, then feed the
+        // same fork the voice pipeline uses — seed detector first, speculation second.
+        controllerRef.current?.onSpeechOnset();
+        lastPartialRef.current = -1;
+        lastFinalRef.current = -1;
+        setVoice({
+          kind: 'voice',
+          phase: 'idle',
+          level: 0,
+          partial: null,
+          final: { revision: Date.now(), text: utterance },
+        });
+      }}
       disambiguation={disambiguation}
       // A click takes the same road as speech: it feeds the controller the ordinal as a final
       // transcript, so the pick is parsed, resolved, classified and gated by exactly the code a

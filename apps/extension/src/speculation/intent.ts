@@ -78,6 +78,11 @@ export const DEFAULT_VERB_LEXICON: ReadonlyMap<string, ActionVerb> = new Map([
   ['go to', 'navigate'],
   ['take me to', 'navigate'],
   ['open', 'navigate'],
+  ['show me only the', 'filter'],
+  ['show me only', 'filter'],
+  ['show only', 'filter'],
+  ['only show me', 'filter'],
+  ['only show', 'filter'],
   ['show me', 'navigate'],
   ['show', 'navigate'],
   ['view', 'navigate'],
@@ -103,8 +108,6 @@ export const DEFAULT_VERB_LEXICON: ReadonlyMap<string, ActionVerb> = new Map([
   ['focus on', 'focus'],
   ['focus', 'focus'],
   ['scroll', 'scroll'],
-  ['show only', 'filter'],
-  ['only show', 'filter'],
   ['filter by', 'filter'],
   ['filter', 'filter'],
   ['only', 'filter'],
@@ -171,6 +174,17 @@ const VALUE_PREPOSITIONS: ReadonlySet<string> = new Set(['by', 'with', 'for', 'a
 const TARGET_PREPOSITIONS: ReadonlySet<string> = new Set(['into', 'in', 'on']);
 const ARTICLES: ReadonlySet<string> = new Set(['the', 'a', 'an']);
 
+/**
+ * Spoken stand-ins for an already-named control.
+ *
+ * "approve it" is how a tester finishes a flow. The verb already named the action; the pronoun
+ * is not a target the resolver can look up. When the entire remainder is one of these, the
+ * trigger word itself is the target — "approve it" resolves `approve`, the same way "approve
+ * order" does. A longer remainder ("approve this order") is left alone: it already names a
+ * control the resolver can score.
+ */
+const PRONOUN_TARGETS: ReadonlySet<string> = new Set(['it', 'this', 'that', 'them']);
+
 export interface IntentParserOptions {
   readonly vocabulary?: IntentVocabulary;
   readonly lexicon?: ReadonlyMap<string, ActionVerb>;
@@ -219,13 +233,15 @@ export function createIntentParser(options: IntentParserOptions = {}): IntentPar
   // Trigger phrases sorted longest-first, so a longest-prefix match is a linear scan.
   const triggers = [...lexicon.keys()].sort((a, b) => b.length - a.length);
 
-  function matchVerb(normalized: string): { verb: ActionVerb; rest: string } | null {
+  function matchVerb(
+    normalized: string,
+  ): { verb: ActionVerb; rest: string; trigger: string } | null {
     for (const trigger of triggers) {
       const verb = lexicon.get(trigger);
       if (verb === undefined) continue;
-      if (normalized === trigger) return { verb, rest: '' };
+      if (normalized === trigger) return { verb, rest: '', trigger };
       if (normalized.startsWith(`${trigger} `)) {
-        return { verb, rest: normalized.slice(trigger.length + 1) };
+        return { verb, rest: normalized.slice(trigger.length + 1), trigger };
       }
     }
     return null;
@@ -295,8 +311,10 @@ export function createIntentParser(options: IntentParserOptions = {}): IntentPar
 
       let verb: ActionVerb;
       let restWords: string[];
+      let trigger: string | null = null;
       if (matched !== null) {
         verb = matched.verb;
+        trigger = matched.trigger;
         restWords = stripLeadingArticle(matched.rest.split(' ').filter((w) => w !== ''));
       } else {
         // No verb word: a bare phrase. It is a navigation when the app has a screen or trigger by
@@ -336,6 +354,11 @@ export function createIntentParser(options: IntentParserOptions = {}): IntentPar
         rawValue = split.value;
       } else {
         targetPhrase = redact(restWords.join(' '));
+      }
+
+      // "approve it" / "delete that": the pronoun is not a resolvable name. The spoken verb is.
+      if (trigger !== null && PRONOUN_TARGETS.has(targetPhrase)) {
+        targetPhrase = redact(trigger);
       }
 
       return rawValue === undefined

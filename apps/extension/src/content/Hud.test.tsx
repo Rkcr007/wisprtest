@@ -154,6 +154,59 @@ describe('an application nobody has indexed', () => {
   });
 });
 
+describe('typed commands', () => {
+  it('is not offered when there is no command handler', () => {
+    renderHud(update({ attach: 'attached' }));
+
+    expect(screen.queryByTestId('wispr-hud-type')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand the WisprTest panel' }));
+    expect(screen.queryByTestId('wispr-hud-command')).toBeNull();
+  });
+
+  it('submits the draft as a finished transcript and clears the field', () => {
+    const onCommand = vi.fn();
+    render(
+      <Hud
+        update={update({ attach: 'attached' })}
+        onAttach={() => undefined}
+        onDetach={() => undefined}
+        onCommand={onCommand}
+        origin="https://orders.northwind.example"
+        version="0.0.0"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Type a command' }));
+    fireEvent.change(screen.getByTestId('wispr-hud-command'), {
+      target: { value: 'open orders' },
+    });
+    fireEvent.submit(screen.getByTestId('wispr-hud-command-form'));
+
+    expect(onCommand).toHaveBeenCalledExactlyOnceWith('open orders');
+    expect((screen.getByTestId('wispr-hud-command') as HTMLInputElement).value).toBe('');
+  });
+
+  it('does not submit whitespace', () => {
+    const onCommand = vi.fn();
+    render(
+      <Hud
+        update={update({ attach: 'attached' })}
+        onAttach={() => undefined}
+        onDetach={() => undefined}
+        onCommand={onCommand}
+        origin="https://orders.northwind.example"
+        version="0.0.0"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand the WisprTest panel' }));
+    fireEvent.change(screen.getByTestId('wispr-hud-command'), { target: { value: '   ' } });
+    fireEvent.submit(screen.getByTestId('wispr-hud-command-form'));
+
+    expect(onCommand).not.toHaveBeenCalled();
+  });
+});
+
 describe('the drift notice', () => {
   /**
    * Phase 17's non-blocking notice. Its job is to explain why the panel is suddenly asking for

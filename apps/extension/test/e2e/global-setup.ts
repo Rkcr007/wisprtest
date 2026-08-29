@@ -18,6 +18,9 @@ export default async function setup(): Promise<void> {
   await runBuild({
     outDir: fileURLToPath(new URL('../../dist', import.meta.url)),
     gatewayOrigin: `http://127.0.0.1:${String(GATEWAY_PORT)}`,
+    // Empty: the HUD suite's stub gateway implements POST /v1/auth/extension-token. A console
+    // origin here would send mint to a process that is not running.
+    consoleOrigin: '',
     env: 'test',
     version: '0.0.0',
     watch: false,

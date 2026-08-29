@@ -4,6 +4,7 @@ import {
   RuntimeState,
   SessionStep,
   type ExtensionToken,
+  type MemorySnapshot,
 } from 'protocol';
 
 import {
@@ -26,6 +27,7 @@ import type { SessionClient } from './session-client.js';
 import type { AliasClient } from './alias-client.js';
 import type { DriftClient } from './drift-client.js';
 import type { EscalateClient } from './escalate-client.js';
+import type { LocalMemoryStore } from './local-memory.js';
 import type { MemoryClient } from './memory-client.js';
 import type { SeedClient } from './seed-client.js';
 import { isUsable, type TokenClient } from './token-client.js';
@@ -40,12 +42,13 @@ import type { VoiceController } from './voice-controller.js';
  * gateway down, application not registered — and given a way to try again. A machine with no
  * failure state reports a permanent "attaching…", which is the worst of the four.
  *
- * ## Attaching means authenticated
+ * ## Attaching means ready to resolve
  *
- * `attached` is only reached once a scoped token is held. That is the honest reading: everything
- * the extension will do from here — load a memory snapshot, write back an alias, ingest a session
- * step — needs one, so a HUD claiming to be attached without a token would be claiming a
- * readiness it does not have.
+ * The gateway path reaches `attached` once a scoped token is held. A local dump path reaches it
+ * without one: the snapshot was imported on the options page, the tab origin matches, and
+ * nothing is fetched. That path never persists a bearer, never schedules a refresh, and never
+ * calls the control plane — write-back, sessions, T2 and seeding stay closed. A HUD that
+ * attached locally is ready to resolve, not ready to learn.
  *
  * ## One session per tab, one token per origin
  *
@@ -82,6 +85,11 @@ export interface AttachControllerOptions {
    * and a `refetch_snapshot` request reloads it out of band.
    */
   readonly memory?: MemoryClient;
+  /**
+   * A dump imported on the options page. Optional: without it attach always goes through the
+   * gateway. When the stored origin matches the tab, attach skips the token client entirely.
+   */
+  readonly localMemory?: LocalMemoryStore;
   /**
    * The voice pipeline's worker half. Optional so the attach lifecycle can be tested in isolation;
    * when present, the HUD's push-to-talk requests are relayed to it and its transcript state is
@@ -155,6 +163,11 @@ interface Session {
   state: AttachState;
   failure: AttachFailure | null;
   token: ExtensionToken | null;
+  /**
+   * True when this tab attached from a local dump rather than a gateway token. Gateway clients
+   * must not run: the in-memory bearer is a HUD placeholder and is never a credential.
+   */
+  local: boolean;
   /** The memory version this tab's aliases are learned against; set when the snapshot loads. */
   memoryVersionId: string | null;
   /** Holds learned aliases and flushes them in batches. Created with the snapshot. */
@@ -200,6 +213,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
     store,
     alarms,
     memory,
+    localMemory,
     voice,
     escalation,
     aliases,
@@ -239,14 +253,41 @@ export function createAttachController(options: AttachControllerOptions): Attach
   /**
    * Fetch the snapshot for an attached tab and push it to its HUD.
    *
-   * A no-op without a memory client. An origin that matches no registered application has a token
-   * with `applicationId: null` and simply has nothing to load — reported as `absent`, not an
-   * error, so the HUD says "not indexed" rather than showing a failure for a normal page.
+   * A no-op without a memory client on the gateway path. An origin that matches no registered
+   * application has a token with `applicationId: null` and simply has nothing to load —
+   * reported as `absent`, not an error, so the HUD says "not indexed" rather than showing a
+   * failure for a normal page. A local dump is read from the options-page store instead, and
+   * never opens a write-back queue or a session — those need a real credential.
    */
   async function loadSnapshot(tabId: number): Promise<void> {
-    if (memory === undefined) return;
     const session = sessions.get(tabId);
-    if (session?.token == null) return;
+    if (session === undefined) return;
+
+    if (session.local) {
+      const envelope = await localMemory?.read();
+      const current = sessions.get(tabId);
+      if (current?.state !== 'attached' || !current.local) return;
+      if (envelope == null || envelope.origin !== current.origin) {
+        postSnapshot(
+          current,
+          snapshotMessage('absent', current.token?.applicationId ?? null, null),
+        );
+        return;
+      }
+      postSnapshot(
+        current,
+        snapshotMessage(
+          'loaded',
+          envelope.snapshot.applicationId,
+          envelope.snapshot.memoryVersion.id,
+          envelope.snapshot,
+        ),
+      );
+      return;
+    }
+
+    if (memory === undefined) return;
+    if (session.token == null) return;
 
     const applicationId = session.token.applicationId;
     if (applicationId === null) {
@@ -427,9 +468,10 @@ export function createAttachController(options: AttachControllerOptions): Attach
       }
     };
 
-    const token = session.token?.token;
-    // No client or no session: the answer is that T2 is unavailable, and the content script shows
-    // the T1 candidates. Never an error — a tester who has not attached still gets two tiers.
+    const token = session.local ? undefined : session.token?.token;
+    // No client, a local dump, or no session: the answer is that T2 is unavailable, and the
+    // content script shows the T1 candidates. Never an error — a tester who has not attached
+    // still gets two tiers. The local bearer is not a credential and must not leave the worker.
     if (escalation === undefined || token === undefined || session.state !== 'attached') {
       reply(false, undefined, 'unavailable');
       return;
@@ -495,11 +537,12 @@ export function createAttachController(options: AttachControllerOptions): Attach
       }
     };
 
-    const token = session.token?.token;
+    const token = session.local ? undefined : session.token?.token;
     const sessionId = session.sessionId;
     const applicationId = session.token?.applicationId ?? null;
 
     if (
+      session.local ||
       seeds === undefined ||
       token === undefined ||
       sessionId === null ||
@@ -588,11 +631,12 @@ export function createAttachController(options: AttachControllerOptions): Attach
       readonly observedAt: string;
     },
   ): Promise<void> {
-    const token = session.token?.token;
+    const token = session.local ? undefined : session.token?.token;
     const sessionId = session.sessionId;
 
     // Reporting needs a session, because the gateway reads the memory version from it — the version
     // the report is about is the one this tab actually loaded, and nothing else can say which.
+    // A local dump never opened one.
     if (drifts === undefined || token === undefined || sessionId === null) return;
     if (session.state !== 'attached') return;
 
@@ -628,7 +672,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
   ): Promise<void> {
     const refs: unknown[] = [];
     const sessionId = session.sessionId;
-    const token = session.token?.token;
+    const token = session.local ? undefined : session.token?.token;
 
     if (evidence !== undefined && sessionId !== null && token !== undefined) {
       const capturedAt = new Date(now()).toISOString();
@@ -699,7 +743,8 @@ export function createAttachController(options: AttachControllerOptions): Attach
               : 'absent',
       tenantId: session.token?.tenantId ?? null,
       applicationId: session.token?.applicationId ?? null,
-      tokenExpiresAt: session.token?.expiresAt ?? null,
+      // A local dump has no minted token to expire. Showing 2099 would be a lie.
+      tokenExpiresAt: session.local ? null : (session.token?.expiresAt ?? null),
     };
 
     try {
@@ -709,6 +754,17 @@ export function createAttachController(options: AttachControllerOptions): Attach
       // failing an attach over — the disconnect handler is about to clean the session up.
       onError?.('hud.post_failed', error);
     }
+  }
+
+  /**
+   * A dump imported for this exact origin, or null. Origin match is exact — the content
+   * script sends `window.location.origin`, and a dump for a different host must not attach.
+   */
+  async function matchingLocalDump(origin: string): Promise<MemorySnapshot | null> {
+    if (localMemory === undefined) return null;
+    const envelope = await localMemory.read();
+    if (envelope === null || envelope.origin !== origin) return null;
+    return envelope.snapshot;
   }
 
   /** A cached token for this origin if one is still usable, otherwise a freshly minted one. */
@@ -734,6 +790,21 @@ export function createAttachController(options: AttachControllerOptions): Attach
     publish(tabId);
 
     try {
+      const dumped = await matchingLocalDump(session.origin);
+      if (dumped !== null) {
+        const current = sessions.get(tabId);
+        if (current === undefined) return;
+        if (current.state !== 'attaching') return;
+
+        current.local = true;
+        current.token = placeholderToken(dumped);
+        current.state = 'attached';
+        current.failure = null;
+        publish(tabId);
+        void loadSnapshot(tabId);
+        return;
+      }
+
       const token = await acquire(session.origin);
 
       // The tab may have detached or navigated while the request was in flight. Publishing an
@@ -743,6 +814,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
       if (current === undefined) return;
       if (current.state !== 'attaching') return;
 
+      current.local = false;
       current.token = token;
       current.state = 'attached';
       current.failure = null;
@@ -779,11 +851,15 @@ export function createAttachController(options: AttachControllerOptions): Attach
     closeSession(session);
 
     // Drop the held snapshot with the token that fetched it: a detached tab keeps no memory.
-    if (session.token?.applicationId != null) memory?.invalidate(session.token.applicationId);
+    // A local dump was never loaded through the memory client.
+    if (!session.local && session.token?.applicationId != null) {
+      memory?.invalidate(session.token.applicationId);
+    }
 
     session.state = 'detached';
     session.failure = null;
     session.token = null;
+    session.local = false;
     await alarms.clear(alarmNameFor(tabId));
     publish(tabId);
   }
@@ -811,6 +887,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
         state: 'detached',
         failure: null,
         token: null,
+        local: false,
         memoryVersionId: null,
         writebacks: null,
         sessionId: null,
@@ -839,9 +916,12 @@ export function createAttachController(options: AttachControllerOptions): Attach
             return;
           case 'refetch_snapshot': {
             // The content script found its snapshot stale. Drop the held copy and reload; the
-            // tester keeps working against the old one until the new one arrives.
-            const applicationId = session.token?.applicationId;
-            if (applicationId != null) memory?.invalidate(applicationId);
+            // tester keeps working against the old one until the new one arrives. A local dump
+            // has no gateway cache to invalidate — re-read the options-page store.
+            if (!session.local) {
+              const applicationId = session.token?.applicationId;
+              if (applicationId != null) memory?.invalidate(applicationId);
+            }
             void loadSnapshot(tabId);
             return;
           }
@@ -956,6 +1036,8 @@ export function createAttachController(options: AttachControllerOptions): Attach
       if (session === undefined) return;
       if (session.state !== 'attached') return;
       if (session.origin === null) return;
+      // A local dump has no minted token and nothing to refresh.
+      if (session.local) return;
 
       // Drop the cached token first: `acquire` would otherwise hand back the very token this
       // refresh exists to replace, since it is still inside its usable window.
@@ -966,6 +1048,21 @@ export function createAttachController(options: AttachControllerOptions): Attach
     stateOf(tabId: number): AttachState {
       return sessions.get(tabId)?.state ?? 'detached';
     },
+  };
+}
+
+/**
+ * HUD identifiers for a local dump. The bearer is a placeholder: it is never written to the
+ * token store and never sent to the gateway. `memory:read` is the only scope the dump needs.
+ */
+function placeholderToken(snapshot: MemorySnapshot): ExtensionToken {
+  return {
+    token: 'local',
+    tokenType: 'Bearer',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    tenantId: snapshot.tenantId,
+    applicationId: snapshot.applicationId,
+    scopes: ['memory:read'],
   };
 }
 

@@ -113,6 +113,14 @@ export function createActionExecutor(options: ExecutorOptions): ActionExecutor {
   const newId = options.idGen ?? (() => crypto.randomUUID());
   const { dispatcher, window } = options;
 
+  function isTextEntry(element: Element): boolean {
+    if (element instanceof HTMLTextAreaElement) return true;
+    if (element instanceof HTMLInputElement) {
+      return element.type !== 'button' && element.type !== 'submit' && element.type !== 'reset';
+    }
+    return element instanceof HTMLElement && element.isContentEditable;
+  }
+
   async function click(element: Element): Promise<void> {
     const { x, y } = viewportPoint(element);
     await dispatcher.mouse({ type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
@@ -186,10 +194,15 @@ export function createActionExecutor(options: ExecutorOptions): ActionExecutor {
         await typeText(element, text, payload.clearFirst);
         return;
       case 'filter':
-        // A text filter: type the value, then Enter to apply it.
-        await typeText(element, text, true);
-        await dispatcher.key(ENTER_KEY);
-        await dispatcher.key(ENTER_KEY_UP);
+        // A text field: type the value and Enter. A chip, tab or "Show pending only" link is
+        // the filter — clicking it is the action, and typing into an <a> is a no-op.
+        if (isTextEntry(element)) {
+          await typeText(element, text, true);
+          await dispatcher.key(ENTER_KEY);
+          await dispatcher.key(ENTER_KEY_UP);
+          return;
+        }
+        await click(element);
         return;
       case 'focus':
         if (element instanceof HTMLElement) element.focus();

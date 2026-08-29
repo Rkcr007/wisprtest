@@ -1,10 +1,12 @@
 # Operational runbooks
 
-Four scenarios, named in `docs/BUILD-PLAN.md` Phase 19. Each runbook is: symptoms, how to
-confirm, immediate mitigation, root-cause investigation, prevention.
+The four operational scenarios named in `docs/BUILD-PLAN.md` Phase 19, plus how to deploy the
+control plane on kind. The incident runbooks are: symptoms, how to confirm, immediate mitigation,
+root-cause investigation, prevention.
 
 | Runbook | Covers | Buildable today? |
 |---------|--------|------------------|
+| [deploy.md](deploy.md) | kind-up / kind-down, how a tester uses console + extension | **Yes** — kind-first; cloud Terraform is out of scope |
 | [drift-backlog.md](drift-backlog.md) | Memory going stale because drift reports are not being reviewed | **Yes** — though the review itself is an API call until Phase 18's Drift screen lands |
 | [indexer-failure.md](indexer-failure.md) | Crawl jobs failing, stalling, or leaving memory versions stuck `building` | **Yes** |
 | [asr-provider-outage.md](asr-provider-outage.md) | Deepgram unreachable or degraded; testers cannot talk | **Partly** — no gateway-side ASR provisioning |
@@ -14,9 +16,9 @@ confirm, immediate mitigation, root-cause investigation, prevention.
 
 ## Read this before using any of them
 
-**These runbooks describe the system as of Phase 17.** Phases 0–17 are complete; Phase 18 has 2 of
-its 8 console screens and Phase 19 has CI and these runbooks but no `infra/`. All four scenarios
-above can now occur — when these were first written, two of them could not.
+**These runbooks describe the system as of Phase 17 plus Track I of Phase 18–19.** Phases 0–17
+are complete; Phase 18 has more than Connect and Indexing now, and Phase 19 has CI, these
+runbooks, and a kind-first `infra/`. All four incident scenarios above can occur.
 
 Each runbook opens with a *What exists today* section naming what is live and what is not. Where a
 step depends on something unbuilt, it says so inline rather than describing tooling that is not
@@ -28,15 +30,16 @@ source.** Anything that could not be checked is marked.
 ledger is queryable, but there are only two console screens — Connect and Indexing. Everything else
 an operator needs is an API call or a SQL query, and the runbooks are written that way on purpose.
 
-`infra/` contains only `.gitkeep`. There are no Helm charts, no Terraform, and no Grafana
-dashboards or alert rules — Phase 19 owns all of it. Every metric named below is emitted by the
-service through OpenTelemetry (`OTEL_EXPORTER_OTLP_ENDPOINT`), and *nothing scrapes, stores or
-alerts on it yet*. "Check the dashboard" means "query your metric backend once one is wired up."
+`infra/helm/wisprtest/` is a kind-first Helm umbrella for the four app-plane services. The data
+plane is still Compose. Grafana dashboard JSON lives in `infra/grafana/` for series that are
+actually emitted; there is still no collector in the stack, so "check the dashboard" means
+"import those files into a Grafana that has a Prometheus once one is wired up." There is no
+Terraform. See [deploy.md](deploy.md).
 
 The `make` targets that exist are: `dev`, `build`, `test`, `bench`, `lint`, `typecheck`, `db-up`,
-`db-down`, `db-logs`, `db-migrate`, `db-reset`, `db-seed`, `db-codegen`. `make ci`,
-`make load-test` and `make security-audit` are named in Phase 19's `Done when` and still do not
-exist.
+`db-down`, `db-logs`, `db-migrate`, `db-reset`, `db-seed`, `db-codegen`, `kind-up`, `kind-down`.
+`make ci`, `make load-test` and `make security-audit` are named in Phase 19's `Done when` and still
+do not exist.
 
 **The CI pipeline** (`.github/workflows/ci.yml`) is a merge gate and not an operational one — it tells you a change is safe to land, not that a
 deployment is healthy. Two things about it are worth knowing while holding a pager:
@@ -86,7 +89,7 @@ table above.
 | gateway | `GET /healthz` | `GET /readyz` | Checks postgres, redis and qdrant individually; returns 503 with a per-dependency `checks` array. Both are public and exempt from rate limiting. |
 | indexer | `GET /healthz` | `GET /readyz` | Plain `node:http` server on `INDEXER_HOST:INDEXER_PORT` (8081 locally). Both report `busy: true|false` — a draining node shows `busy:true` until its crawl finishes. `/readyz` checks postgres and redis. |
 | composer | `GET /healthz` | `GET /readyz` | Registered by `create_router` (`apps/composer/src/composer/routes.py`) alongside `POST /compose`. `/readyz` reports readiness only — the composer holds no database or cache connection of its own. |
-| console | — | — | No health routes. Two screens exist (Connect, Indexing); a Next.js process that is serving is the only liveness signal. |
+| console | `GET /api/healthz` | `GET /api/readyz` | Liveness touches nothing external. Readiness asks the gateway `/readyz` (then `/healthz` if that path is missing) and never attaches a token. |
 
 **A note on the gateway's Qdrant check.** `/readyz` fails if Qdrant is unreachable, and *nothing
 in the codebase reads or writes Qdrant* — T1 embedding runs locally in the extension with a

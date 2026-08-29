@@ -1,0 +1,18 @@
+WisprTest control plane is installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+Data plane is NOT in this chart. Postgres, Redis, Qdrant, MinIO and Dex stay on
+the Compose stack (`make db-up`). Pods reach them at host.docker.internal.
+
+Console (kind overlay publishes this on the host):
+
+  http://localhost:3000
+
+Sign in with a fixture user from .env.example, then load the unpacked
+extension from apps/extension (this chart does not ship it).
+
+  make db-seed     # once, so Dex emails resolve to seeded users
+  kubectl -n {{ .Release.Namespace }} get pods
+
+Readiness: console /api/readyz asks the gateway /readyz. A 503 here usually
+means Compose is down or host.docker.internal does not resolve — see
+docs/runbooks/deploy.md.

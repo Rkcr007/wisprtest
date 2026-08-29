@@ -1,0 +1,12 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: wisprtest
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Console Service nodePort 30000 → host 3000, matching Dex's registered
+      # redirect URI (http://localhost:3000/auth/callback). Occupied if `make dev`
+      # is already bound to 3000 — kind-up will say so.
+      - containerPort: 30000
+        hostPort: 3000
+        protocol: TCP

@@ -1,0 +1,39 @@
+global:
+  envSecretName: wisprtest-runtime
+  hostAliasIP: ''
+  imagePullPolicy: IfNotPresent
+replicaCount: 1
+image:
+  repository: wisprtest/gateway
+  tag: kind
+service:
+  type: ClusterIP
+  port: 8080
+containerPort: 8080
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+pdb:
+  enabled: true
+  maxUnavailable: 1
+probes:
+  livenessPath: /healthz
+  readinessPath: /readyz
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+extraEnv: {}
+terminationGracePeriodSeconds: 30

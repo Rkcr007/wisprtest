@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test bench lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas
+.PHONY: help dev build test bench lint typecheck db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas kind-up kind-down
 
 COMPOSE := docker compose
 
@@ -123,3 +123,13 @@ db-seed: .env
 			-U "$$POSTGRES_USER" -d "$$POSTGRES_DB" < "$$file" >/dev/null || exit 1; \
 	done
 	@echo "seed loaded"
+
+## kind-up: kind cluster + control-plane images + helm install (Compose data plane stays on the host)
+# Requires kind and Helm 3. Fails by name if either is missing. Starts Compose via db-up so
+# postgres/redis/qdrant/minio/dex are reachable at host.docker.internal. Prints the console URL.
+kind-up: .env db-up
+	@bash infra/helm/wisprtest/scripts/kind-up.sh
+
+## kind-down: delete the kind cluster; leaves Compose running
+kind-down:
+	@bash infra/helm/wisprtest/scripts/kind-down.sh

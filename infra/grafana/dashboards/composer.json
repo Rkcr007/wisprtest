@@ -1,0 +1,108 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "text",
+      "title": "Honesty",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Instruments from `apps/composer/src/composer/telemetry.py`.\n\n`wispr_seed_plan_latency_ms` and `wispr_tier_total` are also recorded by the gateway (round-trip a tester waits on). This dashboard filters `service_name=\"wispr-composer\"` so the two are not added together.\n\n`wispr_compose_outcome_total` is composer-only: planned / conflict / refused."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Compose outcome",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(wispr_compose_outcome_total{service_name=\"wispr-composer\"}[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Seed plan latency p95 (budget 1.2s — composer share)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_seed_plan_latency_ms_bucket{service_name=\"wispr-composer\"}[5m])))",
+          "legendFormat": "composer p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Parse tier",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (tier) (rate(wispr_tier_total{service_name=\"wispr-composer\"}[5m]))",
+          "legendFormat": "{{tier}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "wisprtest",
+    "composer"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "title": "WisprTest / composer",
+  "uid": "wispr-composer",
+  "version": 1
+}

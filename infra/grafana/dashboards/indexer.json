@@ -1,0 +1,125 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "text",
+      "title": "Honesty",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Instruments from `apps/indexer/src/telemetry/metrics.ts`. Throughput budget in CLAUDE.md is **> 8 routes/min** — that is `rate(wispr_indexer_routes_total{outcome=\"indexed\"}[5m]) * 60`."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Jobs finished",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(wispr_indexer_jobs_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job duration p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_indexer_job_duration_ms_bucket{service_name=\"wispr-indexer\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Routes / min (budget > 8 indexed)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(wispr_indexer_routes_total{service_name=\"wispr-indexer\"}[5m]) * 60)",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Route duration p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_indexer_route_duration_ms_bucket{service_name=\"wispr-indexer\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "What a crawl learned",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(wispr_indexer_elements_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "elements"
+        },
+        {
+          "expr": "sum(rate(wispr_indexer_edges_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "edges"
+        },
+        {
+          "expr": "sum by (channel) (rate(wispr_indexer_entity_schemas_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "schema {{channel}}"
+        },
+        {
+          "expr": "sum(rate(wispr_indexer_field_specs_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "field specs"
+        },
+        {
+          "expr": "sum by (kind) (rate(wispr_indexer_materializers_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "materializer {{kind}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Drift reconcile",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(wispr_indexer_drift_reconciles_total{service_name=\"wispr-indexer\"}[5m]))",
+          "legendFormat": "{{outcome}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wispr_indexer_drift_reconcile_duration_ms_bucket{service_name=\"wispr-indexer\"}[5m])))",
+          "legendFormat": "duration p95"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(wispr_indexer_drift_alias_migration_rate_bucket{service_name=\"wispr-indexer\"}[5m])))",
+          "legendFormat": "alias survival p50"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["wisprtest", "indexer"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "WisprTest / indexer",
+  "uid": "wispr-indexer",
+  "version": 1
+}

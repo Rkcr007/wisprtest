@@ -254,7 +254,14 @@ describe('updated_at is maintained by the database', () => {
     'users',
   ];
 
-  const APPEND_ONLY_TABLES = ['audit_log', 'elements', 'nav_edges', 'screens', 'session_steps'];
+  const APPEND_ONLY_TABLES = [
+    'audit_log',
+    'elements',
+    'false_execution_reports',
+    'nav_edges',
+    'screens',
+    'session_steps',
+  ];
 
   it('attaches the trigger to every table expected to mutate', async () => {
     const { rows } = await client.query<{ table: string }>(
@@ -313,7 +320,7 @@ describe('updated_at is maintained by the database', () => {
 });
 
 describe('every table in ARCHITECTURE § 4 exists', () => {
-  it('has all sixteen, and nothing silently missing', async () => {
+  it('has all seventeen, and nothing silently missing', async () => {
     const { rows } = await client.query<{ table: string }>(
       `SELECT table_name AS table FROM information_schema.tables
         WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
@@ -329,6 +336,7 @@ describe('every table in ARCHITECTURE § 4 exists', () => {
       'drift_reports',
       'elements',
       'entity_schemas',
+      'false_execution_reports',
       'field_specs',
       'materializers',
       'memory_versions',

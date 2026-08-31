@@ -1,23 +1,29 @@
 import type { FastifyInstance } from 'fastify';
 import {
   EvidenceUploadRequest,
+  FalseExecutionReportRequest,
+  FalseExecutionWithdrawRequest,
   SessionCloseRequest,
   SessionOpenRequest,
   SessionStepBatch,
+  type FalseExecutionReport,
   type SessionTimeline,
   type SignedEvidence,
 } from 'protocol';
 import { z } from 'zod';
 
 import type { TenantDatabase } from '../db/pool.js';
-import { listLedgerForSession } from '../db/seed-repository.js';
+import { listLedgerForSession, recordAudit } from '../db/seed-repository.js';
 import {
   closeSession,
+  fileFalseExecutionReport,
   findSession,
   insertSteps,
+  listFalseExecutionReports,
   listSessions,
   listSteps,
   openSession,
+  withdrawFalseExecutionReport,
 } from '../db/session-repository.js';
 import { GatewayError } from '../errors.js';
 import { parsePage } from '../http/page.js';
@@ -265,7 +271,13 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
 
       // The tier distribution over time is the health metric for the compounding loop
       // (docs/ARCHITECTURE.md § 6), and ingest is where the gateway learns what actually ran.
+      //
+      // `sessionStepsTotal` is counted for *every* step, deliberately unlike `tierTotal`, which
+      // is skipped when the tier is null. It is the denominator of the false execution rate, and
+      // a denominator that dropped the steps which never resolved would flatter the ratio: those
+      // are the hardest cases, not the irrelevant ones.
       for (const step of parsed.data.steps) {
+        metrics.sessionStepsTotal.add(1, { outcome: step.outcome });
         if (step.tier !== null) {
           metrics.tierTotal.add(1, { tier: step.tier, outcome: step.outcome });
         }
@@ -373,6 +385,177 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
         // A timeline is a tenant's evidence; a shared cache must never hold it.
         .header('cache-control', 'private, no-store')
         .send(timeline);
+    },
+  );
+
+  /**
+   * `POST /v1/sessions/:id/false-executions` — a tester saying an action was wrong.
+   *
+   * The producer for `wispr_false_execution_total`, and so the numerator of the release gate
+   * CLAUDE.md sets at < 0.1%. Until this route existed the budget was asserted by the Phase 10
+   * speculation test rather than measured, because a false execution is not something the runtime
+   * can detect: the resolver was confident and the dispatch succeeded. Only the person watching
+   * the screen knows.
+   *
+   * `session:write` rather than a new permission — the same capability that writes the steps this
+   * judges, already carried by a tester's extension token and by their console session.
+   *
+   * Note what is *not* checked: whether the session is still open. Step ingest refuses a closed
+   * session because a timeline is evidence and evidence does not grow afterwards. A report is not
+   * part of the timeline; it is a judgement about it, and the moment a tester is most likely to
+   * notice a wrong click is reviewing the session later. See `fileFalseExecutionReport`.
+   */
+  app.post<{ Params: SessionParams }>(
+    '/v1/sessions/:id/false-executions',
+    { config: { permission: 'session:write' } },
+    async (request, reply) => {
+      const { tenantId, userId } = principalOf(request);
+      const sessionId = request.params.id;
+
+      const parsed = FalseExecutionReportRequest.safeParse(request.body);
+      if (!parsed.success) {
+        throw new GatewayError('validation_failed', 'invalid false execution report', {
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join('.') || 'root',
+            message: issue.message,
+          })),
+        });
+      }
+
+      const outcome = await database.withTenant('false-execution-file', (db) =>
+        fileFalseExecutionReport(db, {
+          tenantId,
+          sessionId,
+          reportedBy: userId,
+          request: parsed.data,
+        }),
+      );
+
+      if (outcome.kind === 'no_such_session') {
+        throw invalid('unknown session', 'id', 'unknown session for this tenant');
+      }
+      if (outcome.kind === 'no_such_step') {
+        throw invalid(
+          'no step at that ordinal',
+          'stepOrdinal',
+          `session ${sessionId} has no step at ordinal ${String(parsed.data.stepOrdinal)}`,
+        );
+      }
+      if (outcome.kind === 'already_open') {
+        // Not an error. A second report on the same step is the tester saying the same thing
+        // twice, and answering 200 with the report that stands keeps the counter honest — one
+        // wrong click is one false execution however many times it is reported.
+        return await reply.code(200).send(outcome.report);
+      }
+
+      // Counted only on a genuinely new report, for the same reason.
+      metrics.falseExecutionTotal.add(1, { reason: outcome.report.reason });
+
+      return await reply.code(201).send(outcome.report);
+    },
+  );
+
+  /**
+   * `POST /v1/sessions/:id/false-executions/:ordinal/withdraw` — retracting one filed by mistake.
+   *
+   * Withdrawing moves a number that gates releases, which is why the reason is required and why
+   * this is written to `audit_log`: `withdrawn_by` is nulled if the account is later deleted, so
+   * the audit entry is the durable record of who did it (docs/ARCHITECTURE.md § 8).
+   *
+   * The withdrawal is a second counter rather than a decrement — an OTel Counter is monotonic.
+   * The gate reads `(filed − withdrawn) / steps executed`.
+   */
+  app.post<{ Params: SessionParams & { readonly ordinal: string } }>(
+    '/v1/sessions/:id/false-executions/:ordinal/withdraw',
+    { config: { permission: 'session:write' } },
+    async (request, reply) => {
+      const { tenantId, userId } = principalOf(request);
+      const sessionId = request.params.id;
+
+      const ordinal = Number(request.params.ordinal);
+      if (!Number.isInteger(ordinal) || ordinal < 0) {
+        throw invalid('invalid step ordinal', 'ordinal', 'ordinal must be a non-negative integer');
+      }
+
+      const parsed = FalseExecutionWithdrawRequest.safeParse(request.body);
+      if (!parsed.success) {
+        throw new GatewayError('validation_failed', 'invalid withdrawal', {
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join('.') || 'root',
+            message: issue.message,
+          })),
+        });
+      }
+
+      const outcome = await database.withTenant('false-execution-withdraw', async (db) => {
+        const result = await withdrawFalseExecutionReport(db, {
+          sessionId,
+          stepOrdinal: ordinal,
+          withdrawnBy: userId,
+          reason: parsed.data.reason,
+        });
+
+        if (result.kind === 'withdrawn') {
+          // Inside the same transaction as the update: an audit entry that could be lost while
+          // the withdrawal stood would defeat the point of recording it.
+          await recordAudit(db, {
+            tenantId,
+            actor: userId,
+            action: 'false_execution.withdraw',
+            target: `${sessionId}#${String(ordinal)}`,
+            // The reason is operational text about a process decision, not screen content.
+            metadata: { reason: parsed.data.reason, reportId: result.report.id },
+          });
+        }
+
+        return result;
+      });
+
+      if (outcome.kind === 'not_open') {
+        throw invalid(
+          'no open report at that ordinal',
+          'ordinal',
+          'there is no open false-execution report for that step',
+        );
+      }
+
+      metrics.falseExecutionWithdrawnTotal.add(1, { reason: outcome.report.reason });
+
+      return await reply.code(200).send(outcome.report);
+    },
+  );
+
+  /**
+   * `GET /v1/sessions/:id/false-executions` — the reports filed against one session.
+   *
+   * `memory:read`, matching the timeline read beside it: seeing what a tester reported is a read
+   * of their session, not a write to it. Withdrawn reports are included — a list that hid them
+   * would make a retraction look like it never happened.
+   */
+  app.get<{ Params: SessionParams }>(
+    '/v1/sessions/:id/false-executions',
+    { config: { permission: 'memory:read' } },
+    async (request, reply) => {
+      principalOf(request);
+      const sessionId = request.params.id;
+
+      const session = await database.withTenant('false-execution-session', (db) =>
+        findSession(db, sessionId),
+      );
+      if (session === null) {
+        throw invalid('unknown session', 'id', 'unknown session for this tenant');
+      }
+
+      const reports: readonly FalseExecutionReport[] = await database.withTenant(
+        'false-execution-list',
+        (db) => listFalseExecutionReports(db, sessionId),
+      );
+
+      return await reply
+        .code(200)
+        // A report may carry a redacted note about a tenant's screen. Same rule as the timeline.
+        .header('cache-control', 'private, no-store')
+        .send(reports);
     },
   );
 }

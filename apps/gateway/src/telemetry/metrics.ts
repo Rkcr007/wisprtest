@@ -18,7 +18,9 @@ import {
  * | `wispr_seed_plan_latency_ms`        | `POST /v1/seed/plan` returns a plan     | Phase 15   |
  * | `wispr_seed_materialize_total`      | the materializer chain settles          | Phases 15–16 |
  * | `wispr_tier_total`                  | alias write-back and step ingest report a tier | Phases 11–12 |
- * | `wispr_false_execution_total`       | a step arrives with a false execution   | Phase 12   |
+ * | `wispr_session_steps_total`         | a batch of steps is ingested            | Phase 19   |
+ * | `wispr_false_execution_total`       | a tester files a false-execution report | Phase 19   |
+ * | `wispr_false_execution_withdrawn_total` | a tester withdraws one              | Phase 19   |
  * | `wispr_drift_open_total`            | periodic fleet-state refresh             | Phase 19   |
  * | `wispr_memory_staleness_hours`      | periodic fleet-state refresh             | Phase 19   |
  *
@@ -26,8 +28,26 @@ import {
  * synchronous. The asynchronous database refresh lives in `operational-metrics.ts`.
  *
  * `wispr_false_execution_total` is the one that matters most. CLAUDE.md makes false execution
- * rate a release gate and ARCHITECTURE § 7 says it "alerts at any nonzero rate", so it is
- * registered here from the beginning rather than added once there is something to count.
+ * rate a release gate and ARCHITECTURE § 7 says it "alerts at any nonzero rate", so it was
+ * registered from the beginning rather than added once there was something to count. It finally
+ * has a producer: `POST /v1/sessions/:id/false-executions`.
+ *
+ * ## Reading the release gate takes three series, not one
+ *
+ * The budget is a *rate*, and a counter cannot express one on its own:
+ *
+ *     (false_execution_total − false_execution_withdrawn_total) / session_steps_total{outcome="executed"}
+ *
+ * `wispr_session_steps_total` is the denominator, and it exists because `wispr_tier_total` is
+ * not one: that series is only emitted for steps whose `tier` is non-null, so it silently
+ * omits every step that never resolved. A denominator that drops its hardest cases flatters
+ * the number it divides.
+ *
+ * `wispr_false_execution_withdrawn_total` is a second counter rather than a decrement of the
+ * first, because an OpenTelemetry `Counter` is monotonic and cannot go down. Converting the
+ * first to a gauge would make one series do both jobs and lose the filing rate — which is the
+ * number that says whether testers trust the feature enough to use it at all. `packages/protocol`
+ * states this on `FalseExecutionReport`; this is the code that honours it.
  */
 
 export const METER_NAME = 'wispr.gateway';
@@ -65,8 +85,12 @@ export interface GatewayMetrics {
   readonly tierTotal: Counter;
   /** T2 escalation latency, labelled by tier and outcome. The 800 ms budget is measured here. */
   readonly resolutionLatencyMs: Histogram;
-  /** False executions. Alerts at any nonzero value; there is no acceptable rate. */
+  /** Steps ingested, by outcome. The denominator of the false execution rate. */
+  readonly sessionStepsTotal: Counter;
+  /** False executions reported, by reason. Alerts at any nonzero rate. */
   readonly falseExecutionTotal: Counter;
+  /** Reports withdrawn, by reason. Subtracted from the above; a Counter cannot decrement. */
+  readonly falseExecutionWithdrawnTotal: Counter;
   /** Requests served, by route, status and outcome. Gateway-native rather than from § 7. */
   readonly httpRequestsTotal: Counter;
   /** Request duration, so a latency regression is visible without an APM. */
@@ -147,8 +171,16 @@ export function createMetrics(
       description: 'T2 escalation latency, labelled by tier and outcome.',
       unit: 'ms',
     }),
+    sessionStepsTotal: meter.createCounter('wispr_session_steps_total', {
+      description: 'Steps ingested, labelled by outcome. Denominator of the false execution rate.',
+    }),
     falseExecutionTotal: meter.createCounter('wispr_false_execution_total', {
-      description: 'Actions executed against the wrong element. Alerts at any nonzero rate.',
+      description:
+        'False executions reported by a tester, labelled by reason. Alerts at any nonzero rate.',
+    }),
+    falseExecutionWithdrawnTotal: meter.createCounter('wispr_false_execution_withdrawn_total', {
+      description:
+        'False-execution reports withdrawn, labelled by reason. Subtract from wispr_false_execution_total.',
     }),
     httpRequestsTotal: meter.createCounter('wispr_gateway_requests_total', {
       description: 'HTTP requests served, labelled by route, method and status class.',

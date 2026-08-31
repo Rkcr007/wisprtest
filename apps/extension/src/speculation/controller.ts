@@ -129,6 +129,14 @@ export interface SpeculationControllerOptions {
   readonly idGen?: () => string;
   /** The class-C stability window, per the phase spec. */
   readonly stabilityWindowMs?: number;
+  /**
+   * How long a bare reserved phrase must stand as the whole partial before it is taken as a halt.
+   *
+   * The barge-in window (ADR 0018). ASR endpointing waits for trailing silence and is measured in
+   * high hundreds of milliseconds; this fires on the tester's own pause instead, which is the
+   * latency that matters on the one command whose entire value is arriving early.
+   */
+  readonly bargeInWindowMs?: number;
   /** Schedule a callback after `ms`, returning a cancel handle. Injected for deterministic tests. */
   readonly schedule?: (fn: () => void, ms: number) => () => void;
   /** Destination path for a navigation trigger, from the nav graph. Null falls back to the current path. */
@@ -209,6 +217,7 @@ export function createSpeculationController(
   const newId = options.idGen ?? (() => crypto.randomUUID());
   const classifyConfig = resolveClassifyConfig(options.classifyConfig);
   const stabilityWindowMs = options.stabilityWindowMs ?? 150;
+  const bargeInWindowMs = options.bargeInWindowMs ?? 300;
   const schedule = options.schedule ?? defaultSchedule;
   const sessionId = options.sessionId ?? '00000000-0000-4000-8000-000000000000';
   const reserved = options.reserved ?? createReservedMatcher();
@@ -242,6 +251,22 @@ export function createSpeculationController(
    * they were typing — because the ordinal itself carries none of it.
    */
   let asked: { readonly parse: ParsedIntent; readonly utterance: string } | null = null;
+
+  /**
+   * A committing action that speech onset flushed as superseded, kept for exactly one utterance.
+   *
+   * The microphone opens before the tester has said anything, so `reset` has already recorded and
+   * cleared a staged commit by the time a halt could possibly be recognised. Without this, "stop"
+   * could never mark anything refused — the finding that made barge-in slice 2's real job rather
+   * than a latency refinement (ADR 0018).
+   *
+   * Overwritten on every reset, so it never outlives the utterance that immediately follows the
+   * one it was staged in. A halt two minutes later is about something else.
+   */
+  let lastSuperseded: PendingCommit | null = null;
+
+  /** Cancels the armed barge-in timer, when a bare reserved phrase is standing as the partial. */
+  let cancelBargeIn: (() => void) | null = null;
 
   function rectOf(element: Element): SpeculationView['rect'] {
     const r = element.getBoundingClientRect();
@@ -421,15 +446,24 @@ export function createSpeculationController(
     // "reserved" means, and making it a property of the code's shape rather than of which branch
     // happened to match is the point (ADR 0017). It costs one `normalizePhrase` and one map
     // lookup, so putting it on the hot path ahead of everything else is free.
-    //
-    // Final transcripts only. A partial of "stop the import job" reads "stop" on its way past, and
-    // halting on that would abandon an utterance the tester never finished. Recognising on the
-    // final is still always in time: a class-C action needs a final transcript *and* a stability
-    // window *and* an explicit yes before it can execute, so nothing has committed yet.
-    if (isFinal && reserved.match(hypothesis.transcript) !== null) {
+    const spoken = reserved.match(hypothesis.transcript);
+
+    if (spoken === null) {
+      // The utterance is not a halt after all. Anything armed on an earlier partial is dropped —
+      // "stop the import job" reads "stop" on its way past, and this is the revision that says so
+      // — and the one-utterance window for refusing a superseded commit closes with it.
+      disarmBargeIn();
+      lastSuperseded = null;
+    } else if (isFinal) {
       // One intent in the lexicon today, and this is its whole handling. `ReservedIntent` widens
       // as the track's later slices ship the effects behind the other phrases.
       halt();
+      return;
+    } else {
+      // A bare reserved phrase standing as the whole partial. Not acted on yet — armed, and taken
+      // as a halt only if the tester stops there (ADR 0018). Returning here also keeps "stop" off
+      // the resolver: a reserved word is never a phrase to look up, on a partial or on a final.
+      armBargeIn();
       return;
     }
 
@@ -751,35 +785,54 @@ export function createSpeculationController(
     });
   }
 
-  /**
-   * Abandon the current utterance.
-   *
-   * `cause` decides what an unconfirmed committing action is recorded as, and the two are
-   * different facts about the tester's intent. A *superseded* action was offered and overtaken by
-   * the next thing they said — `staged`, because it was never put to them. A *halted* one was
-   * offered and refused out loud — `rejected`, because that is evidence.
-   *
-   * Neither touches the release gate, whose denominator counts only `executed` steps. Saying
-   * "stop" therefore writes a record adjacent to the gate and moves no number in it, which is the
-   * Voice Correction & Safety Track's own rule applied to its first phrase (ADR 0017).
-   */
+  /** Record an unconfirmed committing action that will not now run, with why it will not. */
+  function emitPending(pending: PendingCommit, outcome: 'staged' | 'rejected'): void {
+    emitStep(outcome, {
+      utterance: pending.utterance,
+      scopedQuery: pending.scopedQuery,
+      resolution: pending.resolution,
+      resolved: pending.resolved,
+      actionClass: pending.actionClass,
+      confidence: pending.resolved.confidence,
+    });
+  }
+
   function reset(newOnset: number): void {
     // A superseded, unconfirmed committing action is recorded as staged — it was offered, not taken.
-    const pending = current.pendingC;
-    if (pending !== null && !pending.executed) {
-      emitStep('staged', {
-        utterance: pending.utterance,
-        scopedQuery: pending.scopedQuery,
-        resolution: pending.resolution,
-        resolved: pending.resolved,
-        actionClass: pending.actionClass,
-        confidence: pending.resolved.confidence,
-      });
-    }
+    const pending =
+      current.pendingC !== null && !current.pendingC.executed ? current.pendingC : null;
+    if (pending !== null) emitPending(pending, 'staged');
+    // Kept for the next utterance only, so a halt arriving after the microphone reopened can still
+    // say this action was refused rather than merely overtaken. See {@link lastSuperseded}.
+    lastSuperseded = pending;
+
+    disarmBargeIn();
     if (current.rollback !== null) rollbackNow();
     current.cancelStability?.();
     current = fresh(newOnset);
     publish(IDLE_VIEW);
+  }
+
+  function disarmBargeIn(): void {
+    cancelBargeIn?.();
+    cancelBargeIn = null;
+  }
+
+  /**
+   * A bare reserved phrase is standing as the whole partial: start the clock on taking it as a
+   * halt, and restart it if it is still standing when the next hypothesis says the same thing.
+   *
+   * Firing early is safe by construction — a halt executes nothing — and it is recoverable: if the
+   * tester was mid-sentence, the rest of the utterance arrives against a fresh state and is parsed
+   * as the command it always was. That asymmetry is the whole reason a partial may trigger this
+   * when a partial may never trigger an action (ADR 0018).
+   */
+  function armBargeIn(): void {
+    disarmBargeIn();
+    cancelBargeIn = schedule(() => {
+      cancelBargeIn = null;
+      halt();
+    }, bargeInWindowMs);
   }
 
   /**
@@ -791,16 +844,29 @@ export function createSpeculationController(
    * this — it also runs on speech onset, which is exactly when the tester is drawing breath to
    * answer — so the open choice is dropped here and nowhere else.
    *
-   * It does *not* record the halt as a refusal, and that is a limit worth knowing rather than an
-   * omission. A spoken "stop" is a new utterance, so `onSpeechOnset` has already run by the time
-   * the word is recognised — and that flushes any staged committing action as `staged` and clears
-   * it. Nothing is left here to mark refused. Telling "overtaken" from "refused" needs the halt to
-   * arrive *inside* the utterance it interrupts, which is what barge-in buys and why that is the
-   * track's next slice rather than a nicety (ADR 0017).
+   * A committing action that was standing when the tester said stop is recorded `rejected` — an
+   * *additional* step beside whatever was already written for it, never an amendment, because
+   * `session_steps` is append-only and the timeline is evidence. "It was staged, and then it was
+   * refused" is two facts and reads as two rows.
+   *
+   * That refusal is the near-miss signal: the runtime staged something the tester did not want and
+   * was told so in time. It is the leading indicator for the false-execution rate that gates every
+   * release, and — per the track's own rule — it moves no number in that gate, whose denominator
+   * counts only `executed` steps.
    */
   function halt(): void {
     asked = null;
     options.resolver.clearPending?.();
+
+    // Live in this utterance, or flushed as superseded when the microphone reopened for the halt
+    // itself. Both are the same fact to a tester; only the plumbing differs (ADR 0018).
+    const live = current.pendingC !== null && !current.pendingC.executed ? current.pendingC : null;
+    const refused = live ?? lastSuperseded;
+    if (refused !== null) emitPending(refused, 'rejected');
+    // Dropped before `reset` sees it, so a refusal is never also recorded as superseded.
+    if (live !== null) current.pendingC = null;
+    lastSuperseded = null;
+
     reset(now());
   }
 
@@ -838,6 +904,7 @@ export function createSpeculationController(
 
     dispose(): void {
       asked = null;
+      disarmBargeIn();
       current.cancelStability?.();
       store.close();
     },

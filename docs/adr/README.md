@@ -75,12 +75,12 @@ Recording these here rather than quietly writing the ADRs around them.
   `aliases_tenant_version_phrase_key` is unique on `(tenant_id, memory_version_id, phrase)` with
   no `state_fingerprint`, and `upsertAliases` overwrites `element_id` on conflict. See the ADR's
   *Consequences* for the detail.
-- **The release-gate metric has a producer, but nothing calls it.**
-  `wispr_false_execution_total` is incremented by
-  `POST /v1/sessions/:id/false-executions`, alongside a withdrawal counter and the
-  `wispr_session_steps_total{outcome}` denominator a *rate* requires. What is still missing is
-  the product path: no console or extension UI files a report, so in practice the series stays
-  at zero and the `< 0.1%` gate is measurable rather than measured. See
+- **The release-gate metric is now produced and consumed.** `wispr_false_execution_total` is
+  incremented by `POST /v1/sessions/:id/false-executions`, alongside a withdrawal counter and the
+  `wispr_session_steps_total{outcome}` denominator a *rate* requires, and the console session
+  timeline is the surface a tester files one from. Verified against the running stack rather
+  than against mocks. What is still missing is the extension's in-session path, so today a
+  report is filed while reviewing a session rather than while running one. See
   [ADR 0005](0005-reversibility-taxonomy.md) and
   [runbooks/README.md](../runbooks/README.md#alerts-that-cannot-fire-yet).
 

@@ -204,6 +204,18 @@ Merge CI: `.github/workflows/ci.yml`. Required check name: **`ci`**. The job
 `performance gates (report-only)` may go red from runner weather; it does not block
 merge. Prefer `gh run rerun --failed` over changing the budget.
 
+`make ci` runs `eslint .` at Node's default heap, which on most machines is **not enough**
+for typescript-eslint's type-aware rules over this repo: it aborts with exit 134 and a
+mark-compact OOM rather than a lint finding. That is the tree, not your change —
+unmodified `main` does it too. Run `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`
+locally; the CI `lint` job sets the same thing. A rerun will not clear it, because the
+failure is deterministic.
+
+The two `analyze` (CodeQL) checks fail on every PR branch with *"Code scanning is not
+enabled for this repository"*. That is a repository **setting**, not a finding, and those
+checks do not gate merge ([ADR 0015](adr/0015-codeql-and-the-ruleset-split.md) scopes code
+scanning to `main`).
+
 ---
 
 ## Known divergences (code vs older prose)

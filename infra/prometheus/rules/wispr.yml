@@ -1,0 +1,202 @@
+# Alert rules.
+#
+# `docs/ARCHITECTURE.md § 7` names three alerts and `docs/runbooks/README.md` has carried a table
+# of why none of them could fire. Two reasons: no collector, and — for the one that matters most —
+# no producer for `wispr_false_execution_total`. The collector now exists, and the producer shipped
+# with the false-execution report (PRs #41–#45). This file is what turns the release gate in
+# CLAUDE.md from a claim enforced by a unit test into a claim enforced by a measurement.
+#
+# ## Two rules about writing rules here
+#
+# **Every alert names what to do.** An alert whose runbook is "look at the dashboard" wakes someone
+# up to do triage a query could have done. Each `annotations.runbook` points at a real section.
+#
+# **No rule fires on an empty stack.** Every rate rule requires a minimum denominator, because a
+# single report against three steps is 33% and means nothing. A gate that pages on noise gets
+# silenced, and a silenced gate is worse than no gate.
+
+groups:
+  # ── The release gate ────────────────────────────────────────────────────────────────────────
+  - name: wispr-release-gate
+    interval: 30s
+    rules:
+      - alert: WisprFalseExecutionRateBreached
+        # CLAUDE.md § "Performance budgets": false execution rate < 0.1%, and it "gates every
+        # release". Three series, because a withdrawal has to come back out of the numerator and
+        # only executed steps belong in the denominator — a staged action that never ran cannot
+        # have been a false execution.
+        expr: |
+          (
+            sum(increase(wispr_false_execution_total[6h]))
+            - sum(increase(wispr_false_execution_withdrawn_total[6h]))
+          )
+          /
+          sum(increase(wispr_session_steps_total{outcome="executed"}[6h]))
+            > 0.001
+          and
+          sum(increase(wispr_session_steps_total{outcome="executed"}[6h])) >= 500
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: 'False execution rate is {{ $value | humanizePercentage }} over 6h (budget 0.1%)'
+          description: >-
+            The runtime acted on the wrong thing often enough to breach the release gate.
+            CLAUDE.md: "a confident wrong click costs more trust than any latency win gains."
+            Releases are blocked until this is back under budget.
+          runbook: docs/runbooks/observability.md#false-execution-rate-breached
+
+      - alert: WisprFalseExecutionReported
+        # Not the gate — the gate is a rate over hours. This is "a human said we got it wrong",
+        # which deserves a ticket the same day and never deserves a 3 a.m. page.
+        expr: sum(increase(wispr_false_execution_total[1h])) > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: '{{ $value | printf "%.0f" }} false execution(s) reported in the last hour'
+          description: >-
+            A tester reported that a step acted on the wrong thing. Each report names a reason and
+            they are fixed in different places: wrong_element is the alias corpus, wrong_action is
+            the verb, unintended_state_change is the application's own bug.
+          runbook: docs/runbooks/observability.md#false-execution-reported
+
+      - alert: WisprNearMissRateHigh
+        # The leading indicator. A `rejected` step is a committing action the tester refused out
+        # loud — the runtime staged something they did not want and was told so in time. It costs
+        # nothing when it works, which is exactly why it is worth watching: it climbs *before* the
+        # gate above does. See ADR 0018.
+        expr: |
+          sum(increase(wispr_session_steps_total{outcome="rejected"}[6h]))
+          /
+          sum(increase(wispr_session_steps_total{outcome="executed"}[6h]))
+            > 0.02
+          and
+          sum(increase(wispr_session_steps_total{outcome="executed"}[6h])) >= 500
+        for: 30m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Near-miss rate is {{ $value | humanizePercentage }} over 6h'
+          description: >-
+            Testers are refusing staged committing actions unusually often. Nothing wrong has
+            happened — every one of these was caught — but the resolver is proposing the wrong
+            target and the false-execution gate is where that ends up if it continues.
+          runbook: docs/runbooks/observability.md#near-miss-rate-high
+
+  # ── Memory health ───────────────────────────────────────────────────────────────────────────
+  - name: wispr-memory
+    interval: 30s
+    rules:
+      - alert: WisprMemoryStale
+        # ARCHITECTURE § 7: memory staleness > 48h warns. Stale memory is not merely old — a
+        # drifted screen forces every resolution on it to Class A, so the tester is confirming
+        # actions they should not have to confirm.
+        expr: max by (tenant_id, application_id) (wispr_memory_staleness_hours) > 48
+        for: 1h
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Memory for {{ $labels.application_id }} is {{ $value | printf "%.0f" }}h old'
+          description: >-
+            The newest screen in this application's active memory was indexed more than 48 hours
+            ago. Re-crawl before the drift backlog makes the runtime degrade to Class A everywhere.
+          runbook: docs/runbooks/drift-backlog.md
+
+      - alert: WisprDriftBacklogStuck
+        # The gauge is per application and counts reports awaiting a *terminal human decision*.
+        # A non-zero value is normal for minutes and a problem for days: nothing reconciles itself.
+        expr: max by (tenant_id, application_id) (wispr_drift_open_total) > 0
+        for: 24h
+        labels:
+          severity: warn
+        annotations:
+          summary: '{{ $value | printf "%.0f" }} drift report(s) open for {{ $labels.application_id }} for 24h'
+          description: >-
+            Drift reports need a human approve/reject and have had none for a day. Until they are
+            decided, the affected screens stay Class A and every action on them needs confirming.
+          runbook: docs/runbooks/drift-backlog.md
+
+  # ── The gateway ─────────────────────────────────────────────────────────────────────────────
+  - name: wispr-gateway
+    interval: 30s
+    rules:
+      - alert: WisprGatewayErrorRateHigh
+        expr: |
+          sum(rate(wispr_gateway_requests_total{status_class="5xx"}[5m]))
+          /
+          sum(rate(wispr_gateway_requests_total[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: 'Gateway 5xx rate is {{ $value | humanizePercentage }}'
+          description: 'More than 5% of gateway requests are failing.'
+          runbook: docs/runbooks/observability.md#gateway-error-rate-high
+
+      - alert: WisprGatewayLatencyHigh
+        # The budget `make load-test` enforces: p95 under 800 ms at 50 concurrent sessions.
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(wispr_gateway_request_duration_ms_bucket[5m]))
+          ) > 800
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Gateway p95 is {{ $value | printf "%.0f" }}ms (budget 800ms)'
+          description: >-
+            The control plane is slower than the load-test gate allows. This is not the hot path —
+            speech to dispatch never crosses the network — but indexing, snapshot sync and session
+            writes all run through here.
+          runbook: docs/runbooks/observability.md#gateway-latency-high
+
+  # ── The telemetry pipeline itself ───────────────────────────────────────────────────────────
+  #
+  # Without this group, every alert above fails open: a collector that is down looks exactly like
+  # a system with no problems. These are the rules that make silence loud.
+  - name: wispr-telemetry
+    interval: 30s
+    rules:
+      - alert: WisprNoTelemetryFromGateway
+        # The services push; there is no `up` series for them. Absence of the counter is the
+        # signal. `for: 15m` rather than minutes because a restart is not an outage, and because
+        # this must not fire on a stack that has simply not been used yet — the series only exists
+        # once the gateway has served one request, and after that it persists while the process does.
+        expr: absent_over_time(wispr_gateway_requests_total[15m])
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: 'No metrics from the gateway for 15 minutes'
+          description: >-
+            The gateway has stopped exporting, or the collector has stopped receiving. Every other
+            alert in this file is blind until this is resolved.
+          runbook: docs/runbooks/observability.md#no-telemetry-from-a-service
+
+      - alert: WisprCollectorDroppingData
+        expr: sum(rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Collector is failing to export {{ $value | printf "%.1f" }} points/s'
+          description: >-
+            The collector is receiving telemetry and failing to forward it. Dashboards will look
+            sparse rather than empty, which is the most misleading failure mode this stack has.
+          runbook: docs/runbooks/observability.md#collector-dropping-data
+
+      - alert: WisprCollectorRefusingData
+        # Backpressure: `memory_limiter` shedding load. Distinct from the rule above — this is the
+        # collector protecting itself, and the data is refused at the receiver rather than lost
+        # at the exporter.
+        expr: sum(rate(otelcol_receiver_refused_metric_points[5m])) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'Collector is refusing {{ $value | printf "%.1f" }} points/s'
+          description: 'The collector is shedding load under memory pressure. Raise its limit or its resources.'
+          runbook: docs/runbooks/observability.md#collector-refusing-data

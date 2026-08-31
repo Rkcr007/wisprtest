@@ -1,0 +1,19 @@
+# The datasource the committed dashboards expect.
+#
+# Every panel in infra/grafana/dashboards references a datasource named `prometheus`. Provisioning
+# it by name is what turns those three files from "JSON you import by hand" — which is what the
+# README has told you to do since Phase 19 — into panels that work the moment Grafana starts.
+apiVersion: 1
+
+datasources:
+  - name: prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # Matches `global.scrape_interval` in infra/prometheus/prometheus.yml. Grafana uses it to
+      # pick a sensible `$__rate_interval`, and a mismatch here is the usual cause of rate panels
+      # that look jagged for no reason.
+      timeInterval: 15s

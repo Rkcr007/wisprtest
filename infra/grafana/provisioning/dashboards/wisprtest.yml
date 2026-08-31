@@ -1,0 +1,18 @@
+# Load the committed dashboards from disk on start.
+#
+# `allowUiUpdates: false` on purpose: these are dashboards-as-code. A panel edited in the browser
+# and not committed is a change that survives until the next restart and then vanishes, which is a
+# worse outcome than being told the file is read-only.
+apiVersion: 1
+
+providers:
+  - name: wisprtest
+    orgId: 1
+    folder: WisprTest
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

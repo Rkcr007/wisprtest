@@ -1,0 +1,99 @@
+# OpenTelemetry Collector — the thing every service has been exporting to since Phase 12,
+# and which has not existed until now.
+#
+# The gateway, indexer and composer are all fully instrumented and all export *nothing* unless
+# `OTEL_EXPORTER_OTLP_ENDPOINT` is set (see each service's `telemetry/otel.ts` or `telemetry.py`).
+# That was the correct default while there was nothing to receive them. This file is the receiver.
+#
+# ## Portability is the point of the shape
+#
+# `docs/GCP-DEPLOYMENT.md` targets GKE Autopilot, and the whole reason this config is split the way
+# it is that **only the `exporters` block changes when it moves**. Receivers, processors and the
+# pipeline stay identical, so what is verified locally is what runs in the pilot. Swapping the
+# `prometheus` exporter for `googlemanagedprometheus` (or `prometheusremotewrite` at a hosted
+# endpoint) is the entire migration.
+#
+# ## PII
+#
+# CLAUDE.md § "PII rule" applies to telemetry as much as to memory. Both services redact before
+# they emit — element text never becomes a span attribute, and `PgInstrumentation` runs with
+# `enhancedDatabaseReporting: false` so query parameters stay off spans. This collector does not
+# re-scrub, because a scrub here would be a second implementation of a rule that has one owner.
+# What it *does* do is refuse to be a general-purpose sink: the OTLP receiver binds only inside
+# the Compose network plus the published local port, and there is no `filelog` or `hostmetrics`
+# receiver that could pick up something nobody audited.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        # The Node SDKs in this repo use OTLP/HTTP and build their own paths (`/v1/traces`,
+        # `/v1/metrics`), so this is the endpoint `OTEL_EXPORTER_OTLP_ENDPOINT` points at.
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in the pipeline on purpose: under memory pressure the collector must shed load rather
+  # than be OOM-killed, because a collector that dies takes the evidence of *why* it died with it.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+exporters:
+  # Scraped by Prometheus. The two settings below are not cosmetic — the dashboards in
+  # infra/grafana/dashboards are written against the instrument names as declared in source, and
+  # both defaults would break them.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # The instruments are already named `wispr_gateway_requests_total`, and histograms are already
+    # named `_ms` with `unit: 'ms'`. Left at the default, the exporter would append its own suffix
+    # and produce `wispr_gateway_requests_total_total` and `wispr_seed_plan_latency_ms_milliseconds`
+    # — which is exactly the trap infra/grafana/README.md warns about.
+    add_metric_suffixes: false
+    # Promote resource attributes to metric labels, so `service_name` is a label on the series
+    # rather than only on a separate `target_info` metric. Every dashboard filters on it, and it is
+    # load-bearing: `wispr_seed_plan_latency_ms` and `wispr_tier_total` are emitted by *both* the
+    # gateway and the composer, and without this label the two silently sum.
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Traces have nowhere to go locally — there is no Jaeger or Tempo in this stack, and adding one
+  # to satisfy a pipeline nothing reads would be scaffolding. They are counted and dropped, so the
+  # spans are provably arriving and the absence of a trace backend is visible rather than implied.
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      # The collector's own metrics, on the same endpoint Prometheus already scrapes. This is what
+      # makes "the collector is up but dropping data" a visible condition rather than a silence.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

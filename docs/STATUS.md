@@ -3,8 +3,9 @@
 **Read this at the start of every session**, after `CLAUDE.md`. It is the map of what is
 true in `main` today: what shipped, what is still open, and what to work next.
 
-Last updated: **2026-08-31** (the reserved voice lexicon and the command-collision rule,
-ADR 0017 — slice 1 of the Voice Correction & Safety Track; before that, the false-execution
+Last updated: **2026-08-31** (the reserved voice lexicon and command-collision rule, ADR 0017,
+plus barge-in and the refused-commit record, ADR 0018 — slices 1 and 2 of the Voice Correction &
+Safety Track; before that, the false-execution
 report end to end: contract, gateway, console, extension, plus the console OIDC audience scope
 that had been keeping *every* console call to the gateway from being accepted). If a fact here disagrees with the code, the code wins —
 fix this file in the same PR.
@@ -171,20 +172,23 @@ deterministic event, then evidence, then a gate decision.
 | Slice | State |
 |-------|-------|
 | **1. Reserved lexicon + collision arbitration** | **Done.** `apps/extension/src/speculation/reserved.ts`, wired into `controller.process()` ahead of the open-choice branch and the parser. One intent, `halt`, because `controller.cancel()` is the one effect that already exists. ADR 0017 is the collision rule. |
-| 2. Halt & barge-in | Open. Recognition is on the **final** transcript only, so "stop" today abandons the utterance at its boundary rather than interrupting one mid-flight. This is also what blocks recording a halt as a *refusal* — see below. |
+| **2. Halt & barge-in** | **Done.** A bare reserved phrase standing as the whole partial arms a 300 ms window (`bargeInWindowMs`); if nothing extends it, it is taken as a halt. Firing early is safe by construction — a halt executes nothing — which is why a partial may trigger it when a partial may never trigger an action. A halt also rolls back an in-flight speculative class-R effect and records the commit it refused. [ADR 0018](adr/0018-barge-in-halts-on-a-stable-partial.md), which amends 0017's "finals only" clause. |
 | 3. Correction capture | Open. "That was wrong" → reason + intended target, feeding both the false-execution report and the alias write-back. This is the natural producer of `expectedElementId`, which both the console and the HUD leave `null` today for want of an honest picker. |
 | 4. Replay | Open. "Run that again", gated so a class C never replays without a fresh confirmation. |
 
-Two limits worth carrying forward rather than rediscovering:
+Two things worth carrying forward rather than rediscovering:
 
-- **A halt cannot yet be recorded as a refusal.** `onSpeechOnset` flushes any staged committing
-  action as `staged` and clears it, and a spoken "stop" is a new utterance — so by the time the
-  word is recognised there is nothing left to mark `rejected`. Telling "overtaken" from "refused"
-  needs the halt to arrive inside the utterance it interrupts, which is slice 2's whole point.
+- **The near-miss signal is produced and nothing reads it.** A halt now writes a `rejected` step
+  for the commit it refused — the runtime staged something the tester did not want and was told so
+  in time, which is the leading indicator for the false-execution rate. No dashboard, alert or
+  console column reads it yet. Deliberate ordering (the producer first, as
+  `wispr_false_execution_total` also waited on its own), but until something consumes it this is a
+  record rather than an insight. A natural pairing with P0-2 below.
 - **A partial arriving while a class-C action is staged republishes the view with
   `awaitingConfirmation: false`.** The pending action itself survives and still commits on
   `confirm()`, so this is a reticle that understates its own state, not a safety hole. Pre-dates
-  this track; `controller.test.ts` now pins the surviving-commit half of it.
+  this track; `controller.test.ts` pins the surviving-commit half of it. A bare reserved phrase no
+  longer does this — it returns before the parser — but any other partial still does.
 
 ### P1 — correctness and ops debt already recorded in ADRs
 

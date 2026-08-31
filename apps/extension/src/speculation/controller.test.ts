@@ -512,10 +512,34 @@ describe('SpeculationController — the reserved lexicon', () => {
     // The gate's denominator counts `executed` steps and its numerator is filed by hand. A halt
     // writes neither, which is the track's own safety rule — the phrase never modifies the gate.
     expect(h.steps.some((s) => s.outcome === 'executed')).toBe(false);
-    // The staged commit is recorded as `staged`: by the time "never mind" is recognised, speech
-    // onset has already flushed and cleared it, so there is nothing left to mark refused. Telling
-    // "overtaken" from "refused" needs barge-in — the next slice. See ADR 0017.
-    expect(h.steps.at(-1)?.outcome).toBe('staged');
+  });
+
+  it('records a commit the tester refused out loud, across the onset that flushed it', async () => {
+    const h = await stageCommitting();
+
+    // The microphone reopens *before* the word is known, and that flushes the staged commit as
+    // superseded. The refusal has to survive that boundary or it can never be recorded at all.
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'never mind' });
+
+    // Two rows, not an amendment: `session_steps` is append-only and the timeline is evidence.
+    // "It was staged, and then it was refused" is two facts and reads as two.
+    expect(h.steps.map((s) => s.outcome)).toEqual(['staged', 'rejected']);
+  });
+
+  it('forgets a superseded commit after one utterance', async () => {
+    const h = await stageCommitting();
+
+    // An ordinary command in between. The approve was overtaken by *that*, not refused by the
+    // halt two utterances later, and saying so would put a near-miss in the record that never
+    // happened.
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'open orders' });
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 3, transcript: 'stop' });
+
+    expect(h.steps.filter((s) => s.outcome === 'rejected')).toHaveLength(0);
   });
 
   it('never halts from a partial', async () => {
@@ -571,6 +595,84 @@ describe('SpeculationController — the reserved lexicon', () => {
       actionClass: 'C',
       awaitingConfirmation: true,
     });
+  });
+
+  it('halts from a partial once the tester stops there', async () => {
+    const h = await stageCommitting();
+
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 2, transcript: 'stop' });
+
+    // Armed, not fired: nothing has happened yet, because the tester might be mid-sentence.
+    expect(h.steps.some((s) => s.outcome === 'rejected')).toBe(false);
+
+    // The pause. This is the barge-in window elapsing, and it is the whole latency win — ASR
+    // endpointing would still be waiting for trailing silence (ADR 0018).
+    h.runStability();
+
+    expect(h.requests).toHaveLength(0);
+    expect(h.steps.some((s) => s.outcome === 'rejected')).toBe(true);
+  });
+
+  it('disarms when the partial turns out to be the start of a command', async () => {
+    const resolvedPhrases: string[] = [];
+    const resolver: ResolverLike = {
+      resolve: (phrase) => {
+        resolvedPhrases.push(phrase);
+        return Promise.resolve(NOT_FOUND);
+      },
+    };
+    const h = buildWith(resolver, new Map([[APPROVE_KEY, button]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 1, transcript: 'stop' });
+    await h.controller.onPartial({ revision: 2, transcript: 'stop the import job' });
+
+    // The window elapses, but the revision that extended the phrase already dropped the timer.
+    h.runStability();
+    await flush();
+
+    expect(h.controller.view.value.phase).not.toBe('idle');
+    // And it went to the resolver as the command it always was.
+    expect(resolvedPhrases.length).toBeGreaterThan(0);
+  });
+
+  it('never sends a bare reserved phrase to the resolver, partial or final', async () => {
+    const resolvedPhrases: string[] = [];
+    const resolver: ResolverLike = {
+      resolve: (phrase) => {
+        resolvedPhrases.push(phrase);
+        return Promise.resolve(NOT_FOUND);
+      },
+    };
+    const h = buildWith(resolver, new Map([[APPROVE_KEY, button]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onPartial({ revision: 1, transcript: 'stop' });
+    await h.controller.onFinal({ revision: 2, transcript: 'stop' });
+
+    expect(resolvedPhrases).toEqual([]);
+  });
+
+  it('rolls back an in-flight speculative effect', async () => {
+    const box = document.createElement('input');
+    document.body.append(box);
+    const elsewhere = document.createElement('input');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    const h = build({ box: resolved(SEARCH_KEY, ID(3)) }, new Map([[SEARCH_KEY, box]]));
+
+    h.controller.onSpeechOnset();
+    // Class R, so it runs ahead of the finished sentence — the effect the tester sees mid-word.
+    await h.controller.onPartial({ revision: 1, transcript: 'focus the box' });
+    expect(document.activeElement).toBe(box);
+
+    await h.controller.onFinal({ revision: 2, transcript: 'stop' });
+
+    // Halting undoes it. This is the capture-then-maybe-undo record that lets class R speculate
+    // at all, spent on the tester's own word rather than on a diverging hypothesis.
+    expect(document.activeElement).toBe(elsewhere);
   });
 
   it('drops an open disambiguation when the tester says stop', async () => {

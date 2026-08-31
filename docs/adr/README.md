@@ -60,6 +60,7 @@ New decisions from here on get an ADR **before** the code, not after.
 | [0015](0015-codeql-and-the-ruleset-split.md) | Code scanning is scoped to `main`; everything else applies to every branch | Accepted | 2026-08-02 |
 | [0016](0016-writes-go-through-the-indexer.md) | Every write to the app under test goes through the indexer, not the gateway | Accepted | 2026-08-05 |
 | [0017](0017-reserved-voice-lexicon-and-command-collisions.md) | A reserved voice phrase is a bare utterance; a verb reaches the application | Accepted | 2026-08-31 |
+| [0018](0018-barge-in-halts-on-a-stable-partial.md) | A halt fires on a stable partial, and records the commit it refused | Accepted | 2026-08-31 |
 
 ---
 
@@ -107,6 +108,11 @@ Recording these here rather than quietly writing the ADRs around them.
   request and are not stored per application, and `drift_reports` requires a screen and structural
   hashes that an API failure does not have. Recovery is a human starting a crawl. See
   [ADR 0016](0016-writes-go-through-the-indexer.md).
+- **[ADR 0017](0017-reserved-voice-lexicon-and-command-collisions.md) is amended on one clause.**
+  Its collision rule stands, but "matched on the final transcript only, never on a partial" — and
+  the consequence it drew, that a halt cannot record what it refused — were both replaced a day
+  later by [ADR 0018](0018-barge-in-halts-on-a-stable-partial.md). Records are immutable here, so
+  0017 still reads as it was written; 0018 is what the code does.
 - **`docs/BUILD-PLAN.md` describes a scheduling model that has been replaced.** Its *How to run a
   session* section is the Phases 0–14 protocol; `CLAUDE.md § "Parallel tracks"` is current. The
   file has been annotated rather than rewritten — the phase prompts below that section are

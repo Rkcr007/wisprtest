@@ -59,6 +59,7 @@ New decisions from here on get an ADR **before** the code, not after.
 | [0014](0014-benchmarks-report-only-in-ci.md) | The performance budgets are measured in CI and enforced by `make bench` | Accepted | 2026-08-02 |
 | [0015](0015-codeql-and-the-ruleset-split.md) | Code scanning is scoped to `main`; everything else applies to every branch | Accepted | 2026-08-02 |
 | [0016](0016-writes-go-through-the-indexer.md) | Every write to the app under test goes through the indexer, not the gateway | Accepted | 2026-08-05 |
+| [0017](0017-reserved-voice-lexicon-and-command-collisions.md) | A reserved voice phrase is a bare utterance; a verb reaches the application | Accepted | 2026-08-31 |
 
 ---
 

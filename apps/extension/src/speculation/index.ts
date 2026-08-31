@@ -1,6 +1,9 @@
 /**
  * Speculation — the reversibility taxonomy at runtime (docs/BUILD-PLAN.md Phase 10).
  *
+ * A reserved lexicon sits ahead of all of it: a bare "stop" addresses WisprTest rather than the
+ * application, and is the one reading that never reaches the resolver (ADR 0017).
+ *
  * Three pieces cooperate: the {@link IntentParser} turns an utterance into a verb, a target phrase
  * and constraints over the learned vocabulary; the classifier decides the reversibility class; and
  * the {@link SpeculationController} drives the partial → speculate/stage → commit loop from
@@ -31,6 +34,8 @@ export {
   resolveClassifyConfig,
 } from './classify.js';
 export type { ClassifyConfig, BaseClass } from './classify.js';
+export { createReservedMatcher, DEFAULT_RESERVED_LEXICON } from './reserved.js';
+export type { ReservedMatcher, ReservedIntent, ReservedMatcherOptions } from './reserved.js';
 export { captureRollback } from './rollback.js';
 export type { RollbackRecord, RollbackContext } from './rollback.js';
 export { createBinderLocator } from './locate.js';

@@ -3,9 +3,10 @@
 **Read this at the start of every session**, after `CLAUDE.md`. It is the map of what is
 true in `main` today: what shipped, what is still open, and what to work next.
 
-Last updated: **2026-08-31** (the false-execution report, end to end: contract, gateway,
-console, extension — plus the console OIDC audience scope that had been keeping *every* console
-call to the gateway from being accepted). If a fact here disagrees with the code, the code wins —
+Last updated: **2026-08-31** (the reserved voice lexicon and the command-collision rule,
+ADR 0017 — slice 1 of the Voice Correction & Safety Track; before that, the false-execution
+report end to end: contract, gateway, console, extension, plus the console OIDC audience scope
+that had been keeping *every* console call to the gateway from being accepted). If a fact here disagrees with the code, the code wins —
 fix this file in the same PR.
 
 The phase prompts in [`BUILD-PLAN.md`](BUILD-PLAN.md) still define *what* a phase must
@@ -147,9 +148,10 @@ further contract change is serialized through the lead and lands alone
    the buffer flushes every 5 s, so filing first would have dropped most reports silently into
    the gate. `apps/extension/src/background/attach.test.ts` asserts the order.
 
-   Only a spoken trigger is left — "that was wrong" as an utterance — which needs parser lexicon
-   and a decision about collisions with real commands. See
-   [ADR 0005](adr/0005-reversibility-taxonomy.md).
+   Only a spoken trigger is left — "that was wrong" as an utterance. The collision decision it
+   was waiting on is now made ([ADR 0017](adr/0017-reserved-voice-lexicon-and-command-collisions.md)):
+   a reserved phrase is recognised only as a bare, whole utterance, and prefixing any verb reaches
+   the application. See the Voice Correction & Safety Track below.
 
 2. **Observability stack.** A collector in Compose (and documented for kind) so
    gateway/indexer/composer actually export. Then dashboard panels for
@@ -158,6 +160,31 @@ further contract change is serialized through the lead and lands alone
 3. **Release checklist.** A written path that runs `make bench` on known hardware,
    `make load-test`, `make security-audit`, and records the results. `make ci` locally
    is lint + typecheck only; GitHub Actions is the merge gate.
+
+#### Voice Correction & Safety Track
+
+Deterministic trigger detection → command collision handling → execution interruption →
+correction context → evidence → release-gate integration. The design rule the whole track is
+held to: **a spoken phrase never modifies the release gate blindly** — trigger, then a
+deterministic event, then evidence, then a gate decision.
+
+| Slice | State |
+|-------|-------|
+| **1. Reserved lexicon + collision arbitration** | **Done.** `apps/extension/src/speculation/reserved.ts`, wired into `controller.process()` ahead of the open-choice branch and the parser. One intent, `halt`, because `controller.cancel()` is the one effect that already exists. ADR 0017 is the collision rule. |
+| 2. Halt & barge-in | Open. Recognition is on the **final** transcript only, so "stop" today abandons the utterance at its boundary rather than interrupting one mid-flight. This is also what blocks recording a halt as a *refusal* — see below. |
+| 3. Correction capture | Open. "That was wrong" → reason + intended target, feeding both the false-execution report and the alias write-back. This is the natural producer of `expectedElementId`, which both the console and the HUD leave `null` today for want of an honest picker. |
+| 4. Replay | Open. "Run that again", gated so a class C never replays without a fresh confirmation. |
+
+Two limits worth carrying forward rather than rediscovering:
+
+- **A halt cannot yet be recorded as a refusal.** `onSpeechOnset` flushes any staged committing
+  action as `staged` and clears it, and a spoken "stop" is a new utterance — so by the time the
+  word is recognised there is nothing left to mark `rejected`. Telling "overtaken" from "refused"
+  needs the halt to arrive inside the utterance it interrupts, which is slice 2's whole point.
+- **A partial arriving while a class-C action is staged republishes the view with
+  `awaitingConfirmation: false`.** The pending action itself survives and still commits on
+  `confirm()`, so this is a reticle that understates its own state, not a safety hole. Pre-dates
+  this track; `controller.test.ts` now pins the surviving-commit half of it.
 
 ### P1 — correctness and ops debt already recorded in ADRs
 

@@ -472,3 +472,139 @@ describe('answering a disambiguation keeps the intent that asked', () => {
     expect(resolver.chosen).toEqual([]);
   });
 });
+
+describe('SpeculationController — the reserved lexicon', () => {
+  let button: HTMLButtonElement;
+  beforeEach(() => {
+    button = document.createElement('button');
+    button.textContent = 'Approve';
+    document.body.append(button);
+  });
+
+  /** Stage "approve the order" as a class-C action awaiting the tester's yes. */
+  async function stageCommitting() {
+    const h = build({ order: resolved(APPROVE_KEY, ID(1)) }, new Map([[APPROVE_KEY, button]]));
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'approve the order' });
+    expect(h.controller.view.value).toMatchObject({ phase: 'staged', awaitingConfirmation: true });
+    return h;
+  }
+
+  it('halts a staged committing action on a bare "stop"', async () => {
+    const h = await stageCommitting();
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'stop' });
+
+    // Nothing dispatched, and the reticle is gone — which is the tester's feedback that they
+    // were heard. "Stop" is the first phrase in the product that reaches `cancel()`.
+    expect(h.requests).toHaveLength(0);
+    expect(h.fake.order).toHaveLength(0);
+    expect(h.controller.view.value.phase).toBe('idle');
+  });
+
+  it('moves no number in the release gate', async () => {
+    const h = await stageCommitting();
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'never mind' });
+
+    // The gate's denominator counts `executed` steps and its numerator is filed by hand. A halt
+    // writes neither, which is the track's own safety rule — the phrase never modifies the gate.
+    expect(h.steps.some((s) => s.outcome === 'executed')).toBe(false);
+    // The staged commit is recorded as `staged`: by the time "never mind" is recognised, speech
+    // onset has already flushed and cleared it, so there is nothing left to mark refused. Telling
+    // "overtaken" from "refused" needs barge-in — the next slice. See ADR 0017.
+    expect(h.steps.at(-1)?.outcome).toBe('staged');
+  });
+
+  it('never halts from a partial', async () => {
+    const h = await stageCommitting();
+
+    // "stop the import job" reads "stop" on its way past. Halting there would abandon an
+    // utterance the tester had not finished saying.
+    await h.controller.onPartial({ revision: 2, transcript: 'stop' });
+
+    // The staged commit survived: confirming it still executes. That is what proves no halt
+    // happened, and it holds regardless of what the partial did to the reticle.
+    h.controller.confirm();
+    h.runStability();
+    await flush();
+
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]?.confirmed).toBe(true);
+  });
+
+  it('leaves an utterance that merely contains a reserved word to the application', async () => {
+    const resolvedPhrases: string[] = [];
+    const resolver: ResolverLike = {
+      resolve: (phrase) => {
+        resolvedPhrases.push(phrase);
+        return Promise.resolve(NOT_FOUND);
+      },
+    };
+    const h = buildWith(resolver, new Map([[APPROVE_KEY, button]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'stop the import job' });
+
+    // It reached the resolver, which is the whole point: this is a command about the app.
+    expect(resolvedPhrases.length).toBeGreaterThan(0);
+  });
+
+  it('gives the application its own control back through a verb', async () => {
+    const stopButton = document.createElement('button');
+    stopButton.textContent = 'Stop';
+    document.body.append(stopButton);
+    const h = build(
+      { stop: resolved('jobs.action.stop', ID(9)) },
+      new Map([['jobs.action.stop', stopButton]]),
+    );
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'click stop' });
+
+    // Staged as class C awaiting a yes — an ordinary gated click, not a halt. This is ADR 0017's
+    // escape hatch, and without it reserving "stop" would take the control away entirely.
+    expect(h.controller.view.value).toMatchObject({
+      phase: 'staged',
+      actionClass: 'C',
+      awaitingConfirmation: true,
+    });
+  });
+
+  it('drops an open disambiguation when the tester says stop', async () => {
+    const state = { chosen: [] as number[], cleared: 0 };
+    const resolver: ResolverLike = {
+      resolve: () =>
+        Promise.resolve({ outcome: 'ambiguous', tier: 'T2', latencyMs: 9, candidates: [] }),
+      pending: () => ({
+        phrase: 'the box',
+        stateFingerprint: 'a'.repeat(64),
+        tier: 'T2',
+        choices: [],
+      }),
+      choose: (ordinal) => {
+        state.chosen.push(ordinal);
+        return null;
+      },
+      clearPending: () => {
+        state.cleared += 1;
+      },
+    };
+    const field = document.createElement('input');
+    document.body.append(field);
+    const h = buildWith(resolver, new Map([[SEARCH_KEY, field]]));
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 1, transcript: 'focus the box for the customer' });
+
+    h.controller.onSpeechOnset();
+    await h.controller.onFinal({ revision: 2, transcript: 'stop' });
+
+    // The reserved check runs ahead of the open-choice branch, so a halt abandons the question
+    // rather than being read as a failed answer to it.
+    expect(state.cleared).toBe(1);
+    expect(state.chosen).toEqual([]);
+  });
+});

@@ -366,6 +366,25 @@ class ExtensionTokenScope(StrEnum):
     DRIFT_REPORT = "drift:report"
 
 
+class FalseExecutionReason(StrEnum):
+    """
+    What the tester says went wrong with a dispatched action.
+    """
+
+    WRONG_ELEMENT = "wrong_element"
+    WRONG_ACTION = "wrong_action"
+    UNINTENDED_STATE_CHANGE = "unintended_state_change"
+
+
+class FalseExecutionStatus(StrEnum):
+    """
+    Lifecycle state of a false-execution report.
+    """
+
+    OPEN = "open"
+    WITHDRAWN = "withdrawn"
+
+
 class FieldType(StrEnum):
     """
     Inferred type of a field on a learned entity schema.
@@ -633,7 +652,7 @@ class RoutePath(RootModel[str]):
     ]
 
 
-class Kind2(StrEnum):
+class Kind1(StrEnum):
     FIELD_ADDED = "field_added"
     FIELD_REMOVED = "field_removed"
     FIELD_TYPE_CHANGED = "field_type_changed"
@@ -659,7 +678,7 @@ class SchemaChange(BaseModel):
             title="NonEmptyString",
         ),
     ]
-    kind: Kind2
+    kind: Kind1
     field: Annotated[
         str | None,
         Field(
@@ -732,7 +751,7 @@ class Outcome3(StrEnum):
     ALREADY_REVERTED = "already_reverted"
 
 
-class Kind3(StrEnum):
+class Kind2(StrEnum):
     API = "api"
     UI = "ui"
     FIXTURE = "fixture"
@@ -749,7 +768,7 @@ class SeedRevertPlan(BaseModel):
         populate_by_name=True,
     )
     revertible: bool
-    kind: Kind3
+    kind: Kind2
     detail: Annotated[
         str,
         Field(
@@ -3074,16 +3093,16 @@ class EvidenceRef(BaseModel):
     ]
 
 
-class EvidenceUploadRequest(BaseModel):
+class ScreenshotUploadRequest(BaseModel):
     """
-    A request for somewhere to upload one captured, already-redacted artifact.
+    A captured screenshot, always stored and served as image/png.
     """
 
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
-    kind: Kind
+    kind: Literal["screenshot"]
     step_ordinal: Annotated[
         int,
         Field(
@@ -3103,13 +3122,46 @@ class EvidenceUploadRequest(BaseModel):
             title="Sha256Hex",
         ),
     ]
-    content_type: Annotated[
+    content_type: Annotated[Literal["image/png"], Field(alias="contentType")]
+
+
+class DomSnapshotUploadRequest(BaseModel):
+    """
+    A redacted DOM snapshot, stored as text/plain so it is read as evidence, never executed.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Literal["dom_snapshot"]
+    step_ordinal: Annotated[
+        int,
+        Field(
+            alias="stepOrdinal",
+            description="Zero-based position.",
+            ge=0,
+            le=9007199254740991,
+            title="Ordinal",
+        ),
+    ]
+    content_hash: Annotated[
         str,
         Field(
-            alias="contentType",
-            description="A string with at least one character.",
-            min_length=1,
-            title="NonEmptyString",
+            alias="contentHash",
+            description="Lowercase hexadecimal SHA-256 digest.",
+            pattern="^[0-9a-f]{64}$",
+            title="Sha256Hex",
+        ),
+    ]
+    content_type: Annotated[Literal["text/plain"], Field(alias="contentType")]
+
+
+class EvidenceUploadRequest(RootModel[ScreenshotUploadRequest | DomSnapshotUploadRequest]):
+    root: Annotated[
+        ScreenshotUploadRequest | DomSnapshotUploadRequest,
+        Field(
+            description="A request for somewhere to upload one captured, already-redacted artifact."
         ),
     ]
 
@@ -3236,6 +3288,125 @@ class ExtensionTokenRequest(BaseModel):
         Field(
             description="Origin of the page under test, as the content script sees it.",
             title="HttpUrl",
+        ),
+    ]
+
+
+class FalseExecutionReport(BaseModel):
+    """
+    A stored report that one step acted wrongly, and whether it still stands.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[UUID, Field(description="UUID identifier.", title="Uuid")]
+    session_id: Annotated[
+        UUID, Field(alias="sessionId", description="UUID identifier.", title="Uuid")
+    ]
+    step_ordinal: Annotated[
+        int,
+        Field(
+            alias="stepOrdinal",
+            description="Zero-based position.",
+            ge=0,
+            le=9007199254740991,
+            title="Ordinal",
+        ),
+    ]
+    reason: FalseExecutionReason
+    expected_element_id: Annotated[
+        UUID | None, Field(alias="expectedElementId", description="UUID identifier.", title="Uuid")
+    ]
+    note: Annotated[
+        str | None,
+        Field(
+            description="Text that has passed PII redaction and is safe to persist or place in a prompt.",
+            title="RedactedText",
+        ),
+    ]
+    status: FalseExecutionStatus
+    reported_by: Annotated[
+        UUID, Field(alias="reportedBy", description="UUID identifier.", title="Uuid")
+    ]
+    reported_at: Annotated[
+        AwareDatetime,
+        Field(
+            alias="reportedAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+    withdrawn_by: Annotated[
+        UUID | None, Field(alias="withdrawnBy", description="UUID identifier.", title="Uuid")
+    ]
+    withdrawn_at: Annotated[
+        AwareDatetime | None,
+        Field(
+            alias="withdrawnAt",
+            description="ISO 8601 timestamp with an explicit UTC offset.",
+            title="IsoDateTime",
+        ),
+    ]
+    withdrawn_reason: Annotated[
+        str | None,
+        Field(
+            alias="withdrawnReason",
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
+        ),
+    ]
+
+
+class FalseExecutionReportRequest(BaseModel):
+    """
+    A tester reporting that one step acted on the wrong element or did the wrong thing.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    step_ordinal: Annotated[
+        int,
+        Field(
+            alias="stepOrdinal",
+            description="Zero-based position.",
+            ge=0,
+            le=9007199254740991,
+            title="Ordinal",
+        ),
+    ]
+    reason: FalseExecutionReason
+    expected_element_id: Annotated[
+        UUID | None, Field(alias="expectedElementId", description="UUID identifier.", title="Uuid")
+    ]
+    note: Annotated[
+        str | None,
+        Field(
+            description="Text that has passed PII redaction and is safe to persist or place in a prompt.",
+            title="RedactedText",
+        ),
+    ]
+
+
+class FalseExecutionWithdrawRequest(BaseModel):
+    """
+    A tester retracting a false-execution report, and why.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    reason: Annotated[
+        str,
+        Field(
+            description="A string with at least one character.",
+            min_length=1,
+            title="NonEmptyString",
         ),
     ]
 

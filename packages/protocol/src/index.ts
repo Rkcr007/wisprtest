@@ -13,7 +13,7 @@
  * | Indexing   | `CrawlJob`, `CrawlBounds`, `AuthProfile`, `SecretRef`, `IndexProgressEvent` |
  * | Auth       | `ExtensionToken`, `ExtensionTokenRequest`, `ExtensionTokenScope` |
  * | Resolution | `ScopedQuery`, `ResolutionResult`, `Tier`, `ResolutionCandidate`, `QueryConstraint` |
- * | Runtime    | `RuntimeState`, `StateFingerprint`, `ActionClass`, `ActionRequest`, `ActionResult`, `SessionStep` |
+ * | Runtime    | `RuntimeState`, `StateFingerprint`, `ActionClass`, `ActionRequest`, `ActionResult`, `SessionStep`, `FalseExecutionReport` |
  * | Data       | `EntitySchema`, `FieldSpec`, `Constraint`, `ConstraintSet`, `CompositionPlan`, `ProvenanceEntry`, `MaterializationResult`, `InverseOperation`, `SeedLedgerEntry` |
  * | Seeding    | `SeedPlanRequest`, `SeedPlanResponse`, `SeedNodePreview`, `SeedExecuteRequest`, `SeedRevertRequest`, `SeedJob`, `SeedJobResult` |
  * | Drift      | `DriftReport`, `StructuralDiff`, `DriftRaiseRequest`, `DriftDecisionRequest`, `DriftReconcileJob`, `AliasMigrationSummary` |

@@ -36,6 +36,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: eslint, prettier and ruff
+        # Node sizes its heap from the runner's memory and lands near 2 GB here, which
+        # typescript-eslint's type-aware rules exhaust on a repository this size — the job dies
+        # with exit 134 and a mark-compact OOM, not a lint finding. It is not a cliff this branch
+        # introduced: unmodified `main` OOMs identically under
+        # `--max-old-space-size=2048`, and it had simply been passing with no headroom left.
+        # ubuntu-latest has 16 GB, so 8 GB of heap is the difference between measuring the repo
+        # and measuring the runner.
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: pnpm lint
 
   typecheck:

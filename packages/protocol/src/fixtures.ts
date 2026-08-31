@@ -1779,6 +1779,151 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       },
     ],
   },
+  FalseExecutionReason: {
+    schema: p.FalseExecutionReason,
+    valid: ['wrong_element', 'wrong_action', 'unintended_state_change'],
+    invalid: [
+      {
+        why: 'the reason names which subsystem is at fault; an unknown one names nothing',
+        value: 'wrong',
+      },
+      { why: 'a reason is one of three known strings, not free text', value: 'it clicked Delete' },
+    ],
+  },
+  FalseExecutionStatus: {
+    schema: p.FalseExecutionStatus,
+    valid: ['open', 'withdrawn'],
+    invalid: [
+      // Drift has an approval lifecycle; this does not. A tester reporting what they watched
+      // happen is an observation, not a proposal for someone else to ratify.
+      {
+        why: 'a false-execution report is never approved or rejected, only withdrawn',
+        value: 'approved',
+      },
+      { why: 'not a status', value: 'deleted' },
+    ],
+  },
+  FalseExecutionReportRequest: {
+    schema: p.FalseExecutionReportRequest,
+    valid: [
+      {
+        stepOrdinal: 4,
+        reason: 'wrong_element',
+        expectedElementId: UUID_C,
+        note: 'approved the row above the one I named',
+      },
+      // The common case: the tester knows it was wrong without knowing what was right.
+      { stepOrdinal: 0, reason: 'unintended_state_change', expectedElementId: null, note: null },
+    ],
+    invalid: [
+      {
+        why: 'the fields are nullable, not optional — an absent note and a null note differ',
+        value: { stepOrdinal: 4, reason: 'wrong_action', expectedElementId: null },
+      },
+      {
+        why: 'an unknown reason',
+        value: { stepOrdinal: 4, reason: 'mistake', expectedElementId: null, note: null },
+      },
+      {
+        why: 'the note is redacted text, not an object a caller can smuggle a payload through',
+        value: {
+          stepOrdinal: 4,
+          reason: 'wrong_element',
+          expectedElementId: null,
+          note: { raw: 'x' },
+        },
+      },
+      {
+        why: 'the session comes from the path and the tenant from the token; neither is a field',
+        value: {
+          stepOrdinal: 4,
+          reason: 'wrong_element',
+          expectedElementId: null,
+          note: null,
+          tenantId: UUID_A,
+        },
+      },
+    ],
+  },
+  FalseExecutionReport: {
+    schema: p.FalseExecutionReport,
+    valid: [
+      {
+        id: UUID_A,
+        sessionId: UUID_B,
+        stepOrdinal: 4,
+        reason: 'wrong_element',
+        expectedElementId: UUID_C,
+        note: 'approved the row above the one I named',
+        status: 'open',
+        reportedBy: UUID_D,
+        reportedAt: NOW,
+        withdrawnBy: null,
+        withdrawnAt: null,
+        withdrawnReason: null,
+      },
+      // Withdrawn, and kept. The row is not deleted, so "filed then retracted" stays legible —
+      // the same reason a rejected drift report survives its rejection.
+      {
+        id: UUID_A,
+        sessionId: UUID_B,
+        stepOrdinal: 4,
+        reason: 'wrong_action',
+        expectedElementId: null,
+        note: null,
+        status: 'withdrawn',
+        reportedBy: UUID_D,
+        reportedAt: NOW,
+        withdrawnBy: UUID_C,
+        withdrawnAt: NOW,
+        withdrawnReason: 'filed against the wrong step',
+      },
+    ],
+    invalid: [
+      {
+        why: 'a report with no author cannot be withdrawn by the person who filed it',
+        value: {
+          id: UUID_A,
+          sessionId: UUID_B,
+          stepOrdinal: 4,
+          reason: 'wrong_element',
+          expectedElementId: null,
+          note: null,
+          status: 'open',
+          reportedAt: NOW,
+          withdrawnBy: null,
+          withdrawnAt: null,
+          withdrawnReason: null,
+        },
+      },
+      {
+        why: 'ordinals are non-negative; there is no step before the first',
+        value: {
+          id: UUID_A,
+          sessionId: UUID_B,
+          stepOrdinal: -1,
+          reason: 'wrong_element',
+          expectedElementId: null,
+          note: null,
+          status: 'open',
+          reportedBy: UUID_D,
+          reportedAt: NOW,
+          withdrawnBy: null,
+          withdrawnAt: null,
+          withdrawnReason: null,
+        },
+      },
+    ],
+  },
+  FalseExecutionWithdrawRequest: {
+    schema: p.FalseExecutionWithdrawRequest,
+    valid: [{ reason: 'filed against the wrong step' }],
+    invalid: [
+      // Withdrawing moves a number that gates releases. It explains itself or it does not happen.
+      { why: 'withdrawing without a reason leaves the gate unexplained', value: {} },
+      { why: 'an empty reason is not a reason', value: { reason: '' } },
+    ],
+  },
   SignedEvidence: {
     schema: p.SignedEvidence,
     valid: [
@@ -1835,7 +1980,7 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
     schema: p.EvidenceUploadRequest,
     valid: [
       { kind: 'screenshot', stepOrdinal: 4, contentHash: HASH_B, contentType: 'image/png' },
-      { kind: 'dom_snapshot', stepOrdinal: 0, contentHash: HASH_A, contentType: 'text/html' },
+      { kind: 'dom_snapshot', stepOrdinal: 0, contentHash: HASH_A, contentType: 'text/plain' },
     ],
     invalid: [
       {
@@ -1851,6 +1996,36 @@ export const FIXTURES: Readonly<Record<string, SchemaFixture>> = {
       {
         why: 'a hash that is not a SHA-256 cannot key an object or verify one',
         value: { kind: 'screenshot', stepOrdinal: 4, contentHash: 'abc', contentType: 'image/png' },
+      },
+      // The two that are the security boundary. Evidence is served straight from object storage,
+      // so an admitted `text/html` is a stored page on the evidence origin, reachable from a bug
+      // report — whether it is smuggled under a screenshot key or declared honestly.
+      {
+        why: 'a screenshot key holding HTML would be served as a live page from the evidence origin',
+        value: {
+          kind: 'screenshot',
+          stepOrdinal: 4,
+          contentHash: HASH_B,
+          contentType: 'text/html',
+        },
+      },
+      {
+        why: 'a DOM snapshot is evidence to be read, never active content — text/html is refused',
+        value: {
+          kind: 'dom_snapshot',
+          stepOrdinal: 0,
+          contentHash: HASH_A,
+          contentType: 'text/html',
+        },
+      },
+      {
+        why: 'the content type is pinned to the kind; a snapshot cannot claim to be a PNG',
+        value: {
+          kind: 'dom_snapshot',
+          stepOrdinal: 0,
+          contentHash: HASH_A,
+          contentType: 'image/png',
+        },
       },
     ],
   },

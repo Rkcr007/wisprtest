@@ -679,6 +679,11 @@ export function createAttachController(options: AttachControllerOptions): Attach
 
       // The DOM snapshot: already redacted by the content script, which is the only side that ever
       // sees the raw page.
+      //
+      // Uploaded as `text/plain`, not `text/html`, and the protocol admits nothing else for this
+      // kind. It is markup, but it is markup kept as evidence to be read and diffed — object
+      // storage serves evidence directly, so declaring it HTML would make every captured page a
+      // live document on the evidence origin, reachable from any bug report that links it.
       const snapshot = new TextEncoder().encode(input.snapshotHtml);
       if (snapshot.byteLength > 0) {
         const ref = await evidence.upload(
@@ -687,7 +692,7 @@ export function createAttachController(options: AttachControllerOptions): Attach
             kind: 'dom_snapshot',
             stepOrdinal: input.stepOrdinal,
             bytes: snapshot,
-            contentType: 'text/html',
+            contentType: 'text/plain',
             contentHash: await contentHash(snapshot),
             capturedAt,
           },

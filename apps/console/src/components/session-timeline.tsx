@@ -1,7 +1,13 @@
-import type { SessionStep, SessionTimeline as Timeline, SignedEvidence } from 'protocol';
+import type {
+  FalseExecutionReport,
+  SessionStep,
+  SessionTimeline as Timeline,
+  SignedEvidence,
+} from 'protocol';
 
 import { formatLatencyMs, formatUtc } from '../format';
 import { signedEvidenceFor } from '../sessions/evidence';
+import { FalseExecutionCell } from './false-execution-cell';
 
 /**
  * One session: identity, the ordered step timeline, and signed evidence links.
@@ -9,8 +15,19 @@ import { signedEvidenceFor } from '../sessions/evidence';
  * A Server Component. The bytes never sit in this process — each evidence cell is a link the
  * gateway signed, or an honest "not signed" when a step names a key the timeline did not
  * resolve. A missing URL is not guessed.
+ *
+ * `reports` is the one interactive part: the *False execution* column is a client island per
+ * row, seeded from this server render, through which a tester says a step acted on the wrong
+ * thing. That is the producer for the release-gate metric — see `./false-execution-cell`.
+ * It defaults to empty so a failure to load the annotations cannot blank the evidence.
  */
-export function SessionTimelineView({ timeline }: { readonly timeline: Timeline }) {
+export function SessionTimelineView({
+  timeline,
+  reports = [],
+}: {
+  readonly timeline: Timeline;
+  readonly reports?: readonly FalseExecutionReport[];
+}) {
   const { session, steps, evidence } = timeline;
   const open = session.endedAt === null;
 
@@ -66,17 +83,26 @@ export function SessionTimelineView({ timeline }: { readonly timeline: Timeline 
                   Latency
                 </th>
                 <th scope="col">Evidence</th>
+                <th scope="col">False execution</th>
               </tr>
             </thead>
             <tbody>
               {steps.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="hint">
+                  <td colSpan={8} className="hint">
                     No steps recorded yet.
                   </td>
                 </tr>
               ) : (
-                steps.map((step) => <StepRow key={step.id} step={step} evidence={evidence} />)
+                steps.map((step) => (
+                  <StepRow
+                    key={step.id}
+                    step={step}
+                    evidence={evidence}
+                    sessionId={session.id}
+                    reports={reports}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -89,9 +115,13 @@ export function SessionTimelineView({ timeline }: { readonly timeline: Timeline 
 function StepRow({
   step,
   evidence,
+  sessionId,
+  reports,
 }: {
   readonly step: SessionStep;
   readonly evidence: readonly SignedEvidence[];
+  readonly sessionId: string;
+  readonly reports: readonly FalseExecutionReport[];
 }) {
   return (
     <tr>
@@ -103,6 +133,9 @@ function StepRow({
       <td className="numeric">{formatLatencyMs(step.latencyMs)}</td>
       <td>
         <EvidenceLinks refs={step.evidence} signed={evidence} />
+      </td>
+      <td>
+        <FalseExecutionCell sessionId={sessionId} stepOrdinal={step.ordinal} initial={reports} />
       </td>
     </tr>
   );

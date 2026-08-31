@@ -142,9 +142,25 @@ export interface AuthorizationRequest {
 /**
  * Where to send the browser to sign in.
  *
- * `audience` is included because the gateway verifies `aud`: providers that mint API tokens
- * (Auth0, Okta, Keycloak with an audience mapper) need to be told which API the token is for, and
- * one that does not use the parameter ignores it.
+ * ## Two ways to ask for an audience, because providers disagree
+ *
+ * The gateway verifies `aud` against `OIDC_AUDIENCE`, so a token minted for the console alone is
+ * refused — correctly: that claim exists precisely so a token issued for one service cannot be
+ * replayed against another. The console therefore has to ask for a token whose audience *is* the
+ * gateway, and there is no single way to do that.
+ *
+ * - `audience=<api>` is the Auth0/Okta/Keycloak-with-a-mapper form. A provider that does not use
+ *   the parameter ignores it.
+ * - `audience:server:client_id:<api>` as a **scope** is Dex's cross-client trust form, authorised
+ *   by `wispr-gateway` naming `wispr-console` in its `trustedPeers` (infra/dex/config.yaml).
+ *   Dex mints its access token through the same path as the ID token, so the audience and the
+ *   `email` claim both land on the access token — the one sealed into the session cookie and
+ *   sent to the gateway.
+ *
+ * Both are sent. Asking the wrong way is inert; asking neither way meant every console call to
+ * the gateway failed the audience check, which is what this line was missing. The alternative —
+ * pointing `OIDC_AUDIENCE` at the console's own client id — would have made the check pass by
+ * making it check nothing, and that is how a control ends up disabled in production.
  */
 export function authorizationUrl(
   metadata: ProviderMetadata,
@@ -155,7 +171,10 @@ export function authorizationUrl(
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', config.OIDC_CLIENT_ID);
   url.searchParams.set('redirect_uri', config.OIDC_REDIRECT_URI);
-  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set(
+    'scope',
+    `openid email profile audience:server:client_id:${config.OIDC_AUDIENCE}`,
+  );
   url.searchParams.set('audience', config.OIDC_AUDIENCE);
   url.searchParams.set('state', request.state);
   url.searchParams.set('nonce', request.nonce);

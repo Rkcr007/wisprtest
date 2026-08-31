@@ -1,8 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AppNav } from '../components/app-nav';
+import { SESSION_TIMELINE } from '../drift/fixtures';
 import { Overview } from '../components/overview';
+import { SessionTimelineView } from '../components/session-timeline';
 
 /**
  * Structural a11y the Phase 18 console has to keep.
@@ -50,5 +53,40 @@ describe('console a11y', () => {
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeDefined();
     expect(screen.getByRole('heading', { name: 'Recent sessions' })).toBeDefined();
     expect(document.querySelector('table caption')).toBeNull();
+  });
+
+  it('labels the false-execution controls a keyboard user reaches from the timeline', () => {
+    // The cell refetches its list on mount; this suite has no server, so answer it here rather
+    // than let an ECONNREFUSED surface as an unhandled rejection.
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(
+            new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }),
+          ),
+        ),
+    );
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <SessionTimelineView timeline={SESSION_TIMELINE} reports={[]} />
+      </QueryClientProvider>,
+    );
+
+    // The column is named, so a screen reader announces which cell the button belongs to.
+    expect(screen.getByRole('columnheader', { name: 'False execution' })).toBeTruthy();
+    expect(document.querySelector('table caption')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Report' }));
+
+    // Both inputs are labelled controls rather than bare fields with placeholder text.
+    expect(screen.getByLabelText('What went wrong?')).toBeTruthy();
+    expect(screen.getByLabelText('Note (optional)')).toBeTruthy();
+
+    vi.unstubAllGlobals();
   });
 });

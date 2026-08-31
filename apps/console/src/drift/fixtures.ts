@@ -2,6 +2,7 @@ import type {
   DriftDecisionResponse,
   DriftListResponse,
   DriftReport,
+  FalseExecutionReport,
   SessionStep,
   SessionTimeline,
   StructuralDiff,
@@ -183,4 +184,29 @@ export const SESSION_TIMELINE: SessionTimeline = {
       expiresAt: NOW,
     },
   ],
+};
+
+/** An open false-execution report against `SESSION_STEP` (ordinal 4). */
+export const OPEN_FALSE_EXECUTION: FalseExecutionReport = {
+  id: 'c56a4180-65aa-42ec-a945-5fd21dec0539',
+  sessionId: SESSION_ID,
+  stepOrdinal: 4,
+  reason: 'wrong_element',
+  expectedElementId: null,
+  note: 'approved the row above the one I named',
+  status: 'open',
+  reportedBy: USER_ID,
+  reportedAt: NOW,
+  withdrawnBy: null,
+  withdrawnAt: null,
+  withdrawnReason: null,
+};
+
+/** The same report, retracted. Kept rather than deleted, so a retraction stays visible. */
+export const WITHDRAWN_FALSE_EXECUTION: FalseExecutionReport = {
+  ...OPEN_FALSE_EXECUTION,
+  status: 'withdrawn',
+  withdrawnBy: USER_ID,
+  withdrawnAt: NOW,
+  withdrawnReason: 'filed against the wrong step',
 };

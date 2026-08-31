@@ -215,6 +215,15 @@ describe('authorizationUrl', () => {
     expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:3000/auth/callback');
   });
 
+  it('also asks for the audience as a scope, which is how Dex grants one', () => {
+    // Providers disagree about how an API audience is requested, and asking the wrong way is
+    // inert. Asking *neither* way is what left every console call failing the gateway's `aud`
+    // check while every mocked test stayed green.
+    expect(url.searchParams.get('scope')).toBe(
+      'openid email profile audience:server:client_id:https://api.wisprtest.com',
+    );
+  });
+
   it('carries the CSRF state and the nonce', () => {
     expect(url.searchParams.get('state')).toBe('state-value');
     expect(url.searchParams.get('nonce')).toBe('nonce-value');

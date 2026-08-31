@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { SessionTimeline } from 'protocol';
+import { FalseExecutionReport, SessionTimeline } from 'protocol';
 import { z } from 'zod';
 
 import { currentSession } from '../../../../../src/auth/current';
@@ -17,6 +17,11 @@ export const dynamic = 'force-dynamic';
  *
  * Fetched on the server from `GET /v1/sessions/:id`. The BFF at `/api/sessions/:sessionId`
  * exists so a later client refresh uses the same path the browser is allowed to call.
+ *
+ * The false-execution reports are fetched beside the timeline and seed the client cells in the
+ * *False execution* column. They are an annotation on the evidence, not the evidence, so their
+ * failure degrades to an empty column rather than to an error where the timeline should be —
+ * the same rule that makes an unsigned evidence key read as "not signed" instead of a guess.
  */
 export default async function SessionDetailPage({
   params,
@@ -75,7 +80,9 @@ async function SessionLoaded({
       );
     }
 
-    return <SessionTimelineView timeline={timeline} />;
+    const reports = await loadReports(session, sitting.data);
+
+    return <SessionTimelineView timeline={timeline} reports={reports} />;
   } catch (error: unknown) {
     if (
       isAuthRequired(error) ||
@@ -91,5 +98,29 @@ async function SessionLoaded({
         </p>
       </section>
     );
+  }
+}
+
+const ReportList = z.array(FalseExecutionReport);
+
+/**
+ * The reports filed against this session, or none.
+ *
+ * Deliberately swallowing: a tenant whose reports cannot be read should still see what their
+ * tester did. The column then offers Report, and the gateway refuses if the read failed for a
+ * reason that will also refuse the write — which is the honest place for that sentence.
+ */
+async function loadReports(
+  session: NonNullable<Awaited<ReturnType<typeof currentSession>>>,
+  sessionId: string,
+): Promise<readonly FalseExecutionReport[]> {
+  try {
+    return await callGatewayJson(
+      session,
+      { method: 'GET', path: `/v1/sessions/${sessionId}/false-executions` },
+      ReportList,
+    );
+  } catch {
+    return [];
   }
 }

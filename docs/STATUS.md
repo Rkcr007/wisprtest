@@ -3,9 +3,10 @@
 **Read this at the start of every session**, after `CLAUDE.md`. It is the map of what is
 true in `main` today: what shipped, what is still open, and what to work next.
 
-Last updated: **2026-08-31** (the reserved voice lexicon and command-collision rule, ADR 0017,
-plus barge-in and the refused-commit record, ADR 0018 — slices 1 and 2 of the Voice Correction &
-Safety Track; before that, the false-execution
+Last updated: **2026-08-31** (the observability stack — collector, Prometheus, Grafana and ten
+alert rules, so the release gate is measured rather than asserted; before that the reserved voice
+lexicon and command-collision rule, ADR 0017, plus barge-in and the refused-commit record,
+ADR 0018 — slices 1 and 2 of the Voice Correction & Safety Track; before that, the false-execution
 report end to end: contract, gateway, console, extension, plus the console OIDC audience scope
 that had been keeping *every* console call to the gateway from being accepted). If a fact here disagrees with the code, the code wins —
 fix this file in the same PR.
@@ -80,8 +81,8 @@ recorder, autonomous agent, or RPA tool.
 | Item | Why it is still open |
 |------|----------------------|
 | Terraform / managed cloud data plane | Explicitly out of scope for kind-first deploy. `BUILD-PLAN.md` still names it. |
-| In-stack OTel collector + Prometheus + Grafana | Instruments export only if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Dashboards import into a Grafana you already have. |
-| Alert rule files | No PrometheusRule / Grafana alerts shipped. Gauges exist; nothing pages yet. |
+| In-stack OTel collector + Prometheus + Grafana | **Done for Compose** (`make obs-up`). Not in the kind chart. |
+| Alert rule files | **Done** — `infra/prometheus/rules/wispr.yml`, ten rules, each with a runbook section. Not yet expressed as a `PrometheusRule` CRD for kind/GKE. |
 | `wispr_speech_to_reticle_ms` at runtime | Build-time bench only. Runtime series is `wispr_speech_to_partial_ms` (excludes resolve). |
 | `wispr_false_execution_total` producer | **Done.** `POST /v1/sessions/:id/false-executions` increments it, with `wispr_false_execution_withdrawn_total` and a `wispr_session_steps_total{outcome}` denominator beside it. Filed from the console timeline and from the HUD mid-session. |
 | Blocking CI benchmarks | Accepted as report-only until a runner whose performance is known exists. |
@@ -154,10 +155,27 @@ further contract change is serialized through the lead and lands alone
    a reserved phrase is recognised only as a bare, whole utterance, and prefixing any verb reaches
    the application. See the Voice Correction & Safety Track below.
 
-2. **Observability stack.** A collector in Compose (and documented for kind) so
-   gateway/indexer/composer actually export. Then dashboard panels for
-   `wispr_drift_open_total` and `wispr_memory_staleness_hours`, plus alert rules:
-   open drift / staleness > 48h warn; false-execution > 0 page *after* (1) exists.
+2. **Observability stack.** **Done for Compose.** `make obs-up` starts an OTel collector,
+   Prometheus and Grafana behind the `observability` compose profile; dashboards and the
+   `prometheus` datasource are provisioned from disk, so there is nothing left to import by hand.
+   Ten alert rules in `infra/prometheus/rules/wispr.yml`, each with a runbook section in
+   [`docs/runbooks/observability.md`](runbooks/observability.md).
+
+   **The `CLAUDE.md` release gate is now enforced by a measurement.** `WisprFalseExecutionRateBreached`
+   evaluates the three-series formula and pages above 0.1%, requiring ≥ 500 executed steps in the
+   window so one report against three steps cannot trip it. Until now that gate was enforced by the
+   Phase 10 speculation unit test.
+
+   Verified against the running stack on 2026-08-31, not inferred from containers starting:
+   `make load-test` (50 sessions, 0 failed) landed 552 gateway requests in Prometheus under their
+   exact instrument names with `service_name` as a label, and a rising counter drove
+   `WisprFalseExecutionReported` through `pending` to `firing` with its summary and runbook
+   annotation rendered.
+
+   Still open: **no collector in the kind chart** — documented, not deployed — and everything
+   inside the extension remains unobservable in production, because the hot path is in-process
+   with the DOM and the browser has no exporter. `runbooks/observability.md` §
+   "What still cannot be alerted on" is the honest table.
 3. **Release checklist.** A written path that runs `make bench` on known hardware,
    `make load-test`, `make security-audit`, and records the results. `make ci` locally
    is lint + typecheck only; GitHub Actions is the merge gate.

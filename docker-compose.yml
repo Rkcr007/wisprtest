@@ -135,6 +135,99 @@ services:
       retries: 12
       start_period: 10s
 
+  # ── Observability ───────────────────────────────────────────────────────────────────────────
+  #
+  # Behind the `observability` profile, so `make dev` stays a light loop and `make obs-up` brings
+  # these three up when you want to watch something. Every service in this repo has been
+  # instrumented since Phase 12 and exporting to nothing; these are what receive it.
+  #
+  # The data plane above is shared by every git worktree on the machine (CLAUDE.md § "Parallel
+  # tracks"), and so is this: one collector, one Prometheus, one Grafana, whichever worktree
+  # started them.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    profiles: ['observability']
+    restart: unless-stopped
+    command: ['--config=/etc/otelcol/config.yaml']
+    volumes:
+      - ./infra/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      # What `OTEL_EXPORTER_OTLP_ENDPOINT` points at. Published to the host because the services
+      # run there under `make dev`, not in Compose.
+      - '${OTEL_COLLECTOR_HTTP_PORT:?OTEL_COLLECTOR_HTTP_PORT is required — copy .env.example to .env}:4318'
+      - '${OTEL_COLLECTOR_GRPC_PORT:?OTEL_COLLECTOR_GRPC_PORT is required}:4317'
+    healthcheck:
+      # The contrib image is distroless — no shell, no wget, no curl. The collector's own
+      # health_check extension is the only probe available, and it is the right one anyway: it
+      # reports the pipeline's state rather than whether a port is open.
+      test: ['CMD', '/otelcol-contrib', 'components']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: ['observability']
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      # Long enough to see a week-over-week trend on the release gate, short enough that a laptop
+      # does not accumulate a database nobody prunes.
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - '${PROMETHEUS_PORT:?PROMETHEUS_PORT is required}:9090'
+    depends_on:
+      otel-collector:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9090/-/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    profiles: ['observability']
+    restart: unless-stopped
+    environment:
+      # A local stack with fixture data. Anonymous admin removes a login that would otherwise be
+      # one more credential to document, and this port is never exposed off the machine. The GCP
+      # pilot uses Grafana Cloud or an IAP-fronted instance — see docs/GCP-DEPLOYMENT.md — so this
+      # setting does not travel.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_USERS_DEFAULT_THEME: light
+      # Nothing here should phone home from a machine holding customer-shaped fixture data.
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      # 3000 is the console's.
+      - '${GRAFANA_PORT:?GRAFANA_PORT is required}:3000'
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
 volumes:
   postgres-data:
   redis-data:
@@ -143,3 +236,5 @@ volumes:
   # Dex's signing keys, refresh tokens and in-flight auth requests. Persisted so a restart does
   # not rotate the key every issued token was signed with.
   dex-data:
+  prometheus-data:
+  grafana-data:

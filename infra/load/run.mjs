@@ -381,7 +381,12 @@ async function runSession(index, oidcToken, origin, timings) {
           kind: 'dom_snapshot',
           stepOrdinal: 0,
           contentHash,
-          contentType: 'text/html',
+          // Pinned to the kind by `EvidenceUploadRequest` (PR #41). A DOM snapshot stored as
+          // `text/html` is served back as HTML from object storage, which is why the contract
+          // makes that unrepresentable rather than merely discouraged. This script sent
+          // `text/html` until the contract changed under it, and nothing caught that because
+          // `make load-test` is not in CI.
+          contentType: 'text/plain',
         }),
       },
     );
@@ -392,7 +397,7 @@ async function runSession(index, oidcToken, origin, timings) {
 
     await request(timings, 'evidence_upload', ticketBody.uploadUrl, {
       method: 'PUT',
-      headers: { 'content-type': 'text/html' },
+      headers: { 'content-type': 'text/plain' },
       body: bytes,
     });
     const evidence = {

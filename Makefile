@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev build test bench lint typecheck ci load-test security-audit db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas kind-up kind-down
+.PHONY: help dev build test bench lint typecheck ci load-test security-audit db-up db-down db-logs db-migrate db-reset db-seed db-codegen require-atlas kind-up kind-down obs-up obs-down
 
 COMPOSE := docker compose
 
@@ -97,6 +97,25 @@ db-down:
 ## db-logs: tail infrastructure logs
 db-logs:
 	$(COMPOSE) logs -f
+
+## obs-up: start the collector, Prometheus and Grafana; print where to look
+# Opt-in via the compose `observability` profile so `make dev` stays a light loop. Every service
+# in this repo has been instrumented since Phase 12 and exports only when the endpoint below is
+# set, which is why the reminder is printed rather than assumed: a stack running with the profile
+# up and the variable unset looks healthy and collects nothing.
+obs-up: .env
+	$(COMPOSE) --profile observability up -d --wait
+	@echo ''
+	@echo '  Grafana     http://localhost:$(shell grep -E "^GRAFANA_PORT=" .env | cut -d= -f2)/dashboards   (WisprTest folder, no login)'
+	@echo '  Prometheus  http://localhost:$(shell grep -E "^PROMETHEUS_PORT=" .env | cut -d= -f2)/alerts'
+	@echo ''
+	@echo '  Services export only when this is set — add it to .env and restart them:'
+	@echo '    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:$(shell grep -E "^OTEL_COLLECTOR_HTTP_PORT=" .env | cut -d= -f2)'
+	@echo ''
+
+## obs-down: stop the observability stack, leaving the data plane and its volumes alone
+obs-down:
+	$(COMPOSE) --profile observability rm -sf otel-collector prometheus grafana
 
 # Fails loudly with install instructions rather than reporting a confusing connection error.
 require-atlas:

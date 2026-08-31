@@ -49,18 +49,20 @@ deployment is healthy. Two things about it are worth knowing while holding a pag
 
 ---
 
-## Alerts that cannot fire yet
+## Alerts
 
-`docs/ARCHITECTURE.md § 7` and Phase 19 name three alerts. Gauges for drift-open and
-memory-staleness now exist; they still cannot *page* without a collector and a rule file.
-False-execution and speech-to-reticle remain incomplete. Current status:
+`make obs-up` starts the collector, Prometheus and Grafana; the rules are in
+`infra/prometheus/rules/wispr.yml` and what to do about each is
+[observability.md](observability.md). Three of the four alerts
+`docs/ARCHITECTURE.md § 7` names now fire on real series. Current status:
 
 | Alert | Metric | Status |
 |-------|--------|--------|
-| `wispr_false_execution_total > 0` pages immediately | `wispr_false_execution_total` | **Instrument exists, nothing increments it.** Registered in `apps/gateway/src/telemetry/metrics.ts` and covered by a unit test, but no production code path calls `.add()`, and `ActionOutcome` has no member meaning "wrong element". The release gate in `CLAUDE.md` is currently enforced by the Phase 10 speculation test, not by a measurement. See [ADR 0005](../adr/0005-reversibility-taxonomy.md). |
-| p95 speech-to-reticle > 400 ms warns | `wispr_speech_to_reticle_ms` | **Runtime metric does not exist.** Build-time benchmark only (`apps/extension/test/bench/speech-to-reticle.bench.ts`). Nearest runtime series is `wispr_speech_to_partial_ms` (excludes resolution). |
-| memory staleness > 48 h warns | `wispr_memory_staleness_hours` | **Gauge is emitted** from Postgres (`apps/gateway/src/telemetry/operational-metrics.ts`). No alert rule and no collector, so it will not page. SQL in [drift-backlog.md](drift-backlog.md) still works. |
-| open drift queue | `wispr_drift_open_total` | **Gauge is emitted** (open reports per tenant/app). Raise counter `wispr_drift_reports_total` still exists. No alert rule file yet. |
+| false execution rate breaches 0.1% → pages | `wispr_false_execution_total`, `wispr_false_execution_withdrawn_total`, `wispr_session_steps_total{outcome="executed"}` | **Live** as `WisprFalseExecutionRateBreached`. A tester files the report; a withdrawal comes back out of the numerator; only executed steps are in the denominator. The rule requires ≥ 500 executed steps in the window, because one report against three steps is 33% and means nothing. **The `CLAUDE.md` release gate is now enforced by a measurement rather than by the Phase 10 speculation test.** A separate `WisprFalseExecutionReported` warns on any single report — a ticket, never a 3 a.m. page. |
+| near-miss rate climbing → warns | `wispr_session_steps_total{outcome="rejected"}` | **Live** as `WisprNearMissRateHigh`. A committing action a tester refused out loud ("stop" while it was staged, [ADR 0018](../adr/0018-barge-in-halts-on-a-stable-partial.md)). Nothing has gone wrong when it fires — every one was caught — which is exactly why it leads the gate above. |
+| p95 speech-to-reticle > 400 ms warns | `wispr_speech_to_reticle_ms` | **Still cannot fire, and this one is structural.** Build-time benchmark only (`apps/extension/test/bench/speech-to-reticle.bench.ts`). The metric lives in the extension, in the tester's browser, which has no exporter — a consequence of the hot path being in-process with the DOM. `wispr_speech_to_partial_ms` excludes resolution and is not a substitute. `make bench` is the gate. |
+| memory staleness > 48 h warns | `wispr_memory_staleness_hours` | **Live** as `WisprMemoryStale`. Gauge emitted from Postgres (`apps/gateway/src/telemetry/operational-metrics.ts`). SQL in [drift-backlog.md](drift-backlog.md) still works for ad-hoc checks. |
+| open drift queue | `wispr_drift_open_total` | **Live** as `WisprDriftBacklogStuck` — open for 24 h warns. Raise counter `wispr_drift_reports_total` still exists. |
 
 Metrics that *are* emitted, and by which service:
 

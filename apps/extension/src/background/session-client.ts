@@ -1,4 +1,10 @@
-import { Session, SessionStepIngestResult, type SessionStep } from 'protocol';
+import {
+  FalseExecutionReport,
+  Session,
+  SessionStepIngestResult,
+  type FalseExecutionReportRequest,
+  type SessionStep,
+} from 'protocol';
 
 /**
  * The session client, in the service worker.
@@ -44,6 +50,12 @@ export interface SessionClient {
   }): Promise<Session>;
   sendSteps(sessionId: string, steps: readonly SessionStep[], bearerToken: string): Promise<void>;
   close(sessionId: string, bearerToken: string): Promise<void>;
+  /** File a tester's report that one step acted on the wrong thing. */
+  reportFalseExecution(
+    sessionId: string,
+    request: FalseExecutionReportRequest,
+    bearerToken: string,
+  ): Promise<FalseExecutionReport>;
 }
 
 export function createSessionClient(options: SessionClientOptions): SessionClient {
@@ -115,6 +127,31 @@ export function createSessionClient(options: SessionClientOptions): SessionClien
 
     async close(sessionId, bearerToken): Promise<void> {
       await request(`${SESSIONS_PATH}/${sessionId}`, 'PATCH', { status: 'closed' }, bearerToken);
+    },
+
+    /**
+     * File a false-execution report.
+     *
+     * Unlike a step, this is not buffered and not retried here. A step is history and worth
+     * redelivering; a report is a tester's statement about a moment, and the caller above has
+     * already flushed the buffer so that the step it names exists. The classification
+     * `SessionWriteFailed` applies is what tells that caller whether "try again" is honest
+     * advice — a 400 from this route means the step is not there, and no amount of retrying
+     * this request changes that.
+     */
+    async reportFalseExecution(sessionId, body, bearerToken): Promise<FalseExecutionReport> {
+      const payload = await request(
+        `${SESSIONS_PATH}/${sessionId}/false-executions`,
+        'POST',
+        body,
+        bearerToken,
+      );
+      const parsed = FalseExecutionReport.safeParse(payload);
+      // Validated before it is reported as filed. Telling a tester their report landed when the
+      // gateway answered with something unrecognisable is the one lie this feature cannot tell:
+      // the whole point of it is that the number can be trusted.
+      if (!parsed.success) throw new SessionWriteFailed('malformed report', false);
+      return parsed.data;
     },
   };
 }

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { INITIAL_UPDATE, type HudUpdate } from '../messaging.js';
-import { Hud } from './Hud.js';
+import { Hud, type FalseExecutionView } from './Hud.js';
 
 /**
  * What the HUD is allowed to claim.
@@ -276,5 +276,132 @@ describe('the drift notice', () => {
     fireEvent.click(screen.getByText('Hide'));
 
     expect(onDriftDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reporting a false execution', () => {
+  /**
+   * The tester's own verdict on the step that just ran — the only producer of the metric
+   * CLAUDE.md gates releases on. Nothing in the runtime can detect it: the resolver was
+   * confident and the dispatch succeeded, so the measurement begins with a person.
+   */
+
+  const reportable: FalseExecutionView = {
+    stepOrdinal: 4,
+    utterance: 'approve the acme order',
+    status: 'idle',
+    detail: null,
+  };
+
+  function renderReportable(
+    props: {
+      falseExecution?: FalseExecutionView | null;
+      onReportFalseExecution?: (reason: string) => void;
+    } = {},
+  ) {
+    return render(
+      <Hud
+        update={update({ attach: 'attached' })}
+        falseExecution={props.falseExecution ?? reportable}
+        {...(props.onReportFalseExecution === undefined
+          ? {}
+          : { onReportFalseExecution: props.onReportFalseExecution })}
+        onAttach={() => undefined}
+        onDetach={() => undefined}
+        origin="https://orders.northwind.example"
+        version="0.0.0"
+      />,
+    );
+  }
+
+  it('offers nothing until something has executed', () => {
+    renderHud(update({ attach: 'attached' }));
+
+    expect(screen.queryByTestId('wispr-hud-false-execution')).toBeNull();
+  });
+
+  it('is reachable while the panel is collapsed', () => {
+    // The HUD starts collapsed, and a tester who has just watched a wrong click will not first
+    // expand a panel. Same reasoning as the drift notice.
+    renderReportable();
+
+    expect(screen.getByTestId('wispr-hud').dataset.collapsed).toBe('true');
+    expect(screen.getByTestId('wispr-hud-false-execution-open')).toBeTruthy();
+  });
+
+  it('asks which of the three before it files anything', () => {
+    const onReport = vi.fn();
+    renderReportable({ onReportFalseExecution: onReport });
+
+    // Closed, the prompt is one small button — a row of reasons under every action is noise a
+    // tester learns to look past.
+    expect(screen.queryByTestId('wispr-hud-false-execution-wrong_element')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('wispr-hud-false-execution-open'));
+
+    expect(screen.getByTestId('wispr-hud-false-execution-wrong_element')).toBeTruthy();
+    expect(screen.getByTestId('wispr-hud-false-execution-wrong_action')).toBeTruthy();
+    expect(screen.getByTestId('wispr-hud-false-execution-unintended_state_change')).toBeTruthy();
+    expect(onReport).not.toHaveBeenCalled();
+  });
+
+  it('reports the reason the tester picked, not a default', () => {
+    const onReport = vi.fn();
+    renderReportable({ onReportFalseExecution: onReport });
+
+    fireEvent.click(screen.getByTestId('wispr-hud-false-execution-open'));
+    fireEvent.click(screen.getByTestId('wispr-hud-false-execution-wrong_action'));
+
+    // The three are fixed in different places; a counter that cannot attribute a breach tells
+    // you the budget is blown without telling you which subsystem to open.
+    expect(onReport).toHaveBeenCalledWith('wrong_action');
+  });
+
+  it('says it landed, and stops offering the reasons', () => {
+    renderReportable({ falseExecution: { ...reportable, status: 'filed' } });
+
+    expect(screen.getByRole('status').textContent).toContain('Reported');
+    expect(screen.queryByTestId('wispr-hud-false-execution-open')).toBeNull();
+  });
+
+  it('says so when it did not land, rather than implying it did', () => {
+    // The failure a tester can act on: the step had not reached the gateway yet.
+    renderReportable({
+      falseExecution: {
+        ...reportable,
+        status: 'failed',
+        detail: 'Not recorded — the step has not reached the gateway yet.',
+      },
+    });
+
+    fireEvent.click(screen.getByTestId('wispr-hud-false-execution-open'));
+
+    expect(screen.getByText(/has not reached the gateway/)).toBeTruthy();
+    expect(screen.getByTestId('wispr-hud-false-execution-wrong_element')).toBeTruthy();
+  });
+
+  it('does not let a stale prompt file against a newer step', () => {
+    const onReport = vi.fn();
+    const { rerender } = renderReportable({ onReportFalseExecution: onReport });
+
+    fireEvent.click(screen.getByTestId('wispr-hud-false-execution-open'));
+    expect(screen.getByTestId('wispr-hud-false-execution-wrong_element')).toBeTruthy();
+
+    // The tester moved on and something else executed. The open prompt belonged to the previous
+    // ordinal, and leaving it open invites a report against the wrong step.
+    rerender(
+      <Hud
+        update={update({ attach: 'attached' })}
+        falseExecution={{ ...reportable, stepOrdinal: 5 }}
+        onReportFalseExecution={onReport}
+        onAttach={() => undefined}
+        onDetach={() => undefined}
+        origin="https://orders.northwind.example"
+        version="0.0.0"
+      />,
+    );
+
+    expect(screen.queryByTestId('wispr-hud-false-execution-wrong_element')).toBeNull();
+    expect(screen.getByTestId('wispr-hud-false-execution-open')).toBeTruthy();
   });
 });

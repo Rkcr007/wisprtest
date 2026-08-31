@@ -4,9 +4,9 @@
 true in `main` today: what shipped, what is still open, and what to work next.
 
 Last updated: **2026-08-31** (the false-execution report, end to end: contract, gateway,
-console — and the console OIDC audience scope that had been keeping *every* console call to
-the gateway from being accepted). If a fact here disagrees with the code, the code wins — fix
-this file in the same PR.
+console, extension — plus the console OIDC audience scope that had been keeping *every* console
+call to the gateway from being accepted). If a fact here disagrees with the code, the code wins —
+fix this file in the same PR.
 
 The phase prompts in [`BUILD-PLAN.md`](BUILD-PLAN.md) still define *what* a phase must
 deliver. This file records *whether* that delivery happened, and what was deliberately
@@ -81,7 +81,7 @@ recorder, autonomous agent, or RPA tool.
 | In-stack OTel collector + Prometheus + Grafana | Instruments export only if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Dashboards import into a Grafana you already have. |
 | Alert rule files | No PrometheusRule / Grafana alerts shipped. Gauges exist; nothing pages yet. |
 | `wispr_speech_to_reticle_ms` at runtime | Build-time bench only. Runtime series is `wispr_speech_to_partial_ms` (excludes resolve). |
-| `wispr_false_execution_total` producer | **Done.** `POST /v1/sessions/:id/false-executions` increments it, with `wispr_false_execution_withdrawn_total` and a `wispr_session_steps_total{outcome}` denominator beside it. The console session timeline files and withdraws reports. |
+| `wispr_false_execution_total` producer | **Done.** `POST /v1/sessions/:id/false-executions` increments it, with `wispr_false_execution_withdrawn_total` and a `wispr_session_steps_total{outcome}` denominator beside it. Filed from the console timeline and from the HUD mid-session. |
 | Blocking CI benchmarks | Accepted as report-only until a runner whose performance is known exists. |
 | `make build` / `gen:python` / `db-codegen` in CI | Not in the workflow. Generated pydantic/Kysely drift can merge. |
 | End-to-end `make kind-up` on every machine | Scripts exist; last production-grade pass did **not** treat kind as verified on this workstation (kind/Helm must be installed). |
@@ -129,27 +129,27 @@ further contract change is serialized through the lead and lands alone
 
 ### P0 — still blocks calling the product “measured production grade”
 
-1. **False execution as a first-class outcome.** **Done.** `packages/protocol` defines
-   `FalseExecutionReport` and its request shapes — a record adjacent to the step, not a sixth
-   `ActionOutcome`, because a step's outcome is what happened at dispatch, falseness is judged
-   afterwards, and `session_steps` is append-only so the timeline stays evidence. The gateway
-   stores and counts one (`false_execution_reports`, three routes, three series). The console
-   session timeline carries a *False execution* column through which a tester files and
-   withdraws a report.
+1. **False execution as a first-class outcome.** **Done, end to end.** `packages/protocol`
+   defines `FalseExecutionReport` as a record adjacent to the step — not a sixth `ActionOutcome`,
+   because a step's outcome is what happened at dispatch, falseness is judged afterwards, and
+   `session_steps` is append-only so the timeline stays evidence. The gateway stores and counts
+   one; the console session timeline files and withdraws; and the HUD reports the step that just
+   ran, which is the moment a tester actually knows.
 
-   Verified end to end on 2026-08-31 against the real stack: sign-in → session → step → file
-   (201) → duplicate file (200, same report) → withdraw (200) → unexplained withdraw (400),
-   with `wispr_false_execution_total`, `wispr_false_execution_withdrawn_total` and
-   `wispr_session_steps_total` all observed leaving the process over OTLP.
-
-   The gate is now **measured**, not merely measurable:
+   The gate is measured:
 
    ```
    (false_execution_total − false_execution_withdrawn_total) / session_steps_total{outcome="executed"}
    ```
 
-   Remaining, and smaller: the extension's in-session path, so a tester can say it while
-   testing rather than while reviewing. See [ADR 0005](adr/0005-reversibility-taxonomy.md).
+   One ordering detail worth keeping: the worker **flushes the session buffer before it files**.
+   The gateway refuses a report naming a step it has not received (`400`, `retryable: false`) and
+   the buffer flushes every 5 s, so filing first would have dropped most reports silently into
+   the gate. `apps/extension/src/background/attach.test.ts` asserts the order.
+
+   Only a spoken trigger is left — "that was wrong" as an utterance — which needs parser lexicon
+   and a decision about collisions with real commands. See
+   [ADR 0005](adr/0005-reversibility-taxonomy.md).
 
 2. **Observability stack.** A collector in Compose (and documented for kind) so
    gateway/indexer/composer actually export. Then dashboard panels for

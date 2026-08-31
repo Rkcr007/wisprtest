@@ -75,13 +75,14 @@ Recording these here rather than quietly writing the ADRs around them.
   `aliases_tenant_version_phrase_key` is unique on `(tenant_id, memory_version_id, phrase)` with
   no `state_fingerprint`, and `upsertAliases` overwrites `element_id` on conflict. See the ADR's
   *Consequences* for the detail.
-- **The release-gate metric is now produced and consumed.** `wispr_false_execution_total` is
-  incremented by `POST /v1/sessions/:id/false-executions`, alongside a withdrawal counter and the
-  `wispr_session_steps_total{outcome}` denominator a *rate* requires, and the console session
-  timeline is the surface a tester files one from. Verified against the running stack rather
-  than against mocks. What is still missing is the extension's in-session path, so today a
-  report is filed while reviewing a session rather than while running one. See
-  [ADR 0005](0005-reversibility-taxonomy.md) and
+- **The release-gate metric is produced, consumed, and reachable from where it happens.**
+  `wispr_false_execution_total` is incremented by `POST /v1/sessions/:id/false-executions`,
+  alongside a withdrawal counter and the `wispr_session_steps_total{outcome}` denominator a
+  *rate* requires. A tester files one from the console session timeline, or from the HUD against
+  the step that just ran. The extension flushes its session buffer before filing, because the
+  gateway refuses a report naming a step it has not yet received — an ordering bug there would be
+  invisible, since reports would simply stop arriving and the gate would read clean. Only a
+  spoken trigger is missing. See [ADR 0005](0005-reversibility-taxonomy.md) and
   [runbooks/README.md](../runbooks/README.md#alerts-that-cannot-fire-yet).
 
 - **The generated contract is never verified in CI.** [ADR 0003](0003-contract-first-zod-protocol.md)

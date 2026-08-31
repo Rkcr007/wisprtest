@@ -6,7 +6,7 @@ import { INITIAL_VOICE, type AttachState, type HudUpdate, type HudVoice } from '
 import type { Disambiguation } from '../resolver/index.js';
 import { IDLE_SEED_VIEW, type SeedView } from '../seed/index.js';
 import type { SpeculationView } from '../speculation/index.js';
-import type { ActionClass } from 'protocol';
+import type { ActionClass, FalseExecutionReason } from 'protocol';
 import type { VoicePhase } from '../voice/messages.js';
 import { SeedMarks } from './SeedMarks.js';
 import { SeedPreview } from './SeedPreview.js';
@@ -50,6 +50,34 @@ const CLASS_TONE: Record<ActionClass, Tone> = {
   A: 'memory', // ambiguous; needs disambiguation
   S: 'seed', // seeding; previewed before write
 };
+
+/**
+ * What a tester can say went wrong, in the words they read.
+ *
+ * Three, and kept apart on purpose: they are fixed in different places — `wrong_element` is the
+ * alias corpus, `wrong_action` is the verb, `unintended_state_change` is the application's own
+ * bug. Collapsing them into one button would make the release-gate counter unactionable, telling
+ * you the budget was breached without telling you which subsystem to open.
+ */
+export const FALSE_EXECUTION_REASONS: readonly {
+  readonly reason: FalseExecutionReason;
+  readonly label: string;
+}[] = [
+  { reason: 'wrong_element', label: 'Wrong element' },
+  { reason: 'wrong_action', label: 'Wrong action' },
+  { reason: 'unintended_state_change', label: 'Something else changed' },
+];
+
+/** The reportable step, and what became of a report against it. */
+export interface FalseExecutionView {
+  /** The ordinal of the last executed step. */
+  readonly stepOrdinal: number;
+  /** What the tester said to cause it. Already redacted upstream. */
+  readonly utterance: string;
+  readonly status: 'idle' | 'filing' | 'filed' | 'failed';
+  /** Set when `status` is `failed`: what to tell the tester. */
+  readonly detail: string | null;
+}
 
 export interface HudProps {
   readonly update: HudUpdate;
@@ -102,6 +130,21 @@ export interface HudProps {
   readonly drifted?: boolean;
   /** Dismiss the drift notice for this screen. The report is already raised; this hides the band. */
   readonly onDriftDismiss?: () => void;
+  /**
+   * The step a tester could report as wrong, and what has become of a report they filed.
+   *
+   * The producer for the release gate CLAUDE.md sets at < 0.1%. A false execution is not
+   * something the runtime can detect — the resolver was confident and the dispatch succeeded —
+   * so the only moment it can be recorded is the one where a person watched it happen. Null when
+   * nothing has executed yet: a staged, rejected or failed step acted on nothing and so cannot
+   * have acted on the wrong thing.
+   *
+   * Like the drift notice, this band never takes focus and never gates input. It is a note about
+   * what already happened, and the tester's next command must not have to get past it.
+   */
+  readonly falseExecution?: FalseExecutionView | null;
+  /** Called with the reason the tester chose. */
+  readonly onReportFalseExecution?: (reason: FalseExecutionReason) => void;
   /**
    * The runtime state engine's fingerprint, so the marks over created records re-measure when the
    * page moves under them. Null before the engine exists.
@@ -167,6 +210,8 @@ const LISTENING_PHASES = new Set<VoicePhase>(['listening', 'reconnecting', 'drop
 
 export function Hud({
   update,
+  falseExecution = null,
+  onReportFalseExecution,
   voice = INITIAL_VOICE,
   speculation = IDLE_SPECULATION,
   onConfirm,
@@ -186,6 +231,18 @@ export function Hud({
   version,
 }: HudProps): ReactNode {
   const [collapsed, setCollapsed] = useState(true);
+  /**
+   * Whether the reasons are showing.
+   *
+   * Keyed on the step so the prompt closes itself when the tester goes on to do something else:
+   * a row of reasons left open over an action three commands ago invites a report against the
+   * wrong ordinal.
+   */
+  const [reasonsFor, setReasonsFor] = useState<number | null>(null);
+  const choosingReason = falseExecution !== null && reasonsFor === falseExecution.stepOrdinal;
+  const setChoosingReason = (open: boolean): void => {
+    setReasonsFor(open && falseExecution !== null ? falseExecution.stepOrdinal : null);
+  };
   const [draft, setDraft] = useState('');
   const draggable = useDraggable({ initial: { x: 16, y: 16 } });
 
@@ -328,6 +385,68 @@ export function Hud({
             />
           </div>
         ) : null}
+
+        {/* ── The tester's own verdict on the step that just ran ─────────────────────────
+            Outside the collapse, deliberately and for the drift notice's reason: the HUD starts
+            collapsed, and a control a tester can only reach by expanding a panel is one they will
+            not reach in the second after they watched a wrong click. It is the sole producer of
+            the metric CLAUDE.md gates releases on.
+
+            Two stages rather than three permanent buttons. A row of reasons sitting under every
+            executed action would be noise the tester learns to look past, and a prompt nobody
+            reads collects nothing. */}
+        {falseExecution === null ? null : (
+          <div
+            className="wispr-hud__toast-slot wispr-hud__false-execution"
+            data-testid="wispr-hud-false-execution"
+          >
+            {falseExecution.status === 'filed' ? (
+              <span className="wispr-hud__false-execution-note" role="status">
+                Reported — thank you.
+              </span>
+            ) : choosingReason ? (
+              <>
+                <span
+                  className="wispr-hud__false-execution-note"
+                  id="wispr-hud-false-execution-label"
+                >
+                  {falseExecution.status === 'failed'
+                    ? (falseExecution.detail ?? 'Not recorded.')
+                    : 'What went wrong?'}
+                </span>
+                {/* A group, not a dialog — as with disambiguation, the tester can ignore it
+                    entirely and say something else to the page. */}
+                <div role="group" aria-labelledby="wispr-hud-false-execution-label">
+                  {FALSE_EXECUTION_REASONS.map(({ reason, label }) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      className="wispr-hud__button"
+                      disabled={falseExecution.status === 'filing'}
+                      onClick={() => {
+                        onReportFalseExecution?.(reason);
+                      }}
+                      data-testid={`wispr-hud-false-execution-${reason}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="wispr-hud__button"
+                onClick={() => {
+                  setChoosingReason(true);
+                }}
+                data-testid="wispr-hud-false-execution-open"
+              >
+                That was wrong
+              </button>
+            )}
+          </div>
+        )}
 
         {collapsed ? null : (
           <>

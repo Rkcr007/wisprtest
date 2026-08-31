@@ -9,8 +9,10 @@ import {
   SeedExecuteResponse,
   SeedPlanResponse,
   SeedRevertResponse,
+  type FalseExecutionReason,
   type ResolutionResult,
   type RuntimeState,
+  type SessionStep,
 } from 'protocol';
 
 import {
@@ -68,7 +70,7 @@ import {
 } from '../speculation/index.js';
 import { createHotkey } from '../voice/hotkey.js';
 import { DEFAULT_VOICE_SETTINGS } from '../voice/config.js';
-import { Hud } from './Hud.js';
+import { Hud, type FalseExecutionView } from './Hud.js';
 import { mountHudHost } from './mount.js';
 
 /** A resolution the controller reads as "nothing matched" while the T1 model is still loading. */
@@ -138,6 +140,22 @@ const SEED_WRITE_REPLY_TIMEOUT_MS = 90_000;
  * worker cannot leave the executor awaiting a promise nobody will settle.
  */
 const CAPTURE_REPLY_TIMEOUT_MS = 8_000;
+
+/**
+ * How long the HUD waits to be told a false-execution report landed.
+ *
+ * Longer than a capture's, because the worker flushes the session buffer before it files and that
+ * flush is a network round trip of its own. It exists so a terminated worker leaves the band
+ * saying "not recorded" rather than "reporting…" forever — a report stuck mid-flight reads as one
+ * that was filed.
+ */
+const REPORT_REPLY_TIMEOUT_MS = 12_000;
+
+/** What the worker answered about one report. `detail` is what the band shows on a failure. */
+interface FalseExecutionOutcome {
+  readonly ok: boolean;
+  readonly detail: string | null;
+}
 
 /** Destination route for a navigation trigger, learned from the snapshot's nav graph. */
 function buildNavRoutes(snapshot: MemorySnapshot): (elementId: string) => string | null {
@@ -227,6 +245,18 @@ function HudApp({
   const captures = useRef(new Map<string, (refs: readonly EvidenceRef[]) => void>());
   /** Seed calls awaiting the worker's reply, by request id. */
   const seedCalls = useRef(new Map<string, (reply: SeedReply) => void>());
+  /** False-execution reports awaiting the worker's reply, by request id. */
+  const reports = useRef(new Map<string, (outcome: FalseExecutionOutcome) => void>());
+  /**
+   * The last executed step, and what became of a report against it.
+   *
+   * Held here rather than in the speculation controller because the content script already sees
+   * every step on its way to the worker, and the controller has no business knowing that a HUD
+   * band exists.
+   */
+  const [falseExecution, setFalseExecution] = useState<FalseExecutionView | null>(null);
+  const falseExecutionRef = useRef<FalseExecutionView | null>(null);
+  falseExecutionRef.current = falseExecution;
   /** The seeding flow — class S, never speculative. Built alongside the resolver and controller. */
   const seedRef = useRef<SeedController | null>(null);
   const [seed, setSeed] = useState<SeedView>(IDLE_SEED_VIEW);
@@ -367,11 +397,81 @@ function HudApp({
    * Fire and forget: the action it describes has already run. A step lost to a terminated worker
    * costs one row of history, never a command — which is why nothing here awaits or throws.
    */
-  const sendStep = useCallback((step: unknown) => {
+  const sendStep = useCallback((step: SessionStep) => {
+    // Remembered before it is sent, and only when it executed. A staged, rejected or failed step
+    // acted on nothing, so there is nothing for a tester to have watched go wrong — offering the
+    // control there would put noise into the numerator of a release gate.
+    if (step.outcome === 'executed') {
+      setFalseExecution({
+        stepOrdinal: step.ordinal,
+        utterance: step.utterance,
+        status: 'idle',
+        detail: null,
+      });
+    }
     try {
       portRef.current?.postMessage({ kind: 'session_step', step });
     } catch {
       // The worker was terminated between the ref read and the post.
+    }
+  }, []);
+
+  /**
+   * File a false-execution report against the step the tester just watched.
+   *
+   * Awaited, unlike a step or a drift raise: the worker flushes the session buffer before it
+   * files — the gateway refuses a report naming a step it has not received — and the tester is
+   * owed the answer. A report believed filed and not filed is worse than no button at all.
+   */
+  const reportFalseExecution = useCallback((reason: FalseExecutionReason) => {
+    const target = portRef.current;
+    const ordinal = falseExecutionRef.current?.stepOrdinal;
+    if (target === null || ordinal === undefined) {
+      setFalseExecution((current) =>
+        current === null
+          ? null
+          : { ...current, status: 'failed', detail: 'Not recorded — no connection.' },
+      );
+      return;
+    }
+
+    setFalseExecution((current) =>
+      current === null ? null : { ...current, status: 'filing', detail: null },
+    );
+
+    const requestId = crypto.randomUUID();
+    const fail = (detail: string): void => {
+      setFalseExecution((current) =>
+        current === null ? null : { ...current, status: 'failed', detail },
+      );
+    };
+    const timer = setTimeout(() => {
+      reports.current.delete(requestId);
+      fail('Not recorded — no answer.');
+    }, REPORT_REPLY_TIMEOUT_MS);
+
+    reports.current.set(requestId, (outcome) => {
+      clearTimeout(timer);
+      if (outcome.ok) {
+        setFalseExecution((current) =>
+          current === null ? null : { ...current, status: 'filed', detail: null },
+        );
+        return;
+      }
+      fail(outcome.detail ?? 'Not recorded.');
+    });
+
+    try {
+      target.postMessage({
+        kind: 'false_execution_report',
+        requestId,
+        stepOrdinal: ordinal,
+        reason,
+      });
+    } catch {
+      clearTimeout(timer);
+      reports.current.delete(requestId);
+      fail('Not recorded — no connection.');
     }
   }, []);
 
@@ -763,6 +863,17 @@ function HudApp({
         return;
       }
 
+      if (next.kind === 'false_execution_result') {
+        const settle = reports.current.get(next.requestId);
+        // No waiter means the local timeout already fired and the band already says so. A late
+        // "it landed" must not overwrite that: the tester has been told, and flipping the band
+        // back would make the message depend on which race won.
+        if (settle === undefined) return;
+        reports.current.delete(next.requestId);
+        settle({ ok: next.ok, detail: next.detail });
+        return;
+      }
+
       // A snapshot push. Validated against the contract before it is held — an unvalidated one
       // would be handed to the resolver and fail deep in a resolution rather than here.
       if (next.state === 'loaded') {
@@ -786,6 +897,10 @@ function HudApp({
       for (const settle of seedCalls.current.values())
         settle({ ok: false, reason: 'unavailable', detail: 'the extension worker went away' });
       seedCalls.current.clear();
+      // And for reports. A band left on "reporting…" would claim the release gate had been fed.
+      for (const settle of reports.current.values())
+        settle({ ok: false, detail: 'Not recorded — the extension worker went away.' });
+      reports.current.clear();
       setDisambiguation(null);
       // The worker was terminated or the extension reloaded. Showing the last known state would
       // claim an attachment that no longer exists.
@@ -913,6 +1028,11 @@ function HudApp({
         setDriftDismissed(true);
       }}
       stateFingerprint={engine?.state.value.stateFingerprint ?? null}
+      // The tester's own verdict on the step that just ran — the only producer of the metric
+      // CLAUDE.md gates releases on, because nothing in the runtime can detect a confident,
+      // successful dispatch that hit the wrong thing.
+      falseExecution={falseExecution}
+      onReportFalseExecution={reportFalseExecution}
       onConfirm={() => controllerRef.current?.confirm()}
       onCommand={(utterance) => {
         // Typed input is already a final transcript. Reset any in-flight speculation so a

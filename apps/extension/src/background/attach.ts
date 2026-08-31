@@ -1,6 +1,7 @@
 import {
   AliasWriteback,
   EscalateRequest,
+  FalseExecutionReportRequest,
   RuntimeState,
   SessionStep,
   type ExtensionToken,
@@ -651,6 +652,101 @@ export function createAttachController(options: AttachControllerOptions): Attach
   }
 
   /**
+   * File a tester's false-execution report, and answer whether it landed.
+   *
+   * ## The flush is the whole design
+   *
+   * The gateway verifies the step exists at that ordinal before it inserts, so a report naming a
+   * step still sitting in this worker's buffer is refused with a 400. That is the *common* case,
+   * not the edge one: the buffer flushes every 5 s and a tester notices a wrong click in about
+   * one. Filing without flushing first would quietly drop most reports into the one metric the
+   * product is not allowed to be wrong about.
+   *
+   * So the buffer is flushed and only then is the report sent. A flush that fails stops the
+   * report: telling the tester "not recorded, try again" is honest, and filing anyway would earn
+   * a 400 whose message is about a step rather than about the network that actually failed.
+   *
+   * Unlike drift, this is awaited and answered. Drift is a notification nobody waits for; a
+   * tester who says "that was wrong" is owed an answer, because a report they believe was filed
+   * and was not is worse than no button at all.
+   */
+  async function reportFalseExecution(
+    session: Session,
+    requestId: string,
+    input: { readonly stepOrdinal: number; readonly reason: string },
+  ): Promise<void> {
+    const reply = (
+      ok: boolean,
+      reason: 'unavailable' | 'no_such_step' | 'invalid' | 'failed' | null,
+      detail: string | null,
+    ): void => {
+      session.port.postMessage({
+        kind: 'false_execution_result',
+        requestId,
+        ok,
+        reason,
+        detail,
+      });
+    };
+
+    const token = session.local ? undefined : session.token?.token;
+    const sessionId = session.sessionId;
+
+    // A local dump never opened a session, so there is no timeline to report against. Saying so
+    // beats a request that cannot be formed.
+    if (sessionClient === undefined || token === undefined || sessionId === null) {
+      reply(false, 'unavailable', 'this tab has no open session');
+      return;
+    }
+    if (session.state !== 'attached') {
+      reply(false, 'unavailable', 'the tab is not attached');
+      return;
+    }
+
+    // Validated here rather than trusted: `reason` arrived from a page the extension does not
+    // control, and an unrecognised one would be refused by the gateway as a validation error
+    // that reads like the tester's fault.
+    const request = FalseExecutionReportRequest.safeParse({
+      stepOrdinal: input.stepOrdinal,
+      reason: input.reason,
+      expectedElementId: null,
+      note: null,
+    });
+    if (!request.success) {
+      reply(false, 'invalid', 'that is not a reason this build knows');
+      return;
+    }
+
+    try {
+      // Before the report, always. See above.
+      await session.steps?.flush();
+    } catch (error: unknown) {
+      onError?.('false_execution.flush_failed', error);
+      reply(false, 'no_such_step', 'the step has not reached the gateway yet');
+      return;
+    }
+
+    try {
+      await sessionClient.reportFalseExecution(sessionId, request.data, token);
+      reply(true, null, null);
+    } catch (error: unknown) {
+      onError?.('false_execution.not_filed', error);
+      // A 400 here means the gateway has no step at that ordinal — the flush did not carry it,
+      // or it was refused. That is the one failure a tester can do something about.
+      const permanent =
+        typeof error === 'object' &&
+        error !== null &&
+        'retryable' in error &&
+        (error as { retryable?: unknown }).retryable === false;
+      reply(
+        false,
+        permanent ? 'no_such_step' : 'unavailable',
+        permanent ? 'the gateway has no such step' : 'the control plane did not answer',
+      );
+    }
+  }
+
+  /**
    * Capture and store evidence for one step, and answer with what was recorded.
    *
    * Split the way the trust boundary is: the content script produced the redacted snapshot,
@@ -965,6 +1061,13 @@ export function createAttachController(options: AttachControllerOptions): Attach
             session.steps?.add(parsed.data);
             return;
           }
+          case 'false_execution_report':
+            // Awaited inside, answered outward. The tester is told whether it landed.
+            void reportFalseExecution(session, request.requestId, {
+              stepOrdinal: request.stepOrdinal,
+              reason: request.reason,
+            });
+            return;
           case 'drift_raise':
             // Not awaited, and not replied to. Phase 17: drift never blocks the tester.
             void raiseDrift(session, {

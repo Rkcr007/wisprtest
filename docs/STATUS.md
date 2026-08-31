@@ -231,10 +231,14 @@ unmodified `main` does it too. Run `NODE_OPTIONS=--max-old-space-size=8192 pnpm 
 locally; the CI `lint` job sets the same thing. A rerun will not clear it, because the
 failure is deterministic.
 
-The two `analyze` (CodeQL) checks fail on every PR branch with *"Code scanning is not
-enabled for this repository"*. That is a repository **setting**, not a finding, and those
-checks do not gate merge ([ADR 0015](adr/0015-codeql-and-the-ruleset-split.md) scopes code
-scanning to `main`).
+The two `analyze` (CodeQL) checks **pass** as of 2026-08-31. They had failed on every run
+with *"Code scanning is not enabled for this repository"*, which was never a finding: the
+repository was private on a free plan, where uploading results needs Advanced Security
+(`Advanced security has not been purchased`) and rulesets need Pro (`Upgrade to GitHub Pro`) —
+so both the upload and the `core` ruleset [ADR 0015](adr/0015-codeql-and-the-ruleset-split.md)
+describes were unavailable. Making the repository public restored both; no workflow change was
+needed. If it ever goes private again, expect those two checks to start failing for that
+reason and nothing else.
 
 ---
 

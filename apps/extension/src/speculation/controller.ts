@@ -17,6 +17,7 @@ import { classifyAction, resolveClassifyConfig, type ClassifyConfig } from './cl
 import type { IntentParser, ParsedIntent } from './intent.js';
 import type { Locator } from './locate.js';
 import { captureRollback, type RollbackRecord } from './rollback.js';
+import { createReservedMatcher, type ReservedMatcher } from './reserved.js';
 
 /**
  * The speculation controller — the reversibility taxonomy, turned into a state machine.
@@ -132,6 +133,13 @@ export interface SpeculationControllerOptions {
   readonly schedule?: (fn: () => void, ms: number) => () => void;
   /** Destination path for a navigation trigger, from the nav graph. Null falls back to the current path. */
   readonly navRouteFor?: (elementId: string) => string | null;
+  /**
+   * The reserved voice lexicon — phrases that address WisprTest rather than the application.
+   *
+   * Injected so a caller can supply a locale pack, and defaulted so every caller has one. See
+   * `reserved.ts` and ADR 0017 for why the reserved reading is confined to a bare utterance.
+   */
+  readonly reserved?: ReservedMatcher;
   /** Where every emitted step goes — the executor's and the controller's alike. */
   readonly onStep?: (step: SessionStep) => void;
   readonly onError?: (error: unknown) => void;
@@ -203,6 +211,7 @@ export function createSpeculationController(
   const stabilityWindowMs = options.stabilityWindowMs ?? 150;
   const schedule = options.schedule ?? defaultSchedule;
   const sessionId = options.sessionId ?? '00000000-0000-4000-8000-000000000000';
+  const reserved = options.reserved ?? createReservedMatcher();
 
   const store = createStore<SpeculationView>(IDLE_VIEW);
   let ordinal = 0;
@@ -405,6 +414,24 @@ export function createSpeculationController(
     if (rev < current.revision) return; // stale, out of order
     current.revision = rev;
     if (isFinal) current.final = true;
+
+    // ── A reserved phrase, addressed to WisprTest rather than to the application ─────────────
+    //
+    // First, ahead of the open-choice branch and the parser both. That ordering *is* what
+    // "reserved" means, and making it a property of the code's shape rather than of which branch
+    // happened to match is the point (ADR 0017). It costs one `normalizePhrase` and one map
+    // lookup, so putting it on the hot path ahead of everything else is free.
+    //
+    // Final transcripts only. A partial of "stop the import job" reads "stop" on its way past, and
+    // halting on that would abandon an utterance the tester never finished. Recognising on the
+    // final is still always in time: a class-C action needs a final transcript *and* a stability
+    // window *and* an explicit yes before it can execute, so nothing has committed yet.
+    if (isFinal && reserved.match(hypothesis.transcript) !== null) {
+      // One intent in the lexicon today, and this is its whole handling. `ReservedIntent` widens
+      // as the track's later slices ship the effects behind the other phrases.
+      halt();
+      return;
+    }
 
     const state = options.source.current();
 
@@ -724,6 +751,18 @@ export function createSpeculationController(
     });
   }
 
+  /**
+   * Abandon the current utterance.
+   *
+   * `cause` decides what an unconfirmed committing action is recorded as, and the two are
+   * different facts about the tester's intent. A *superseded* action was offered and overtaken by
+   * the next thing they said — `staged`, because it was never put to them. A *halted* one was
+   * offered and refused out loud — `rejected`, because that is evidence.
+   *
+   * Neither touches the release gate, whose denominator counts only `executed` steps. Saying
+   * "stop" therefore writes a record adjacent to the gate and moves no number in it, which is the
+   * Voice Correction & Safety Track's own rule applied to its first phrase (ADR 0017).
+   */
   function reset(newOnset: number): void {
     // A superseded, unconfirmed committing action is recorded as staged — it was offered, not taken.
     const pending = current.pendingC;
@@ -741,6 +780,28 @@ export function createSpeculationController(
     current.cancelStability?.();
     current = fresh(newOnset);
     publish(IDLE_VIEW);
+  }
+
+  /**
+   * Everything a halt does: drop the open question and undo any live speculative effect. Shared by
+   * the spoken trigger and the {@link SpeculationController.cancel} call a caller makes directly,
+   * so both mean exactly the same thing.
+   *
+   * Abandoning the utterance abandons the question it raised. `reset` deliberately does not do
+   * this — it also runs on speech onset, which is exactly when the tester is drawing breath to
+   * answer — so the open choice is dropped here and nowhere else.
+   *
+   * It does *not* record the halt as a refusal, and that is a limit worth knowing rather than an
+   * omission. A spoken "stop" is a new utterance, so `onSpeechOnset` has already run by the time
+   * the word is recognised — and that flushes any staged committing action as `staged` and clears
+   * it. Nothing is left here to mark refused. Telling "overtaken" from "refused" needs the halt to
+   * arrive *inside* the utterance it interrupts, which is what barge-in buys and why that is the
+   * track's next slice rather than a nicety (ADR 0017).
+   */
+  function halt(): void {
+    asked = null;
+    options.resolver.clearPending?.();
+    reset(now());
   }
 
   return {
@@ -772,12 +833,7 @@ export function createSpeculationController(
     },
 
     cancel(): void {
-      // Abandoning the utterance abandons the question it raised. `reset` deliberately does not do
-      // this — it also runs on speech onset, which is exactly when the tester is drawing breath to
-      // answer — so the open choice is dropped here and nowhere else.
-      asked = null;
-      options.resolver.clearPending?.();
-      reset(now());
+      halt();
     },
 
     dispose(): void {

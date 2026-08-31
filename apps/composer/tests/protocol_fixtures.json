@@ -2208,7 +2208,7 @@
       "kind": "dom_snapshot",
       "stepOrdinal": 0,
       "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "contentType": "text/html"
+      "contentType": "text/plain"
     }
   ],
   "EvidenceUploadTicket": [
@@ -2273,6 +2273,64 @@
     "memory:read",
     "session:write",
     "seed:execute"
+  ],
+  "FalseExecutionReason": [
+    "wrong_element",
+    "wrong_action",
+    "unintended_state_change"
+  ],
+  "FalseExecutionReport": [
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "stepOrdinal": 4,
+      "reason": "wrong_element",
+      "expectedElementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "note": "approved the row above the one I named",
+      "status": "open",
+      "reportedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "reportedAt": "2026-07-25T09:30:00.000Z",
+      "withdrawnBy": null,
+      "withdrawnAt": null,
+      "withdrawnReason": null
+    },
+    {
+      "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      "sessionId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+      "stepOrdinal": 4,
+      "reason": "wrong_action",
+      "expectedElementId": null,
+      "note": null,
+      "status": "withdrawn",
+      "reportedBy": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "reportedAt": "2026-07-25T09:30:00.000Z",
+      "withdrawnBy": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "withdrawnAt": "2026-07-25T09:30:00.000Z",
+      "withdrawnReason": "filed against the wrong step"
+    }
+  ],
+  "FalseExecutionReportRequest": [
+    {
+      "stepOrdinal": 4,
+      "reason": "wrong_element",
+      "expectedElementId": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+      "note": "approved the row above the one I named"
+    },
+    {
+      "stepOrdinal": 0,
+      "reason": "unintended_state_change",
+      "expectedElementId": null,
+      "note": null
+    }
+  ],
+  "FalseExecutionStatus": [
+    "open",
+    "withdrawn"
+  ],
+  "FalseExecutionWithdrawRequest": [
+    {
+      "reason": "filed against the wrong step"
+    }
   ],
   "FieldDistribution": [
     {

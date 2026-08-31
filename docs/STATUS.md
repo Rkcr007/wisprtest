@@ -3,9 +3,9 @@
 **Read this at the start of every session**, after `CLAUDE.md`. It is the map of what is
 true in `main` today: what shipped, what is still open, and what to work next.
 
-Last updated: **2026-08-30** (after [PR #38](https://github.com/Rkcr007/wisprtest/pull/38)
-landed the 50-session load gate). If a fact here disagrees with the code, the code wins —
-fix this file in the same PR.
+Last updated: **2026-08-31** (the serialized `packages/protocol` change: the false-execution
+report contract, and evidence `contentType` pinned to its kind). If a fact here disagrees
+with the code, the code wins — fix this file in the same PR.
 
 The phase prompts in [`BUILD-PLAN.md`](BUILD-PLAN.md) still define *what* a phase must
 deliver. This file records *whether* that delivery happened, and what was deliberately
@@ -80,7 +80,7 @@ recorder, autonomous agent, or RPA tool.
 | In-stack OTel collector + Prometheus + Grafana | Instruments export only if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Dashboards import into a Grafana you already have. |
 | Alert rule files | No PrometheusRule / Grafana alerts shipped. Gauges exist; nothing pages yet. |
 | `wispr_speech_to_reticle_ms` at runtime | Build-time bench only. Runtime series is `wispr_speech_to_partial_ms` (excludes resolve). |
-| `wispr_false_execution_total` producer | Counter is registered. **Nothing increments it.** Needs a protocol + product path for a tester to mark a step as wrong. Serialized contract change — not a side track. |
+| `wispr_false_execution_total` producer | Counter is registered. **Nothing increments it.** The contract for a tester to mark a step as wrong now exists in `packages/protocol`; the gateway route and the product path do not. See [Next work](#next-work) item 1. |
 | Blocking CI benchmarks | Accepted as report-only until a runner whose performance is known exists. |
 | `make build` / `gen:python` / `db-codegen` in CI | Not in the workflow. Generated pydantic/Kysely drift can merge. |
 | End-to-end `make kind-up` on every machine | Scripts exist; last production-grade pass did **not** treat kind as verified on this workstation (kind/Helm must be installed). |
@@ -108,15 +108,28 @@ Health: `GET /api/healthz`, `GET /api/readyz`.
 ## Next work
 
 Ordered by **priority**. Do not start two of these in the same directory in the same
-cycle. Do not edit `packages/protocol` except for item 1, and that item must land
-**alone** before anything consumes the new contract.
+cycle. **Do not edit `packages/protocol` from any of these** — item 1's contract has
+already landed, so every track below rebases onto it and consumes it as it stands. A
+further contract change is serialized through the lead and lands alone
+([ADR 0012](adr/0012-parallel-tracks.md)).
 
 ### P0 — still blocks calling the product “measured production grade”
 
-1. **False execution as a first-class outcome (serialized).** Define how a tester
-   reports “that was the wrong element.” Extend `ActionOutcome` (or an adjacent
-   schema) in `packages/protocol`, then wire `wispr_false_execution_total.add()` on
-   ingest. Until then the `< 0.1%` release gate is the Phase 10 speculation test, not
+1. **False execution as a first-class outcome.** *Contract landed; the wiring is open.*
+   `packages/protocol` now defines `FalseExecutionReport`, `FalseExecutionReportRequest`,
+   `FalseExecutionWithdrawRequest`, `FalseExecutionReason` and `FalseExecutionStatus`.
+   It is a record adjacent to the step, **not** a sixth `ActionOutcome`: a step's outcome
+   is what happened at dispatch, falseness is judged afterwards, and `session_steps` is
+   append-only so the timeline stays evidence. What remains, as two ordinary tracks:
+   - **Gateway** — an append-only `false_execution_reports` table (RLS via
+     `apply_tenant_policy`), `POST /v1/sessions/:id/false-executions` and its withdraw
+     route, `falseExecutionTotal.add()`, a `wispr_false_execution_withdrawn_total`
+     (the counter cannot decrement, so a withdrawal needs its own series), and a
+     `wispr_session_steps_total{outcome}` **denominator** — without it a *rate* is not
+     computable at all.
+   - **Console / extension** — the path by which a tester actually files one.
+
+   Until both land the `< 0.1%` release gate is still the Phase 10 speculation test, not
    a measurement. See [ADR 0005](adr/0005-reversibility-taxonomy.md).
 2. **Observability stack.** A collector in Compose (and documented for kind) so
    gateway/indexer/composer actually export. Then dashboard panels for
@@ -139,17 +152,24 @@ cycle. Do not edit `packages/protocol` except for item 1, and that item must lan
 8. **Qdrant `/readyz`.** Gateway readiness fails if Qdrant is down, and **nothing
    reads or writes Qdrant** (T1 is on-device ONNX). Decide: use it, or stop gating
    on it.
+9. **Evidence downloads are served without a disposition header.** `signedUrl()` in
+   `apps/gateway/src/storage/s3-evidence-store.ts` signs a bare `GetObjectCommand`, so
+   object storage serves evidence with whatever content type it was stored under, and
+   the console links it with a plain anchor. Storing `text/html` is now unrepresentable
+   in the contract (`EvidenceUploadRequest` pins the type to the kind), so this is
+   defence-in-depth rather than a live hole — but `ResponseContentDisposition:
+   attachment` on the signed GET would stop the next admitted type from reopening it.
 
 ### P2 — budgets and product polish
 
-9. Benchmarks that `CLAUDE.md` names but no suite covers: action dispatch p95 < 30 ms,
-   indexer throughput > 8 routes/min, composition preview p95 < 1.2 s.
-10. Runtime `wispr_speech_to_reticle_ms` (or a documented decision that the bench is
+10. Benchmarks that `CLAUDE.md` names but no suite covers: action dispatch p95 < 30 ms,
+    indexer throughput > 8 routes/min, composition preview p95 < 1.2 s.
+11. Runtime `wispr_speech_to_reticle_ms` (or a documented decision that the bench is
     enough).
-11. Implement the GCP pilot blueprint in [`GCP-DEPLOYMENT.md`](GCP-DEPLOYMENT.md):
+12. Implement the GCP pilot blueprint in [`GCP-DEPLOYMENT.md`](GCP-DEPLOYMENT.md):
     Terraform, GCP Helm overlay, ingress, secret projection, collector, and rollout.
     The plan exists; the infrastructure does not.
-12. Chrome Web Store / enterprise force-install packaging.
+13. Chrome Web Store / enterprise force-install packaging.
 
 ---
 
@@ -192,7 +212,7 @@ Authoritative extra list: [`docs/adr/README.md`](adr/README.md) § Known diverge
 
 Short version:
 
-- False-execution counter has no producer.
+- False-execution counter has no producer (the contract exists; the gateway route does not).
 - CI does not regenerate protocol/Kysely artifacts.
 - Benchmarks in CI do not block.
 - Qdrant is in the health check but unused.

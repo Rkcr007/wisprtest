@@ -77,8 +77,12 @@ Recording these here rather than quietly writing the ADRs around them.
   *Consequences* for the detail.
 - **The release-gate metric has no producer.** `wispr_false_execution_total` is registered in
   `apps/gateway/src/telemetry/metrics.ts` and exercised by a test, but nothing in the product
-  increments it, and `ActionOutcome` has no member that would signal one. See
-  [ADR 0005](0005-reversibility-taxonomy.md) and
+  increments it. The *contract* is no longer the gap: `packages/protocol` defines
+  `FalseExecutionReport` and its request shapes, deliberately as a record adjacent to the step
+  rather than a sixth `ActionOutcome` — `session_steps` is append-only, so a step cannot be
+  re-judged in place without ceasing to be evidence. What is still missing is the gateway route
+  that ingests one, the denominator series a *rate* requires, and the product path that lets a
+  tester file it. See [ADR 0005](0005-reversibility-taxonomy.md) and
   [runbooks/README.md](../runbooks/README.md#alerts-that-cannot-fire-yet).
 - **The generated contract is never verified in CI.** [ADR 0003](0003-contract-first-zod-protocol.md)
   rests on `apps/composer/src/composer/protocol/models.py` being generated from the Zod schemas, so

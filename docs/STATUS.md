@@ -3,9 +3,9 @@
 **Read this at the start of every session**, after `CLAUDE.md`. It is the map of what is
 true in `main` today: what shipped, what is still open, and what to work next.
 
-Last updated: **2026-08-31** (the serialized `packages/protocol` change: the false-execution
-report contract, and evidence `contentType` pinned to its kind). If a fact here disagrees
-with the code, the code wins — fix this file in the same PR.
+Last updated: **2026-08-31** (the false-execution report: contract, then the gateway that
+stores and counts one). If a fact here disagrees with the code, the code wins — fix this
+file in the same PR.
 
 The phase prompts in [`BUILD-PLAN.md`](BUILD-PLAN.md) still define *what* a phase must
 deliver. This file records *whether* that delivery happened, and what was deliberately
@@ -80,7 +80,7 @@ recorder, autonomous agent, or RPA tool.
 | In-stack OTel collector + Prometheus + Grafana | Instruments export only if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Dashboards import into a Grafana you already have. |
 | Alert rule files | No PrometheusRule / Grafana alerts shipped. Gauges exist; nothing pages yet. |
 | `wispr_speech_to_reticle_ms` at runtime | Build-time bench only. Runtime series is `wispr_speech_to_partial_ms` (excludes resolve). |
-| `wispr_false_execution_total` producer | Counter is registered. **Nothing increments it.** The contract for a tester to mark a step as wrong now exists in `packages/protocol`; the gateway route and the product path do not. See [Next work](#next-work) item 1. |
+| `wispr_false_execution_total` producer | **Done.** `POST /v1/sessions/:id/false-executions` increments it, with `wispr_false_execution_withdrawn_total` and a `wispr_session_steps_total{outcome}` denominator beside it. No UI files a report yet — see [Next work](#next-work) item 1. |
 | Blocking CI benchmarks | Accepted as report-only until a runner whose performance is known exists. |
 | `make build` / `gen:python` / `db-codegen` in CI | Not in the workflow. Generated pydantic/Kysely drift can merge. |
 | End-to-end `make kind-up` on every machine | Scripts exist; last production-grade pass did **not** treat kind as verified on this workstation (kind/Helm must be installed). |
@@ -115,22 +115,26 @@ further contract change is serialized through the lead and lands alone
 
 ### P0 — still blocks calling the product “measured production grade”
 
-1. **False execution as a first-class outcome.** *Contract landed; the wiring is open.*
-   `packages/protocol` now defines `FalseExecutionReport`, `FalseExecutionReportRequest`,
-   `FalseExecutionWithdrawRequest`, `FalseExecutionReason` and `FalseExecutionStatus`.
-   It is a record adjacent to the step, **not** a sixth `ActionOutcome`: a step's outcome
+1. **False execution as a first-class outcome.** *Contract and gateway landed; the product
+   path is open.* `packages/protocol` defines `FalseExecutionReport` and its request shapes
+   — a record adjacent to the step, **not** a sixth `ActionOutcome`, because a step's outcome
    is what happened at dispatch, falseness is judged afterwards, and `session_steps` is
-   append-only so the timeline stays evidence. What remains, as two ordinary tracks:
-   - **Gateway** — an append-only `false_execution_reports` table (RLS via
-     `apply_tenant_policy`), `POST /v1/sessions/:id/false-executions` and its withdraw
-     route, `falseExecutionTotal.add()`, a `wispr_false_execution_withdrawn_total`
-     (the counter cannot decrement, so a withdrawal needs its own series), and a
-     `wispr_session_steps_total{outcome}` **denominator** — without it a *rate* is not
-     computable at all.
-   - **Console / extension** — the path by which a tester actually files one.
+   append-only so the timeline stays evidence.
 
-   Until both land the `< 0.1%` release gate is still the Phase 10 speculation test, not
-   a measurement. See [ADR 0005](adr/0005-reversibility-taxonomy.md).
+   The gateway now stores and counts one: `false_execution_reports` (append-only, its own
+   inline RLS policy — `apply_tenant_policy` was dropped at the end of 20260725120002, so a
+   new table writes its own), `POST /v1/sessions/:id/false-executions`, its withdraw route,
+   `GET` for the console, and three series —  `wispr_false_execution_total` (**its first
+   producer**), `wispr_false_execution_withdrawn_total` (a Counter cannot decrement, so a
+   withdrawal needs its own series) and `wispr_session_steps_total{outcome}`, the denominator
+   without which a *rate* is not computable at all.
+
+   What remains:
+   - **Console / extension** — the path by which a tester actually files one. The `GET`
+     endpoint exists so this needs no further contract change.
+
+   Until that lands the `< 0.1%` release gate is measurable but not measured — nothing yet
+   files a report. See [ADR 0005](adr/0005-reversibility-taxonomy.md).
 2. **Observability stack.** A collector in Compose (and documented for kind) so
    gateway/indexer/composer actually export. Then dashboard panels for
    `wispr_drift_open_total` and `wispr_memory_staleness_hours`, plus alert rules:
@@ -224,7 +228,6 @@ Authoritative extra list: [`docs/adr/README.md`](adr/README.md) § Known diverge
 
 Short version:
 
-- False-execution counter has no producer (the contract exists; the gateway route does not).
 - CI does not regenerate protocol/Kysely artifacts.
 - Benchmarks in CI do not block.
 - Qdrant is in the health check but unused.

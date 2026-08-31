@@ -144,6 +144,26 @@ export interface EntitySchema {
   updatedAt: Generated<Timestamp>;
 }
 
+export interface FalseExecutionReport {
+  createdAt: Generated<Timestamp>;
+  expectedElementId: string | null;
+  id: Generated<string>;
+  note: string | null;
+  reason: string;
+  reportedAt: Generated<Timestamp>;
+  reportedBy: string;
+  sessionId: string;
+  status: Generated<string>;
+  stepOrdinal: number;
+  tenantId: string;
+  withdrawnAt: Timestamp | null;
+  /**
+   * The human who withdrew, nulled if that account is later deleted. The durable record is audit_log (ARCHITECTURE 8); withdrawn_at is what proves a withdrawal was taken at all.
+   */
+  withdrawnBy: string | null;
+  withdrawnReason: string | null;
+}
+
 export interface FieldSpec {
   controlElementKey: string | null;
   createdAt: Generated<Timestamp>;
@@ -295,6 +315,7 @@ export interface DB {
   driftReports: DriftReport;
   elements: Element;
   entitySchemas: EntitySchema;
+  falseExecutionReports: FalseExecutionReport;
   fieldSpecs: FieldSpec;
   materializers: Materializer;
   memoryVersions: MemoryVersion;

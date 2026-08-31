@@ -205,7 +205,9 @@ describe('the instrument names', () => {
     metrics.seedMaterializeTotal.add(1, {});
     metrics.tierTotal.add(1, {});
     metrics.resolutionLatencyMs.record(1, {});
+    metrics.sessionStepsTotal.add(1, {});
     metrics.falseExecutionTotal.add(1, {});
+    metrics.falseExecutionWithdrawnTotal.add(1, {});
     metrics.httpRequestsTotal.add(1, {});
     metrics.httpRequestDurationMs.record(1, {});
     metrics.memorySnapshotTotal.add(1, {});
@@ -217,6 +219,7 @@ describe('the instrument names', () => {
     expect((await collect()).map((entry) => entry.name).sort()).toEqual([
       'wispr_drift_open_total',
       'wispr_false_execution_total',
+      'wispr_false_execution_withdrawn_total',
       'wispr_gateway_request_duration_ms',
       'wispr_gateway_requests_total',
       'wispr_index_jobs_enqueued_total',
@@ -228,6 +231,7 @@ describe('the instrument names', () => {
       'wispr_resolution_latency_ms',
       'wispr_seed_materialize_total',
       'wispr_seed_plan_latency_ms',
+      'wispr_session_steps_total',
       'wispr_tier_total',
     ]);
   });

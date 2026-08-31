@@ -1,5 +1,6 @@
 import {
   EvidenceUploadTicket,
+  FalseExecutionReport,
   Session,
   SessionStepIngestResult,
   SessionTimeline,
@@ -515,5 +516,173 @@ describe('the timeline', () => {
     // Not 403: whether the session exists is itself information.
     expect(response.statusCode).toBe(400);
     expect(response.json<{ code: string }>().code).toBe('validation_failed');
+  });
+});
+
+/**
+ * False-execution reports — the producer for the release gate.
+ *
+ * `CLAUDE.md` budgets false execution at < 0.1% and calls it the metric that gates every release.
+ * Until these routes existed the counter had no producer at all, so the budget was asserted by
+ * the Phase 10 speculation test rather than measured. What this suite proves is that the numerator
+ * cannot be inflated by accident: not by a double-tap, not by an ordinal that names no step, and
+ * not by another tenant.
+ */
+describe('false-execution reports', () => {
+  async function fileReport(sessionId: string, body: unknown, email: string = SEED.testerEmail) {
+    return harness.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/false-executions`,
+      headers: await authed(email),
+      payload: JSON.stringify(body),
+    });
+  }
+
+  async function withdraw(
+    sessionId: string,
+    ordinal: number,
+    body: unknown = { reason: 'wrong step' },
+  ) {
+    return harness.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/false-executions/${String(ordinal)}/withdraw`,
+      headers: await authed(SEED.testerEmail),
+      payload: JSON.stringify(body),
+    });
+  }
+
+  async function listReports(sessionId: string, email: string = SEED.testerEmail) {
+    return harness.app.inject({
+      method: 'GET',
+      url: `/v1/sessions/${sessionId}/false-executions`,
+      headers: await authed(email),
+    });
+  }
+
+  const report = {
+    stepOrdinal: 0,
+    reason: 'wrong_element',
+    expectedElementId: null,
+    note: null,
+  } as const;
+
+  async function sessionWithOneStep(): Promise<string> {
+    const sessionId = await openSessionId();
+    expect((await postSteps(sessionId, [step(sessionId, 0)])).statusCode).toBe(200);
+    return sessionId;
+  }
+
+  it('files a report against a step and returns it', async () => {
+    const sessionId = await sessionWithOneStep();
+
+    const response = await fileReport(sessionId, report);
+
+    expect(response.statusCode).toBe(201);
+    const filed = FalseExecutionReport.parse(response.json());
+    expect(filed.sessionId).toBe(sessionId);
+    expect(filed.stepOrdinal).toBe(0);
+    expect(filed.reason).toBe('wrong_element');
+    expect(filed.status).toBe('open');
+    expect(filed.withdrawnAt).toBeNull();
+  });
+
+  // The deliberate divergence from step ingest. A closed session refuses new steps, because the
+  // timeline is evidence. A report is a judgement *about* that timeline, and the moment a tester
+  // is most likely to notice a wrong click is reviewing the session afterwards — so refusing here
+  // would reject exactly the reports worth having.
+  it('accepts a report against a closed session, unlike step ingest', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await close(sessionId)).statusCode).toBe(200);
+
+    // The same session now refuses a step...
+    expect((await postSteps(sessionId, [step(sessionId, 1)])).statusCode).toBe(409);
+
+    // ...and still accepts a report.
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+  });
+
+  it('counts one wrong click once, however many times it is reported', async () => {
+    const sessionId = await sessionWithOneStep();
+
+    const first = await fileReport(sessionId, report);
+    const second = await fileReport(sessionId, report);
+
+    expect(first.statusCode).toBe(201);
+    // 200, not a conflict: reporting twice is the tester saying the same thing again, and the
+    // partial unique index is what stops it becoming two entries in a release gate.
+    expect(second.statusCode).toBe(200);
+    expect(FalseExecutionReport.parse(second.json()).id).toBe(
+      FalseExecutionReport.parse(first.json()).id,
+    );
+    expect((await listReports(sessionId)).json()).toHaveLength(1);
+  });
+
+  it('refuses an ordinal that names no step, rather than storing a report about nothing', async () => {
+    const sessionId = await sessionWithOneStep();
+
+    const response = await fileReport(sessionId, { ...report, stepOrdinal: 41 });
+
+    expect(response.statusCode).toBe(400);
+    expect((await listReports(sessionId)).json()).toHaveLength(0);
+  });
+
+  it('withdraws a report and lets the step be reported again afterwards', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+
+    const withdrawn = await withdraw(sessionId, 0, { reason: 'filed against the wrong step' });
+
+    expect(withdrawn.statusCode).toBe(200);
+    const parsed = FalseExecutionReport.parse(withdrawn.json());
+    expect(parsed.status).toBe('withdrawn');
+    expect(parsed.withdrawnAt).not.toBeNull();
+    expect(parsed.withdrawnReason).toBe('filed against the wrong step');
+
+    // A mis-tap must not make the step permanently unreportable — the unique index is partial
+    // precisely so that a withdrawal reopens the slot.
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+  });
+
+  it('refuses a second withdrawal, so one retraction cannot be counted twice', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+    expect((await withdraw(sessionId, 0)).statusCode).toBe(200);
+
+    expect((await withdraw(sessionId, 0)).statusCode).toBe(400);
+  });
+
+  it('requires a reason to withdraw, because it moves a release gate', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+
+    expect((await withdraw(sessionId, 0, {})).statusCode).toBe(400);
+    expect((await withdraw(sessionId, 0, { reason: '' })).statusCode).toBe(400);
+  });
+
+  it('lists withdrawn reports rather than hiding them', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+    expect((await withdraw(sessionId, 0)).statusCode).toBe(200);
+
+    const listed = (await listReports(sessionId)).json<readonly unknown[]>();
+
+    expect(listed).toHaveLength(1);
+    expect(FalseExecutionReport.parse(listed[0]).status).toBe('withdrawn');
+  });
+
+  it('rejects a reason outside the contract', async () => {
+    const sessionId = await sessionWithOneStep();
+
+    expect((await fileReport(sessionId, { ...report, reason: 'mistake' })).statusCode).toBe(400);
+  });
+
+  // RLS, not a filter in the query: the repository writes no `where tenant_id`, so a neighbour
+  // reading this session must see it as absent rather than forbidden.
+  it('does not let a neighbouring tenant read or file against this session', async () => {
+    const sessionId = await sessionWithOneStep();
+    expect((await fileReport(sessionId, report)).statusCode).toBe(201);
+
+    expect((await listReports(sessionId, NEIGHBOUR.ownerEmail)).statusCode).toBe(400);
+    expect((await fileReport(sessionId, report, NEIGHBOUR.ownerEmail)).statusCode).toBe(400);
   });
 });

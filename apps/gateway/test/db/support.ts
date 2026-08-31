@@ -97,6 +97,7 @@ export const TENANT_SCOPED_TABLES = [
   'drift_reports',
   'elements',
   'entity_schemas',
+  'false_execution_reports',
   'field_specs',
   'materializers',
   'memory_versions',

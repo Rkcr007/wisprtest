@@ -208,6 +208,12 @@ seed_ledger(id, tenant_id, session_id, entity_schema_id, external_ref,
 sessions(id, tenant_id, application_id, memory_version_id, user_id, started_at, ended_at)
 session_steps(id, session_id, ordinal, utterance, intent jsonb, element_id,
               tier, confidence, latency_ms, outcome, evidence jsonb)
+-- A tester's judgement that a step acted wrongly. Adjacent to the step, never written back
+-- onto it: session_steps is append-only, and an outcome revised after the fact is not evidence.
+-- This is the numerator of the false execution rate that gates releases.
+false_execution_reports(id, tenant_id, session_id, step_ordinal, reason,
+                        expected_element_id, note, status, reported_by, reported_at,
+                        withdrawn_by, withdrawn_at, withdrawn_reason, created_at)
 
 -- Governance
 drift_reports(id, memory_version_id, screen_id, diff jsonb, status, approved_by, created_at)

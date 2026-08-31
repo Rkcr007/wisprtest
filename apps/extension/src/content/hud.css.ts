@@ -199,6 +199,19 @@ export const hudCss = `
 
 .wispr-hud__toast-slot { padding: 0 var(--wispr-space-3) var(--wispr-space-3); }
 
+/* The false-execution prompt shares the toast slot: outside the collapse, quiet until used.
+   Laid out as a row so the closed state is one small button rather than a band. */
+.wispr-hud__false-execution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wispr-space-2);
+}
+.wispr-hud__false-execution-note {
+  color: var(--wispr-text-muted);
+  font-size: 11px;
+}
+
 /* ── Seed preview: what the tester is being asked to approve ─────────────────────────────── */
 
 /*

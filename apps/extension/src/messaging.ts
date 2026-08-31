@@ -191,6 +191,29 @@ export const HudRequest = z.discriminatedUnion('kind', [
     /** Set exactly when `scope` is `entry`. The session's id is the worker's own. */
     ledgerEntryId: z.string().min(1).nullable(),
   }),
+  /**
+   * The tester says the step that just ran acted on the wrong thing.
+   *
+   * The producer for the release gate CLAUDE.md sets at < 0.1%, from the moment the tester
+   * actually knows. A false execution is not detectable by the runtime — the resolver was
+   * confident and the dispatch succeeded — so this message is the measurement.
+   *
+   * Correlated and replied to, unlike `drift_raise`. Drift is a notification nobody waits for;
+   * a tester who says "that was wrong" is owed an answer about whether it was recorded, because
+   * a report they believe was filed and was not is worse than no button at all.
+   *
+   * The session id is deliberately absent — it is the worker's, exactly as it is for seeding and
+   * drift, so a page the extension does not control cannot name the session a report is written
+   * against. The ordinal is the page side's to send: it is the step the content script just
+   * recorded.
+   */
+  z.strictObject({
+    kind: z.literal('false_execution_report'),
+    requestId: z.string().min(1),
+    stepOrdinal: z.number().int().nonnegative(),
+    /** A `FalseExecutionReason`; validated against the contract in the worker. */
+    reason: z.string().min(1),
+  }),
 ]);
 export type HudRequest = z.infer<typeof HudRequest>;
 
@@ -345,9 +368,38 @@ export const HudSeedResult = z.strictObject({
 });
 export type HudSeedResult = z.infer<typeof HudSeedResult>;
 
+/**
+ * Service worker → content script: whether the false-execution report landed.
+ *
+ * Answered rather than assumed, because the worker does real work between the click and the
+ * write: the step being reported may still be sitting in the session buffer, so the worker
+ * flushes before it files. A report the gateway never received must not read to the tester as
+ * one it did — this is the metric a release is gated on.
+ *
+ * `reason` is the closed set the worker classifies failures into. `no_such_step` is its own
+ * member because it is the one a tester can act on: the step did not reach the gateway, so the
+ * thing to do is try again once it has.
+ */
+export const HudFalseExecutionResult = z.strictObject({
+  kind: z.literal('false_execution_result'),
+  requestId: z.string().min(1),
+  ok: z.boolean(),
+  /** Present when not `ok`: why nothing was recorded. */
+  reason: z.enum(['unavailable', 'no_such_step', 'invalid', 'failed']).nullable(),
+  /** Concrete detail from the gateway, when it sent one. Never a token or a request body. */
+  detail: z.string().nullable(),
+});
+export type HudFalseExecutionResult = z.infer<typeof HudFalseExecutionResult>;
+
 /** Everything the worker may push to the content script. */
 export type WorkerMessage =
-  HudUpdate | HudSnapshot | HudVoice | HudEscalateResult | HudEvidenceResult | HudSeedResult;
+  | HudUpdate
+  | HudSnapshot
+  | HudVoice
+  | HudEscalateResult
+  | HudEvidenceResult
+  | HudSeedResult
+  | HudFalseExecutionResult;
 
 /** Parse any worker → content message, or null if it is not one of ours. */
 export function parseWorkerMessage(message: unknown): WorkerMessage | null {
@@ -371,6 +423,10 @@ export function parseWorkerMessage(message: unknown): WorkerMessage | null {
   }
   if (kind === 'seed_result') {
     const parsed = HudSeedResult.safeParse(message);
+    return parsed.success ? parsed.data : null;
+  }
+  if (kind === 'false_execution_result') {
+    const parsed = HudFalseExecutionResult.safeParse(message);
     return parsed.success ? parsed.data : null;
   }
   return parseUpdate(message);

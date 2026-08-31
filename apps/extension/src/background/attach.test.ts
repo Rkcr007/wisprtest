@@ -13,7 +13,7 @@ import type { DriftClient } from './drift-client.js';
 import type { EscalateClient } from './escalate-client.js';
 import type { LocalMemoryEnvelope, LocalMemoryStore } from './local-memory.js';
 import type { MemoryClient } from './memory-client.js';
-import type { SessionClient } from './session-client.js';
+import { SessionWriteFailed, type SessionClient } from './session-client.js';
 import { UnauthenticatedError } from './token-client.js';
 import type { TokenStore } from './token-store.js';
 
@@ -673,12 +673,14 @@ describe('raising drift', () => {
         }),
       sendSteps: () => Promise.resolve(),
       close: () => Promise.resolve(),
+      reportFalseExecution: () => Promise.resolve({} as never),
     };
   }
 
   async function attachedWithSession(
     drifts: DriftClient,
     onError?: (e: string, x: unknown) => void,
+    client: SessionClient = sessionClient(),
   ) {
     const connection = fakePort();
     const controller = createAttachController({
@@ -690,7 +692,7 @@ describe('raising drift', () => {
         get: snapshot,
         invalidate: () => undefined,
       },
-      sessions: sessionClient(),
+      sessions: client,
       bufferStore: {
         read: () => Promise.resolve([]),
         write: () => Promise.resolve(),
@@ -814,6 +816,156 @@ describe('raising drift', () => {
     await Promise.resolve();
 
     expect(raise).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The false-execution report, and the ordering the whole feature rests on.
+   *
+   * The gateway refuses a report naming a step it has not received. The buffer flushes every 5 s
+   * and a tester notices a wrong click in about one, so filing without flushing first would drop
+   * most reports — silently, into the one metric a release is gated on. An ordering bug here is
+   * invisible in production: reports stop arriving and the gate reads clean.
+   */
+  /** A contract-valid executed step, so the buffer has something to flush. */
+  function step(ordinal: number): unknown {
+    return {
+      id: `77777777-7777-4777-8777-77777777777${String(ordinal)}`,
+      sessionId: SESSION_ID,
+      ordinal,
+      utterance: 'approve the acme order',
+      intent: {
+        verb: 'click',
+        targetPhrase: 'approve',
+        constraints: [],
+        stateFingerprint: 'a'.repeat(64),
+        candidateElementKeys: ['orders.row.approve'],
+      },
+      resolution: {
+        outcome: 'resolved',
+        elementId: '99999999-9999-4999-8999-999999999999',
+        elementKey: 'orders.row.approve',
+        confidence: 0.97,
+        tier: 'T0',
+        latencyMs: 8,
+        candidates: [],
+      },
+      elementId: null,
+      tier: 'T0',
+      confidence: 0.97,
+      actionClass: 'C',
+      latencyMs: 290,
+      outcome: 'executed',
+      evidence: [],
+      createdAt: '2026-08-07T12:00:00.000Z',
+    };
+  }
+
+  const REPORT = {
+    kind: 'false_execution_report',
+    requestId: 'req-1',
+    stepOrdinal: 0,
+    reason: 'wrong_element',
+  };
+
+  const noDrift: DriftClient = {
+    raise: () => Promise.resolve({ ok: true as const, value: {} as never }),
+  };
+
+  function recordingClient(order: string[], onReport?: () => Promise<never>): SessionClient {
+    const base = sessionClient();
+    return {
+      ...base,
+      sendSteps: () => {
+        order.push('flush');
+        return Promise.resolve();
+      },
+      reportFalseExecution: (sessionId, request) => {
+        order.push(`report:${String(request.stepOrdinal)}:${request.reason}`);
+        if (onReport !== undefined) return onReport();
+        return Promise.resolve({
+          id: '66666666-6666-4666-8666-666666666666',
+          sessionId,
+          stepOrdinal: request.stepOrdinal,
+          reason: request.reason,
+          expectedElementId: null,
+          note: null,
+          status: 'open',
+          reportedBy: '88888888-8888-4888-8888-888888888888',
+          reportedAt: '2026-08-07T12:00:00.000Z',
+          withdrawnBy: null,
+          withdrawnAt: null,
+          withdrawnReason: null,
+        } as never);
+      },
+    };
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+  }
+
+  it('flushes the session buffer before it files the report', async () => {
+    const order: string[] = [];
+    const connection = await attachedWithSession(noDrift, undefined, recordingClient(order));
+
+    connection.emit({ kind: 'session_step', step: step(0) });
+    connection.emit(REPORT);
+    await settle();
+
+    // The order is the assertion. A report that overtakes the flush names a step the gateway has
+    // never seen, and is refused.
+    expect(order).toEqual(['flush', 'report:0:wrong_element']);
+  });
+
+  it('tells the tester it landed', async () => {
+    const order: string[] = [];
+    const connection = await attachedWithSession(noDrift, undefined, recordingClient(order));
+
+    connection.emit({ kind: 'session_step', step: step(0) });
+    connection.emit(REPORT);
+    await settle();
+
+    expect(connection.sent).toContainEqual(
+      expect.objectContaining({ kind: 'false_execution_result', requestId: 'req-1', ok: true }),
+    );
+  });
+
+  it('says no step rather than claiming success when the gateway refuses', async () => {
+    const order: string[] = [];
+    const refuse = (): Promise<never> =>
+      Promise.reject(new SessionWriteFailed('HTTP 400', false, 'validation_failed'));
+    const connection = await attachedWithSession(
+      noDrift,
+      undefined,
+      recordingClient(order, refuse),
+    );
+
+    connection.emit({ kind: 'session_step', step: step(0) });
+    connection.emit(REPORT);
+    await settle();
+
+    expect(connection.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'false_execution_result',
+        ok: false,
+        reason: 'no_such_step',
+      }),
+    );
+  });
+
+  it('refuses a reason this build does not know, without calling the gateway', async () => {
+    const order: string[] = [];
+    const connection = await attachedWithSession(noDrift, undefined, recordingClient(order));
+
+    // The page is not trusted: an unrecognised reason is caught here rather than becoming a
+    // gateway validation error that reads like the tester's fault.
+    connection.emit({ ...REPORT, reason: 'mistake' });
+    await settle();
+
+    expect(order.some((entry) => entry.startsWith('report:'))).toBe(false);
+    expect(connection.sent).toContainEqual(
+      expect.objectContaining({ kind: 'false_execution_result', ok: false, reason: 'invalid' }),
+    );
   });
 });
 
